@@ -1,0 +1,8 @@
+{
+  "name": "Remix Central de Supervisão",
+  "description": "Aplicação web acadêmica para gestão e supervisão de estágios de Psicologia, com modo supervisão tablet-first, controle multi-semestre, frequência e pendências.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
