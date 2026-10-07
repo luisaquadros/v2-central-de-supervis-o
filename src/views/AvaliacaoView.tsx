@@ -17,6 +17,7 @@ import {
   ShieldCheck,
   RotateCcw,
   Sparkles,
+  Info,
 } from 'lucide-react';
 import { useSupervisao } from '../context/SupervisaoContext';
 import { TipoInstrumento, StatusDevolutiva, AvaliacaoCompleta, CriterioAvaliacao } from '../types';
@@ -43,33 +44,58 @@ export const AvaliacaoView: React.FC = () => {
     getCriteriosDaTurma,
   } = useSupervisao();
 
-  // Seleção de Turma e Instrumento
-  const [selectedTurmaId, setSelectedTurmaId] = useState<string>(turmas[0]?.turma_id || '');
-  const turmaAtual = turmas.find(t => t.turma_id === selectedTurmaId);
+  // Seleção de Turma resiliente
+  const [selectedTurmaId, setSelectedTurmaId] = useState<string>(() => {
+    return turmas[0]?.turma_id || '';
+  });
 
-  // Lista dinâmica de instrumentos presentes em criterios_avaliacao para a turma/disciplina
+  // Atualiza turma se a lista mudar ou a selecionada não existir mais
+  React.useEffect(() => {
+    if (turmas.length > 0 && (!selectedTurmaId || !turmas.some(t => t.turma_id === selectedTurmaId))) {
+      setSelectedTurmaId(turmas[0].turma_id);
+    }
+  }, [turmas, selectedTurmaId]);
+
+  const turmaAtual = turmas.find(t => t.turma_id === selectedTurmaId) || null;
+
+  // Extração estritamente dinâmica dos instrumentos cadastrados em criterios_avaliacao para a turma/disciplina
   const instrumentosDisponiveis = React.useMemo(() => {
     const nomes = new Set<string>();
     criterios.forEach(c => {
-      if (c.turma_id === selectedTurmaId || c.disciplina_id === turmaAtual?.disciplina_id || (!c.turma_id && !c.disciplina_id)) {
-        const inst = c.instrumento_avaliacao || c.instrumento || 'Instrumento Oficial';
-        nomes.add(inst);
+      const matchTurma = !c.turma_id || c.turma_id === selectedTurmaId;
+      const matchDisc = !c.disciplina_id || (turmaAtual && c.disciplina_id === turmaAtual.disciplina_id);
+      if (matchTurma && matchDisc) {
+        const inst = c.instrumento_avaliacao || c.instrumento;
+        if (typeof inst === 'string' && inst.trim()) {
+          nomes.add(inst.trim());
+        }
       }
     });
+
+    // Se não encontrou instrumento específico com filtro de turma/disciplina, verifica se existem instrumentos globais na base
+    if (nomes.size === 0) {
+      criterios.forEach(c => {
+        const inst = c.instrumento_avaliacao || c.instrumento;
+        if (typeof inst === 'string' && inst.trim()) {
+          nomes.add(inst.trim());
+        }
+      });
+    }
+
     return Array.from(nomes);
   }, [criterios, selectedTurmaId, turmaAtual]);
 
-  const [selectedInstrumentoTipo, setSelectedInstrumentoTipo] = useState<TipoInstrumento>('RUBRICA');
-  const [selectedInstrumentoNome, setSelectedInstrumentoNome] = useState(
-    instrumentosDisponiveis[0] || 'Instrumento Oficial'
+  const [selectedInstrumentoNome, setSelectedInstrumentoNome] = useState<string>(
+    instrumentosDisponiveis[0] || ''
   );
 
   React.useEffect(() => {
-    if (instrumentosDisponiveis.length > 0 && !instrumentosDisponiveis.includes(selectedInstrumentoNome)) {
+    if (instrumentosDisponiveis.length > 0 && (!selectedInstrumentoNome || !instrumentosDisponiveis.includes(selectedInstrumentoNome))) {
       setSelectedInstrumentoNome(instrumentosDisponiveis[0]);
     }
   }, [instrumentosDisponiveis, selectedInstrumentoNome]);
 
+  const [selectedInstrumentoTipo, setSelectedInstrumentoTipo] = useState<TipoInstrumento>('RUBRICA');
   const [activeTab, setActiveTab] = useState<'CORRECAO' | 'DEVOLUTIVAS' | 'FECHAMENTO'>('CORRECAO');
 
   // Navegação Aluno a Aluno na Tela de Correção Ampla
@@ -87,28 +113,55 @@ export const AvaliacaoView: React.FC = () => {
   const [modalFeedbackAvaliacao, setModalFeedbackAvaliacao] = useState<AvaliacaoCompleta | null>(null);
 
   // Alunos da turma selecionada
-  const alunosDaTurma = getAlunosDaTurma(selectedTurmaId);
-  const currentItem = alunosDaTurma[currentAlunoIndex];
+  const alunosDaTurma = React.useMemo(() => {
+    if (!selectedTurmaId) return [];
+    try {
+      return getAlunosDaTurma(selectedTurmaId);
+    } catch (e) {
+      console.warn('Erro ao carregar alunos da turma na avaliação:', e);
+      return [];
+    }
+  }, [selectedTurmaId, getAlunosDaTurma]);
 
-  // Critérios oficiais filtrados por turma, disciplina e instrumento da base (sem substituição hardcoded)
-  const criteriosAplicaveis = getCriteriosDaTurma(selectedTurmaId, selectedInstrumentoNome);
+  // Garante que o índice atual seja válido
+  const safeCurrentIndex = Math.min(Math.max(0, currentAlunoIndex), Math.max(0, alunosDaTurma.length - 1));
+  const currentItem = alunosDaTurma[safeCurrentIndex] || null;
 
-  // Nota máxima total
-  const notaMaximaInstrumento =
-    selectedInstrumentoTipo === 'RUBRICA' || selectedInstrumentoTipo === 'HIBRIDA'
-      ? criteriosAplicaveis.reduce((acc, c) => acc + (c.nota_maxima || 0), 0) || 10
-      : 10;
+  // Critérios oficiais filtrados por turma, disciplina e instrumento da base (sem critérios hardcoded)
+  const criteriosAplicaveis = React.useMemo(() => {
+    if (!selectedInstrumentoNome) return [];
+    return criterios.filter(c => {
+      if (c.ativo === false) return false;
+      const matchTurma = !c.turma_id || c.turma_id === selectedTurmaId;
+      const matchDisc = !c.disciplina_id || (turmaAtual && c.disciplina_id === turmaAtual.disciplina_id);
+      const inst = c.instrumento_avaliacao || c.instrumento;
+      const matchInst = inst ? inst.trim() === selectedInstrumentoNome.trim() : true;
+      return matchTurma && matchDisc && matchInst;
+    });
+  }, [criterios, selectedTurmaId, turmaAtual, selectedInstrumentoNome]);
+
+  // Nota máxima total do instrumento baseada nos critérios
+  const notaMaximaInstrumento = React.useMemo(() => {
+    if (selectedInstrumentoTipo === 'RUBRICA' || selectedInstrumentoTipo === 'HIBRIDA') {
+      const soma = criteriosAplicaveis.reduce((acc, c) => acc + (Number(c.nota_maxima) || 0), 0);
+      return soma > 0 ? soma : 10;
+    }
+    return 10;
+  }, [selectedInstrumentoTipo, criteriosAplicaveis]);
 
   // Carrega ou inicializa a avaliação do aluno atual
-  const matriculaAtualId = currentItem?.matricula.matricula_id;
-  const avaliacaoExistente = avaliacoesCompletas.find(
-    (a: AvaliacaoCompleta) => a.matricula_id === matriculaAtualId && a.instrumento_id === selectedInstrumentoNome
-  );
+  const matriculaAtualId = currentItem?.matricula?.matricula_id;
+  const avaliacaoExistente = React.useMemo(() => {
+    if (!matriculaAtualId || !selectedInstrumentoNome) return undefined;
+    return avaliacoesCompletas.find(
+      (a: AvaliacaoCompleta) => a.matricula_id === matriculaAtualId && a.instrumento_id === selectedInstrumentoNome
+    );
+  }, [avaliacoesCompletas, matriculaAtualId, selectedInstrumentoNome]);
 
-  // Sincroniza campos quando muda de aluno
+  // Sincroniza campos quando muda de aluno ou instrumento
   React.useEffect(() => {
     if (avaliacaoExistente) {
-      setNotaSimplesInput(avaliacaoExistente.nota_final);
+      setNotaSimplesInput(Number(avaliacaoExistente.nota_final) || 0);
       setComentarioGeral(avaliacaoExistente.comentario_geral || '');
       setPontosFortes(avaliacaoExistente.pontos_fortes || '');
       setPontosDesenvolver(avaliacaoExistente.pontos_desenvolver || '');
@@ -116,8 +169,10 @@ export const AvaliacaoView: React.FC = () => {
       const nMap: Record<string, number> = {};
       const cMap: Record<string, string> = {};
       (avaliacaoExistente.notas_criterios || []).forEach((item: any) => {
-        nMap[item.criterio_id] = item.nota;
-        if (item.comentario) cMap[item.criterio_id] = item.comentario;
+        if (item?.criterio_id) {
+          nMap[item.criterio_id] = Number(item.nota) || 0;
+          if (item.comentario) cMap[item.criterio_id] = String(item.comentario);
+        }
       });
       setNotasCriteriosMap(nMap);
       setComentariosCriteriosMap(cMap);
@@ -139,13 +194,13 @@ export const AvaliacaoView: React.FC = () => {
       : notaSimplesInput;
 
   const handleSalvarAvaliacao = async (status: StatusDevolutiva = 'AVALIADA') => {
-    if (!currentItem) return;
+    if (!currentItem || !currentItem.matricula) return;
 
     const notasCriteriosList = criteriosAplicaveis.map(c => ({
       criterio_id: c.criterio_id,
       criterio_nome: c.nome,
       nota: Number(notasCriteriosMap[c.criterio_id] || 0),
-      nota_maxima: c.nota_maxima,
+      nota_maxima: Number(c.nota_maxima || 0),
       comentario: comentariosCriteriosMap[c.criterio_id] || '',
     }));
 
@@ -156,8 +211,8 @@ export const AvaliacaoView: React.FC = () => {
       turma_id: selectedTurmaId,
       instrumento_id: selectedInstrumentoNome,
       tipo_instrumento: selectedInstrumentoTipo,
-      nota_final: notaFinalCalculada,
-      nota_maxima: notaMaximaInstrumento,
+      nota_final: Number(notaFinalCalculada) || 0,
+      nota_maxima: Number(notaMaximaInstrumento) || 10,
       status,
       notas_criterios: notasCriteriosList,
       comentario_geral: comentarioGeral,
@@ -173,9 +228,22 @@ export const AvaliacaoView: React.FC = () => {
       currentItem.matricula.matricula_id,
       avaliacaoExistente?.nota_final,
       notaFinalCalculada,
-      `Avaliação do instrumento ${selectedInstrumentoNome}`
+      `Avaliação do instrumento ${selectedInstrumentoNome || 'Padrão'}`
     );
   };
+
+  // Se não existirem turmas carregadas
+  if (turmas.length === 0) {
+    return (
+      <div className="bg-white border border-slate-200 rounded-2xl p-8 max-w-xl mx-auto text-center space-y-3">
+        <AlertCircle className="w-8 h-8 text-amber-500 mx-auto" />
+        <h2 className="text-base font-bold text-slate-900">Nenhuma Turma Carregada</h2>
+        <p className="text-xs text-slate-500">
+          Aguardando sincronização da base de dados oficial ou seleção do período acadêmico ativo.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto pb-12">
@@ -192,7 +260,7 @@ export const AvaliacaoView: React.FC = () => {
             Gestão Acadêmica & Avaliativa
           </h1>
           <p className="text-xs text-slate-500">
-            Correção por rubrica, nota simples, evidências e emissão de feedback
+            Correção por rubrica oficial, nota direta, evidências da base e emissão de feedback
           </p>
         </div>
 
@@ -218,26 +286,46 @@ export const AvaliacaoView: React.FC = () => {
 
           <div>
             <label className="text-[10px] font-bold text-slate-500 block mb-0.5">Instrumento</label>
-            <select
-              value={selectedInstrumentoNome}
-              onChange={e => {
-                const val = e.target.value;
-                setSelectedInstrumentoNome(val);
-                if (val.includes('Prova')) setSelectedInstrumentoTipo('NOTA_SIMPLES');
-                else if (val.includes('Atividade')) setSelectedInstrumentoTipo('ATIVIDADE_SIMPLES');
-                else setSelectedInstrumentoTipo('RUBRICA');
-              }}
-              className="p-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800"
-            >
-              <option value="Relatório de Prática">Relatório de Prática (Rubrica)</option>
-              <option value="Prova Objetiva 1">Prova Objetiva 1 (Nota Simples)</option>
-              <option value="Avaliação Contínua de Supervisão">Supervisão Contínua (Rubrica)</option>
-              <option value="Atividade Prática">Atividade Prática (Nota + Comentário)</option>
-              <option value="Apresentação de Caso Clínico">Apresentação de Caso (Híbrida)</option>
-            </select>
+            {instrumentosDisponiveis.length > 0 ? (
+              <select
+                value={selectedInstrumentoNome}
+                onChange={e => {
+                  const val = e.target.value;
+                  setSelectedInstrumentoNome(val);
+                  if (val.toLowerCase().includes('prova')) setSelectedInstrumentoTipo('NOTA_SIMPLES');
+                  else if (val.toLowerCase().includes('atividade')) setSelectedInstrumentoTipo('ATIVIDADE_SIMPLES');
+                  else if (val.toLowerCase().includes('apresentação') || val.toLowerCase().includes('caso')) setSelectedInstrumentoTipo('HIBRIDA');
+                  else setSelectedInstrumentoTipo('RUBRICA');
+                }}
+                className="p-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800"
+              >
+                {instrumentosDisponiveis.map(inst => (
+                  <option key={inst} value={inst}>
+                    {inst}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <span className="p-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-400 block italic">
+                Nenhum instrumento configurado
+              </span>
+            )}
           </div>
         </div>
       </div>
+
+      {/* Alerta se não houver instrumento configurado para a seleção */}
+      {instrumentosDisponiveis.length === 0 && (
+        <div className="bg-amber-50 border border-amber-200 rounded-2xl p-5 text-amber-900 flex items-start gap-3">
+          <Info className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+          <div>
+            <h3 className="text-xs font-bold text-amber-950">Aviso da Base Oficial</h3>
+            <p className="text-xs text-amber-800 mt-0.5">
+              Não há instrumento de avaliação configurado para esta seleção na tabela <code className="bg-amber-100/80 px-1 py-0.5 rounded font-mono">criterios_avaliacao</code>.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Tabs Switch */}
       <div className="flex border-b border-slate-200 bg-white rounded-xl p-1.5 gap-1 shadow-2xs">
@@ -272,417 +360,439 @@ export const AvaliacaoView: React.FC = () => {
         </button>
       </div>
 
-      {/* TAB 1: TELA DE CORREÇÃO AMPLA */}
-      {activeTab === 'CORRECAO' && (
-        <div className="space-y-5">
-          {/* Sequential Navigation Toolbar */}
-          <div className="bg-white border border-slate-200 rounded-xl p-3.5 flex flex-wrap items-center justify-between gap-3 shadow-xs">
-            <div className="flex items-center gap-3">
-              <button
-                disabled={currentAlunoIndex === 0}
-                onClick={() => setCurrentAlunoIndex(prev => Math.max(0, prev - 1))}
-                className="px-3 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 text-xs font-bold flex items-center gap-1 cursor-pointer disabled:opacity-40"
-              >
-                <ChevronLeft className="w-4 h-4" />
-                <span>Anterior</span>
-              </button>
+      {/* Alerta se não houver alunos na turma */}
+      {alunosDaTurma.length === 0 ? (
+        <div className="bg-white border border-slate-200 rounded-2xl p-8 text-center space-y-2">
+          <Users className="w-8 h-8 text-slate-400 mx-auto" />
+          <h3 className="text-sm font-bold text-slate-800">Nenhum estudante matriculado</h3>
+          <p className="text-xs text-slate-500">
+            Esta turma não possui estudantes matriculados ativos no momento.
+          </p>
+        </div>
+      ) : (
+        <>
+          {/* TAB 1: TELA DE CORREÇÃO AMPLA */}
+          {activeTab === 'CORRECAO' && (
+            <div className="space-y-5">
+              {/* Sequential Navigation Toolbar */}
+              <div className="bg-white border border-slate-200 rounded-xl p-3.5 flex flex-wrap items-center justify-between gap-3 shadow-xs">
+                <div className="flex items-center gap-3">
+                  <button
+                    disabled={safeCurrentIndex === 0}
+                    onClick={() => setCurrentAlunoIndex(prev => Math.max(0, prev - 1))}
+                    className="px-3 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 text-xs font-bold flex items-center gap-1 cursor-pointer disabled:opacity-40"
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                    <span>Anterior</span>
+                  </button>
 
-              <span className="text-xs font-semibold text-slate-700">
-                Estudante <strong className="text-slate-900">{currentAlunoIndex + 1}</strong> de{' '}
-                <strong>{alunosDaTurma.length}</strong>
-              </span>
-
-              <button
-                disabled={currentAlunoIndex >= alunosDaTurma.length - 1}
-                onClick={() => setCurrentAlunoIndex(prev => Math.min(alunosDaTurma.length - 1, prev + 1))}
-                className="px-3 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 text-xs font-bold flex items-center gap-1 cursor-pointer disabled:opacity-40"
-              >
-                <span>Próximo</span>
-                <ChevronRight className="w-4 h-4" />
-              </button>
-            </div>
-
-            {/* Student Info Card */}
-            {currentItem && (
-              <div className="flex items-center gap-3">
-                <div className="w-7 h-7 rounded-full bg-slate-900 text-white font-bold text-xs flex items-center justify-center">
-                  {currentItem.aluno.nome[0]}
-                </div>
-                <div>
-                  <span className="text-xs font-bold text-slate-900 block">{currentItem.aluno.nome}</span>
-                  <span className="text-[10px] text-slate-400 font-mono">
-                    RA: {currentItem.aluno.identificador_academico}
+                  <span className="text-xs font-semibold text-slate-700">
+                    Estudante <strong className="text-slate-900">{safeCurrentIndex + 1}</strong> de{' '}
+                    <strong>{alunosDaTurma.length}</strong>
                   </span>
+
+                  <button
+                    disabled={safeCurrentIndex >= alunosDaTurma.length - 1}
+                    onClick={() => setCurrentAlunoIndex(prev => Math.min(alunosDaTurma.length - 1, prev + 1))}
+                    className="px-3 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 text-xs font-bold flex items-center gap-1 cursor-pointer disabled:opacity-40"
+                  >
+                    <span>Próximo</span>
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
                 </div>
+
+                {/* Student Info Card */}
+                {currentItem && (
+                  <div className="flex items-center gap-3">
+                    <div className="w-7 h-7 rounded-full bg-slate-900 text-white font-bold text-xs flex items-center justify-center">
+                      {currentItem.aluno?.nome ? currentItem.aluno.nome[0] : 'A'}
+                    </div>
+                    <div>
+                      <span className="text-xs font-bold text-slate-900 block">{currentItem.aluno?.nome || 'Estudante'}</span>
+                      <span className="text-[10px] text-slate-400 font-mono">
+                        RA: {currentItem.aluno?.identificador_academico || '—'}
+                      </span>
+                    </div>
+                  </div>
+                )}
+
+                {/* Preparation of Evidences Action */}
+                <button
+                  onClick={() => setMostrarEvidencias(!mostrarEvidencias)}
+                  className="px-3 py-1.5 rounded-lg bg-indigo-50 border border-indigo-200 text-indigo-700 hover:bg-indigo-100 text-xs font-semibold flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-indigo-500" />
+                  <span>{mostrarEvidencias ? 'Ocultar Evidências' : 'Preparar Avaliação (Evidências)'}</span>
+                </button>
               </div>
-            )}
 
-            {/* Preparation of Evidences Action */}
-            <button
-              onClick={() => setMostrarEvidencias(!mostrarEvidencias)}
-              className="px-3 py-1.5 rounded-lg bg-indigo-50 border border-indigo-200 text-indigo-700 hover:bg-indigo-100 text-xs font-semibold flex items-center gap-1.5 cursor-pointer shadow-2xs"
-            >
-              <Sparkles className="w-3.5 h-3.5 text-indigo-500" />
-              <span>{mostrarEvidencias ? 'Ocultar Evidências' : 'Preparar Avaliação (Evidências)'}</span>
-            </button>
-          </div>
+              {/* Optional Evidences Side-panel / Accordion */}
+              {mostrarEvidencias && currentItem && (
+                <div className="bg-indigo-50/40 border border-indigo-100 rounded-2xl p-5 space-y-3 animate-in fade-in duration-100">
+                  <h3 className="text-xs font-bold text-indigo-950 flex items-center gap-2">
+                    <Sparkles className="w-4 h-4 text-indigo-600" />
+                    <span>Evidências Consolidadas da Base Oficial (Sem decisão automática de nota):</span>
+                  </h3>
+                  <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 text-xs">
+                    <div className="p-3 bg-white rounded-xl border border-indigo-100">
+                      <span className="text-slate-400 text-[10px] block uppercase font-bold">Frequência</span>
+                      <span className="font-bold text-slate-800">
+                        {frequencias.filter(f => f.matricula_id === currentItem.matricula.matricula_id && f.status === 'PRESENTE').length} presenças
+                      </span>
+                    </div>
+                    <div className="p-3 bg-white rounded-xl border border-indigo-100">
+                      <span className="text-slate-400 text-[10px] block uppercase font-bold">RSS Entregues</span>
+                      <span className="font-bold text-slate-800">
+                        {registrosSemanais.filter(r => r.matricula_id === currentItem.matricula.matricula_id && r.status === 'ENTREGUE').length} entregas
+                      </span>
+                    </div>
+                    <div className="p-3 bg-white rounded-xl border border-indigo-100">
+                      <span className="text-slate-400 text-[10px] block uppercase font-bold">Documentação</span>
+                      <span className="font-bold text-slate-800">
+                        {documentos.filter(d => d.matricula_id === currentItem.matricula.matricula_id && d.status === 'ENTREGUE').length} entregues
+                      </span>
+                    </div>
+                    <div className="p-3 bg-white rounded-xl border border-indigo-100">
+                      <span className="text-slate-400 text-[10px] block uppercase font-bold">Ocorrências</span>
+                      <span className="font-bold text-slate-800">
+                        {ocorrencias.filter(o => o.matricula_id === currentItem.matricula.matricula_id).length} registros
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )}
 
-          {/* Optional Evidences Side-panel / Accordion */}
-          {mostrarEvidencias && currentItem && (
-            <div className="bg-indigo-50/40 border border-indigo-100 rounded-2xl p-5 space-y-3 animate-in fade-in duration-100">
-              <h3 className="text-xs font-bold text-indigo-950 flex items-center gap-2">
-                <Sparkles className="w-4 h-4 text-indigo-600" />
-                <span>Evidências Consolidadas da Base (Sem decisão automática de nota):</span>
-              </h3>
-              <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 text-xs">
-                <div className="p-3 bg-white rounded-xl border border-indigo-100">
-                  <span className="text-slate-400 text-[10px] block uppercase font-bold">Frequência</span>
-                  <span className="font-bold text-slate-800">
-                    {frequencias.filter(f => f.matricula_id === currentItem.matricula.matricula_id && f.status === 'PRESENTE').length} presenças
-                  </span>
+              {/* Main Correction Panel */}
+              <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-xs space-y-6">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
+                  <div>
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                      Instrumento: {selectedInstrumentoTipo}
+                    </span>
+                    <h2 className="text-base font-bold text-slate-900">{selectedInstrumentoNome || 'Instrumento de Avaliação'}</h2>
+                  </div>
+
+                  {/* Automatic Total Score Counter */}
+                  <div className="text-right">
+                    <span className="text-xs text-slate-400 block font-medium">Nota Total Calculada</span>
+                    <span className="text-2xl font-black text-slate-900 font-mono">
+                      {Number(notaFinalCalculada || 0).toFixed(1)}{' '}
+                      <span className="text-sm font-normal text-slate-400">/ {Number(notaMaximaInstrumento || 10).toFixed(1)}</span>
+                    </span>
+                  </div>
                 </div>
-                <div className="p-3 bg-white rounded-xl border border-indigo-100">
-                  <span className="text-slate-400 text-[10px] block uppercase font-bold">RSS Entregues</span>
-                  <span className="font-bold text-slate-800">
-                    {registrosSemanais.filter(r => r.matricula_id === currentItem.matricula.matricula_id && r.status === 'ENTREGUE').length} entregas
-                  </span>
+
+                {/* Instrument Type: NOTA SIMPLES */}
+                {selectedInstrumentoTipo === 'NOTA_SIMPLES' && (
+                  <div className="p-5 rounded-xl border border-slate-200 bg-slate-50/50 space-y-3 max-w-md">
+                    <label className="text-xs font-bold text-slate-800 block">Nota Direta (0 a {Number(notaMaximaInstrumento || 10).toFixed(1)})</label>
+                    <input
+                      type="number"
+                      step="0.1"
+                      min="0"
+                      max={notaMaximaInstrumento}
+                      value={notaSimplesInput}
+                      onChange={e => setNotaSimplesInput(parseFloat(e.target.value) || 0)}
+                      className="p-3 bg-white border border-slate-200 rounded-xl text-lg font-bold text-slate-900 w-full font-mono"
+                    />
+                  </div>
+                )}
+
+                {/* Instrument Type: ATIVIDADE SIMPLES */}
+                {selectedInstrumentoTipo === 'ATIVIDADE_SIMPLES' && (
+                  <div className="space-y-4 max-w-xl">
+                    <div>
+                      <label className="text-xs font-bold text-slate-800 block mb-1">Nota (0 a {Number(notaMaximaInstrumento || 10).toFixed(1)})</label>
+                      <input
+                        type="number"
+                        step="0.1"
+                        min="0"
+                        max={notaMaximaInstrumento}
+                        value={notaSimplesInput}
+                        onChange={e => setNotaSimplesInput(parseFloat(e.target.value) || 0)}
+                        className="p-2.5 bg-white border border-slate-200 rounded-xl text-base font-bold text-slate-900 w-48 font-mono"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs font-bold text-slate-800 block mb-1">Comentário / Parecer Opcional</label>
+                      <textarea
+                        rows={3}
+                        value={comentarioGeral}
+                        onChange={e => setComentarioGeral(e.target.value)}
+                        placeholder="Observações da entrega..."
+                        className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* Instrument Type: RUBRICA OU HÍBRIDA */}
+                {(selectedInstrumentoTipo === 'RUBRICA' || selectedInstrumentoTipo === 'HIBRIDA') && (
+                  <div className="space-y-4">
+                    {criteriosAplicaveis.length === 0 ? (
+                      <div className="p-6 bg-slate-50 border border-slate-200 rounded-xl text-center text-xs text-slate-500">
+                        Não há critérios cadastrados em <code className="font-mono">criterios_avaliacao</code> para este instrumento.
+                      </div>
+                    ) : (
+                      <>
+                        <div className="flex items-center justify-between text-xs font-bold text-slate-700 uppercase tracking-wider pb-1">
+                          <span>Critério de Avaliação</span>
+                          <div className="flex items-center gap-12 pr-4">
+                            <span>Máximo</span>
+                            <span>Nota Atribuída</span>
+                          </div>
+                        </div>
+
+                        <div className="divide-y divide-slate-100 border border-slate-200 rounded-xl overflow-hidden">
+                          {criteriosAplicaveis.map(crit => {
+                            const notaCrit = notasCriteriosMap[crit.criterio_id] ?? 0;
+                            const obsCrit = comentariosCriteriosMap[crit.criterio_id] ?? '';
+                            const maxNota = Number(crit.nota_maxima) || 0;
+
+                            return (
+                              <div key={crit.criterio_id} className="p-4 bg-white space-y-2">
+                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                                  <div>
+                                    <span className="font-bold text-xs text-slate-900 block">{crit.nome}</span>
+                                    {crit.descricao && <span className="text-[11px] text-slate-500">{crit.descricao}</span>}
+                                  </div>
+
+                                  <div className="flex items-center gap-6 shrink-0">
+                                    <span className="font-mono text-xs font-bold text-slate-400">
+                                      {maxNota.toFixed(1)}
+                                    </span>
+                                    <input
+                                      type="number"
+                                      step="0.1"
+                                      min="0"
+                                      max={maxNota}
+                                      value={notaCrit}
+                                      onChange={e => {
+                                        const val = parseFloat(e.target.value) || 0;
+                                        setNotasCriteriosMap(prev => ({ ...prev, [crit.criterio_id]: val }));
+                                      }}
+                                      className="w-20 p-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold font-mono text-slate-900 text-center"
+                                    />
+                                  </div>
+                                </div>
+
+                                <div>
+                                  <input
+                                    type="text"
+                                    value={obsCrit}
+                                    onChange={e => {
+                                      const val = e.target.value;
+                                      setComentariosCriteriosMap(prev => ({ ...prev, [crit.criterio_id]: val }));
+                                    }}
+                                    placeholder="Comentário ou evidência específica deste critério..."
+                                    className="w-full p-2 bg-slate-50 border border-slate-100 rounded-lg text-xs text-slate-700 placeholder:text-slate-400"
+                                  />
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                )}
+
+                {/* Feedback fields: Pontos Fortes, Pontos a Desenvolver, Parecer Geral */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-3 border-t border-slate-100 text-xs">
+                  <div>
+                    <label className="font-bold text-slate-800 block mb-1">Pontos Fortes Demonstrados</label>
+                    <textarea
+                      rows={2}
+                      value={pontosFortes}
+                      onChange={e => setPontosFortes(e.target.value)}
+                      placeholder="Aspectos em que o estudante se destacou..."
+                      className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="font-bold text-slate-800 block mb-1">Aspectos a Desenvolver</label>
+                    <textarea
+                      rows={2}
+                      value={pontosDesenvolver}
+                      onChange={e => setPontosDesenvolver(e.target.value)}
+                      placeholder="Sugestões de melhoria e foco pedagógico..."
+                      className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl"
+                    />
+                  </div>
                 </div>
-                <div className="p-3 bg-white rounded-xl border border-indigo-100">
-                  <span className="text-slate-400 text-[10px] block uppercase font-bold">Documentação</span>
-                  <span className="font-bold text-slate-800">
-                    {documentos.filter(d => d.matricula_id === currentItem.matricula.matricula_id && d.status === 'ENTREGUE').length} entregues
-                  </span>
-                </div>
-                <div className="p-3 bg-white rounded-xl border border-indigo-100">
-                  <span className="text-slate-400 text-[10px] block uppercase font-bold">Ocorrências</span>
-                  <span className="font-bold text-slate-800">
-                    {ocorrencias.filter(o => o.matricula_id === currentItem.matricula.matricula_id).length} registros
-                  </span>
+
+                {/* Action Bar */}
+                <div className="flex flex-wrap items-center justify-between gap-3 pt-4 border-t border-slate-200">
+                  <button
+                    type="button"
+                    onClick={() => handleSalvarAvaliacao('RASCUNHO')}
+                    className="px-4 py-2.5 rounded-xl border border-slate-200 text-slate-700 hover:bg-slate-50 text-xs font-bold cursor-pointer"
+                  >
+                    Salvar Rascunho
+                  </button>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (currentItem && turmaAtual) {
+                          setModalFeedbackAvaliacao({
+                            avaliacao_id: avaliacaoExistente?.avaliacao_id || `av-${Date.now()}`,
+                            matricula_id: currentItem.matricula.matricula_id,
+                            turma_id: selectedTurmaId,
+                            instrumento_id: selectedInstrumentoNome,
+                            tipo_instrumento: selectedInstrumentoTipo,
+                            nota_final: Number(notaFinalCalculada) || 0,
+                            nota_maxima: Number(notaMaximaInstrumento) || 10,
+                            status: 'AVALIADA',
+                            comentario_geral: comentarioGeral,
+                            pontos_fortes: pontosFortes,
+                            pontos_desenvolver: pontosDesenvolver,
+                            atualizado_em: new Date().toISOString(),
+                          });
+                        }
+                      }}
+                      className="px-4 py-2.5 rounded-xl bg-indigo-50 border border-indigo-200 text-indigo-700 text-xs font-bold cursor-pointer"
+                    >
+                      Gerar Ficha de Devolutiva
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleSalvarAvaliacao('AVALIADA')}
+                      className="px-5 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold flex items-center gap-2 cursor-pointer shadow-xs"
+                    >
+                      <Check className="w-4 h-4 text-emerald-400" />
+                      <span>Concluir Avaliação</span>
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
           )}
 
-          {/* Main Correction Panel */}
-          <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-xs space-y-6">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
-              <div>
-                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
-                  Instrumento: {selectedInstrumentoTipo}
-                </span>
-                <h2 className="text-base font-bold text-slate-900">{selectedInstrumentoNome}</h2>
+          {/* TAB 2: PAINEL DE DEVOLUTIVAS */}
+          {activeTab === 'DEVOLUTIVAS' && (
+            <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-sm font-bold text-slate-900">Painel Geral de Devolutivas por Estudante</h2>
+                  <p className="text-xs text-slate-500">
+                    Acompanhe o estado de revisão, aprovação individual e envio de cada feedback
+                  </p>
+                </div>
               </div>
 
-              {/* Automatic Total Score Counter */}
-              <div className="text-right">
-                <span className="text-xs text-slate-400 block font-medium">Nota Total Calculada</span>
-                <span className="text-2xl font-black text-slate-900 font-mono">
-                  {notaFinalCalculada.toFixed(1)}{' '}
-                  <span className="text-sm font-normal text-slate-400">/ {notaMaximaInstrumento.toFixed(1)}</span>
-                </span>
+              <div className="divide-y divide-slate-100 border border-slate-200 rounded-xl overflow-hidden">
+                {alunosDaTurma.map(({ matricula, aluno }) => {
+                  const av = avaliacoesCompletas.find(
+                    (a: AvaliacaoCompleta) => a.matricula_id === matricula.matricula_id && a.instrumento_id === selectedInstrumentoNome
+                  );
+                  const status: StatusDevolutiva = av ? av.status : 'NAO_INICIADA';
+
+                  return (
+                    <div key={matricula.matricula_id} className="p-4 flex items-center justify-between gap-3 bg-white">
+                      <div>
+                        <span className="font-bold text-xs text-slate-900 block">{aluno.nome}</span>
+                        <span className="text-[11px] text-slate-400 font-mono">
+                          RA: {aluno.identificador_academico}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-3">
+                        <span
+                          className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${
+                            status === 'ENVIADO'
+                              ? 'bg-emerald-100 text-emerald-800'
+                              : status === 'APROVADO_ENVIO'
+                              ? 'bg-indigo-100 text-indigo-800'
+                              : status === 'AVALIADA' || status === 'FEEDBACK_PREPARADO'
+                              ? 'bg-blue-100 text-blue-800'
+                              : status === 'RASCUNHO'
+                              ? 'bg-amber-100 text-amber-800'
+                              : 'bg-slate-100 text-slate-500'
+                          }`}
+                        >
+                          {status.replace(/_/g, ' ')}
+                        </span>
+
+                        <button
+                          onClick={() => {
+                            if (turmaAtual) {
+                              setModalFeedbackAvaliacao(
+                                av || {
+                                  avaliacao_id: `av-${Date.now()}`,
+                                  matricula_id: matricula.matricula_id,
+                                  turma_id: selectedTurmaId,
+                                  instrumento_id: selectedInstrumentoNome,
+                                  tipo_instrumento: selectedInstrumentoTipo,
+                                  nota_final: 0,
+                                  nota_maxima: Number(notaMaximaInstrumento) || 10,
+                                  status: 'NAO_INICIADA',
+                                  atualizado_em: new Date().toISOString(),
+                                }
+                              );
+                            }
+                          }}
+                          className="px-3 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 text-xs font-semibold cursor-pointer"
+                        >
+                          Ver / Devolutiva
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
+          )}
 
-            {/* Instrument Type: NOTA SIMPLES */}
-            {selectedInstrumentoTipo === 'NOTA_SIMPLES' && (
-              <div className="p-5 rounded-xl border border-slate-200 bg-slate-50/50 space-y-3 max-w-md">
-                <label className="text-xs font-bold text-slate-800 block">Nota Direta (0 a {notaMaximaInstrumento})</label>
-                <input
-                  type="number"
-                  step="0.1"
-                  min="0"
-                  max={notaMaximaInstrumento}
-                  value={notaSimplesInput}
-                  onChange={e => setNotaSimplesInput(parseFloat(e.target.value) || 0)}
-                  className="p-3 bg-white border border-slate-200 rounded-xl text-lg font-bold text-slate-900 w-full font-mono"
-                />
+          {/* TAB 3: MODO FECHAMENTO */}
+          {activeTab === 'FECHAMENTO' && (
+            <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs space-y-4">
+              <div>
+                <h2 className="text-sm font-bold text-slate-900">Modo Fechamento do Semestre</h2>
+                <p className="text-xs text-slate-500">
+                  Checklist acadêmico por estudante: RSS, frequência, documentação e consolidação final
+                </p>
               </div>
-            )}
 
-            {/* Instrument Type: ATIVIDADE SIMPLES */}
-            {selectedInstrumentoTipo === 'ATIVIDADE_SIMPLES' && (
-              <div className="space-y-4 max-w-xl">
-                <div>
-                  <label className="text-xs font-bold text-slate-800 block mb-1">Nota (0 a {notaMaximaInstrumento})</label>
-                  <input
-                    type="number"
-                    step="0.1"
-                    min="0"
-                    max={notaMaximaInstrumento}
-                    value={notaSimplesInput}
-                    onChange={e => setNotaSimplesInput(parseFloat(e.target.value) || 0)}
-                    className="p-2.5 bg-white border border-slate-200 rounded-xl text-base font-bold text-slate-900 w-48 font-mono"
-                  />
-                </div>
-                <div>
-                  <label className="text-xs font-bold text-slate-800 block mb-1">Comentário / Parecer Opcional</label>
-                  <textarea
-                    rows={3}
-                    value={comentarioGeral}
-                    onChange={e => setComentarioGeral(e.target.value)}
-                    placeholder="Observações da entrega..."
-                    className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs"
-                  />
-                </div>
-              </div>
-            )}
+              <div className="divide-y divide-slate-100 border border-slate-200 rounded-xl overflow-hidden">
+                {alunosDaTurma.map(({ matricula, aluno }) => {
+                  const rssCount = registrosSemanais.filter(r => r.matricula_id === matricula.matricula_id && r.status === 'ENTREGUE').length;
+                  const docsCount = documentos.filter(d => d.matricula_id === matricula.matricula_id && d.status === 'ENTREGUE').length;
+                  const faltasCount = frequencias.filter(f => f.matricula_id === matricula.matricula_id && f.status === 'FALTA_SEM_JUSTIFICATIVA').length;
+                  const pronto = rssCount >= 10 && faltasCount === 0;
 
-            {/* Instrument Type: RUBRICA OU HÍBRIDA */}
-            {(selectedInstrumentoTipo === 'RUBRICA' || selectedInstrumentoTipo === 'HIBRIDA') && (
-              <div className="space-y-4">
-                <div className="flex items-center justify-between text-xs font-bold text-slate-700 uppercase tracking-wider pb-1">
-                  <span>Critério de Avaliação</span>
-                  <div className="flex items-center gap-12 pr-4">
-                    <span>Máximo</span>
-                    <span>Nota Atribuída</span>
-                  </div>
-                </div>
-
-                <div className="divide-y divide-slate-100 border border-slate-200 rounded-xl overflow-hidden">
-                  {criteriosAplicaveis.map(crit => {
-                    const notaCrit = notasCriteriosMap[crit.criterio_id] ?? 0;
-                    const obsCrit = comentariosCriteriosMap[crit.criterio_id] ?? '';
-
-                    return (
-                      <div key={crit.criterio_id} className="p-4 bg-white space-y-2">
-                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                          <div>
-                            <span className="font-bold text-xs text-slate-900 block">{crit.nome}</span>
-                            {crit.descricao && <span className="text-[11px] text-slate-500">{crit.descricao}</span>}
-                          </div>
-
-                          <div className="flex items-center gap-6 shrink-0">
-                            <span className="font-mono text-xs font-bold text-slate-400">
-                              {crit.nota_maxima.toFixed(1)}
-                            </span>
-                            <input
-                              type="number"
-                              step="0.1"
-                              min="0"
-                              max={crit.nota_maxima}
-                              value={notaCrit}
-                              onChange={e => {
-                                const val = parseFloat(e.target.value) || 0;
-                                setNotasCriteriosMap(prev => ({ ...prev, [crit.criterio_id]: val }));
-                              }}
-                              className="w-20 p-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold font-mono text-slate-900 text-center"
-                            />
-                          </div>
-                        </div>
-
-                        <div>
-                          <input
-                            type="text"
-                            value={obsCrit}
-                            onChange={e => {
-                              const val = e.target.value;
-                              setComentariosCriteriosMap(prev => ({ ...prev, [crit.criterio_id]: val }));
-                            }}
-                            placeholder="Comentário ou evidência específica deste critério..."
-                            className="w-full p-2 bg-slate-50 border border-slate-100 rounded-lg text-xs text-slate-700 placeholder:text-slate-400"
-                          />
+                  return (
+                    <div key={matricula.matricula_id} className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white">
+                      <div>
+                        <span className="font-bold text-xs text-slate-900 block">{aluno.nome}</span>
+                        <div className="flex items-center gap-3 text-[11px] text-slate-500 mt-1">
+                          <span>RSS: {rssCount}/12</span>
+                          <span>•</span>
+                          <span>Documentos: {docsCount}</span>
+                          <span>•</span>
+                          <span>Faltas Injustificadas: {faltasCount}</span>
                         </div>
                       </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
 
-            {/* Feedback fields: Pontos Fortes, Pontos a Desenvolver, Parecer Geral */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-3 border-t border-slate-100 text-xs">
-              <div>
-                <label className="font-bold text-slate-800 block mb-1">Pontos Fortes Demonstrados</label>
-                <textarea
-                  rows={2}
-                  value={pontosFortes}
-                  onChange={e => setPontosFortes(e.target.value)}
-                  placeholder="Aspectos em que o estudante se destacou..."
-                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl"
-                />
-              </div>
-
-              <div>
-                <label className="font-bold text-slate-800 block mb-1">Aspectos a Desenvolver</label>
-                <textarea
-                  rows={2}
-                  value={pontosDesenvolver}
-                  onChange={e => setPontosDesenvolver(e.target.value)}
-                  placeholder="Sugestões de melhoria e foco pedagógico..."
-                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl"
-                />
-              </div>
-            </div>
-
-            {/* Action Bar */}
-            <div className="flex flex-wrap items-center justify-between gap-3 pt-4 border-t border-slate-200">
-              <button
-                type="button"
-                onClick={() => handleSalvarAvaliacao('RASCUNHO')}
-                className="px-4 py-2.5 rounded-xl border border-slate-200 text-slate-700 hover:bg-slate-50 text-xs font-bold cursor-pointer"
-              >
-                Salvar Rascunho
-              </button>
-
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (currentItem) {
-                      setModalFeedbackAvaliacao({
-                        avaliacao_id: avaliacaoExistente?.avaliacao_id || `av-${Date.now()}`,
-                        matricula_id: currentItem.matricula.matricula_id,
-                        turma_id: selectedTurmaId,
-                        instrumento_id: selectedInstrumentoNome,
-                        tipo_instrumento: selectedInstrumentoTipo,
-                        nota_final: notaFinalCalculada,
-                        nota_maxima: notaMaximaInstrumento,
-                        status: 'AVALIADA',
-                        comentario_geral: comentarioGeral,
-                        pontos_fortes: pontosFortes,
-                        pontos_desenvolver: pontosDesenvolver,
-                        atualizado_em: new Date().toISOString(),
-                      });
-                    }
-                  }}
-                  className="px-4 py-2.5 rounded-xl bg-indigo-50 border border-indigo-200 text-indigo-700 text-xs font-bold cursor-pointer"
-                >
-                  Gerar Ficha de Devolutiva
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => handleSalvarAvaliacao('AVALIADA')}
-                  className="px-5 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold flex items-center gap-2 cursor-pointer shadow-xs"
-                >
-                  <Check className="w-4 h-4 text-emerald-400" />
-                  <span>Concluir Avaliação</span>
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* TAB 2: PAINEL DE DEVOLUTIVAS */}
-      {activeTab === 'DEVOLUTIVAS' && (
-        <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs space-y-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-sm font-bold text-slate-900">Painel Geral de Devolutivas por Estudante</h2>
-              <p className="text-xs text-slate-500">
-                Acompanhe o estado de revisão, aprovação individual e envio de cada feedback
-              </p>
-            </div>
-          </div>
-
-          <div className="divide-y divide-slate-100 border border-slate-200 rounded-xl overflow-hidden">
-            {alunosDaTurma.map(({ matricula, aluno }) => {
-              const av = avaliacoesCompletas.find(
-                (a: AvaliacaoCompleta) => a.matricula_id === matricula.matricula_id && a.instrumento_id === selectedInstrumentoNome
-              );
-              const status: StatusDevolutiva = av ? av.status : 'NAO_INICIADA';
-
-              return (
-                <div key={matricula.matricula_id} className="p-4 flex items-center justify-between gap-3 bg-white">
-                  <div>
-                    <span className="font-bold text-xs text-slate-900 block">{aluno.nome}</span>
-                    <span className="text-[11px] text-slate-400 font-mono">
-                      RA: {aluno.identificador_academico}
-                    </span>
-                  </div>
-
-                  <div className="flex items-center gap-3">
-                    <span
-                      className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${
-                        status === 'ENVIADO'
-                          ? 'bg-emerald-100 text-emerald-800'
-                          : status === 'APROVADO_ENVIO'
-                          ? 'bg-indigo-100 text-indigo-800'
-                          : status === 'AVALIADA' || status === 'FEEDBACK_PREPARADO'
-                          ? 'bg-blue-100 text-blue-800'
-                          : status === 'RASCUNHO'
-                          ? 'bg-amber-100 text-amber-800'
-                          : 'bg-slate-100 text-slate-500'
-                      }`}
-                    >
-                      {status.replace(/_/g, ' ')}
-                    </span>
-
-                    <button
-                      onClick={() => {
-                        if (turmaAtual) {
-                          setModalFeedbackAvaliacao(
-                            av || {
-                              avaliacao_id: `av-${Date.now()}`,
-                              matricula_id: matricula.matricula_id,
-                              turma_id: selectedTurmaId,
-                              instrumento_id: selectedInstrumentoNome,
-                              tipo_instrumento: selectedInstrumentoTipo,
-                              nota_final: 0,
-                              nota_maxima: notaMaximaInstrumento,
-                              status: 'NAO_INICIADA',
-                              atualizado_em: new Date().toISOString(),
-                            }
-                          );
-                        }
-                      }}
-                      className="px-3 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 text-xs font-semibold cursor-pointer"
-                    >
-                      Ver / Devolutiva
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* TAB 3: MODO FECHAMENTO */}
-      {activeTab === 'FECHAMENTO' && (
-        <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs space-y-4">
-          <div>
-            <h2 className="text-sm font-bold text-slate-900">Modo Fechamento do Semestre</h2>
-            <p className="text-xs text-slate-500">
-              Checklist acadêmico por estudante: RSS, frequência, documentação e consolidação final
-            </p>
-          </div>
-
-          <div className="divide-y divide-slate-100 border border-slate-200 rounded-xl overflow-hidden">
-            {alunosDaTurma.map(({ matricula, aluno }) => {
-              const rssCount = registrosSemanais.filter(r => r.matricula_id === matricula.matricula_id && r.status === 'ENTREGUE').length;
-              const docsCount = documentos.filter(d => d.matricula_id === matricula.matricula_id && d.status === 'ENTREGUE').length;
-              const faltasCount = frequencias.filter(f => f.matricula_id === matricula.matricula_id && f.status === 'FALTA_SEM_JUSTIFICATIVA').length;
-              const pronto = rssCount >= 10 && faltasCount === 0;
-
-              return (
-                <div key={matricula.matricula_id} className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white">
-                  <div>
-                    <span className="font-bold text-xs text-slate-900 block">{aluno.nome}</span>
-                    <div className="flex items-center gap-3 text-[11px] text-slate-500 mt-1">
-                      <span>RSS: {rssCount}/12</span>
-                      <span>•</span>
-                      <span>Documentos: {docsCount}</span>
-                      <span>•</span>
-                      <span>Faltas Injustificadas: {faltasCount}</span>
+                      <div className="flex items-center gap-2">
+                        <span
+                          className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${
+                            pronto ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
+                          }`}
+                        >
+                          {pronto ? 'Pronto para Fechamento' : 'Revisão Necessária'}
+                        </span>
+                      </div>
                     </div>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <span
-                      className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${
-                        pronto ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
-                      }`}
-                    >
-                      {pronto ? 'Pronto para Fechamento' : 'Revisão Necessária'}
-                    </span>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </>
       )}
 
       {/* Feedback Modal */}

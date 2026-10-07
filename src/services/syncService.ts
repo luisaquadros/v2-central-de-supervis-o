@@ -363,6 +363,9 @@ export async function salvarRegistroResiliente(
 
   // Se não foi possível gravar online, enfileira com ID estável no IndexedDB
   const stableId =
+    (tabela === 'frequencias' && registro.matricula_id && registro.data_aula
+      ? `freq_${registro.matricula_id}_${registro.data_aula}`
+      : null) ||
     registro.id ||
     registro[`${tabela}_id`] ||
     registro.registro_id ||
@@ -428,10 +431,14 @@ export async function processarFilaSincronizacao(): Promise<{
     } catch (err: any) {
       console.error(`Erro ao sincronizar item ${item.id} da fila:`, err);
       erros++;
+      const is401 = err?.message?.includes('Sessão expirada') || err?.message?.includes('401');
       await atualizarItemFila(item.id, {
         status: 'ERRO',
         erro: err?.message || 'Falha ao sincronizar com Google Sheets',
       });
+      if (is401) {
+        break; // Interrompe reenvio para não disparar requisições em cascata com token expirado
+      }
     }
   }
 

@@ -3,6 +3,8 @@ import { Menu, X, Play, ArrowLeft, RefreshCw, AlertTriangle } from 'lucide-react
 import { SupervisaoProvider, useSupervisao } from './context/SupervisaoContext';
 import { Sidebar } from './components/Sidebar';
 import { SyncIndicator } from './components/SyncIndicator';
+import { NotificationBell } from './components/NotificationBell';
+import { ViewErrorBoundary } from './components/ViewErrorBoundary';
 import { PrimeiraConexaoView } from './views/PrimeiraConexaoView';
 import { NavTab } from './types';
 import { DashboardView } from './views/DashboardView';
@@ -154,8 +156,12 @@ const MainContent: React.FC = () => {
               </div>
             </div>
 
-            {/* Persistent Global Sync Indicator & Details */}
-            <div className="flex items-center gap-3">
+            {/* Persistent Global Sync Indicator, Notifications & Details */}
+            <div className="flex items-center gap-2">
+              <NotificationBell
+                onNavigate={(tab, param) => setCurrentView({ type: 'tab', tab, filterParam: param })}
+                onOpenSupervisao={turmaId => setCurrentView({ type: 'modo-supervisao', turmaId })}
+              />
               <SyncIndicator />
             </div>
           </header>
@@ -184,93 +190,116 @@ const MainContent: React.FC = () => {
           </div>
         )}
 
-        {/* Viewport View Content */}
+        {/* Viewport View Content with Resilience against White Screen */}
         <div className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8">
-          {currentView.type === 'tab' && currentView.tab === 'hoje' && (
-            <HojeView
-              onOpenTurma={handleOpenTurma}
-              onIniciarSupervisao={handleIniciarSupervisao}
-              onNavigateToTab={(tab, param) => setCurrentView({ type: 'tab', tab, filterParam: param })}
-            />
-          )}
+          <ViewErrorBoundary
+            key={
+              currentView.type === 'tab'
+                ? `tab-${currentView.tab}`
+                : currentView.type === 'turma-detalhe'
+                ? `turma-${currentView.turmaId}`
+                : currentView.type === 'modo-supervisao'
+                ? `supervisao-${currentView.turmaId}`
+                : `aluno-${currentView.matriculaId}`
+            }
+            viewName={
+              currentView.type === 'tab'
+                ? `da aba "${currentView.tab}"`
+                : currentView.type === 'turma-detalhe'
+                ? 'dos detalhes da turma'
+                : currentView.type === 'modo-supervisao'
+                ? 'do modo supervisão'
+                : 'da ficha do estudante'
+            }
+          >
+            {currentView.type === 'tab' && currentView.tab === 'hoje' && (
+              <HojeView
+                onOpenTurma={handleOpenTurma}
+                onIniciarSupervisao={handleIniciarSupervisao}
+                onNavigateToTab={(tab, param) => setCurrentView({ type: 'tab', tab, filterParam: param })}
+              />
+            )}
 
-          {currentView.type === 'tab' && currentView.tab === 'dashboard' && (
-            <DashboardView
-              onOpenTurma={handleOpenTurma}
-              onIniciarSupervisao={handleIniciarSupervisao}
-              onNavigateToTab={(tab, param) => setCurrentView({ type: 'tab', tab, filterParam: param })}
-            />
-          )}
+            {currentView.type === 'tab' && currentView.tab === 'dashboard' && (
+              <DashboardView
+                onOpenTurma={handleOpenTurma}
+                onIniciarSupervisao={handleIniciarSupervisao}
+                onNavigateToTab={(tab, param) => setCurrentView({ type: 'tab', tab, filterParam: param })}
+              />
+            )}
 
-          {currentView.type === 'tab' && currentView.tab === 'avaliacao' && (
-            <AvaliacaoView />
-          )}
+            {currentView.type === 'tab' && currentView.tab === 'avaliacao' && (
+              <AvaliacaoView />
+            )}
 
-          {currentView.type === 'tab' && currentView.tab === 'calendario' && (
-            <CalendarioView />
-          )}
+            {currentView.type === 'tab' && currentView.tab === 'calendario' && (
+              <CalendarioView />
+            )}
 
-          {currentView.type === 'tab' && currentView.tab === 'turmas' && (
-            <TurmasView
-              onSelectTurma={handleOpenTurma}
-              onIniciarSupervisao={handleIniciarSupervisao}
-              onOpenAluno={matId => handleOpenAlunoFicha(matId, 'resumo', 'turma')}
-            />
-          )}
+            {currentView.type === 'tab' && currentView.tab === 'turmas' && (
+              <TurmasView
+                onSelectTurma={handleOpenTurma}
+                onIniciarSupervisao={handleIniciarSupervisao}
+                onOpenAluno={matId => handleOpenAlunoFicha(matId, 'resumo', 'turma')}
+              />
+            )}
 
-          {currentView.type === 'tab' && currentView.tab === 'alunos' && (
-            <AlunosListView
-              onOpenAluno={matId => handleOpenAlunoFicha(matId, 'resumo', 'alunos')}
-            />
-          )}
+            {currentView.type === 'tab' && currentView.tab === 'alunos' && (
+              <AlunosListView
+                onOpenAluno={matId => handleOpenAlunoFicha(matId, 'resumo', 'alunos')}
+              />
+            )}
 
-          {currentView.type === 'tab' && currentView.tab === 'frequencia' && (
-            <FrequenciaView
-              onOpenAluno={(matId, tab) => handleOpenAlunoFicha(matId, tab || 'frequencia', 'alunos')}
-            />
-          )}
+            {currentView.type === 'tab' && currentView.tab === 'frequencia' && (
+              <FrequenciaView
+                onOpenAluno={(matId, tab) => handleOpenAlunoFicha(matId, tab || 'frequencia', 'alunos')}
+                onOpenSupervisao={turmaId => setCurrentView({ type: 'modo-supervisao', turmaId })}
+                initialSubTab={(currentView.filterParam as any) || 'grade'}
+              />
+            )}
 
-          {currentView.type === 'tab' && currentView.tab === 'pendencias' && (
-            <PendenciasView
-              initialFilterType={currentView.filterParam}
-              onOpenAluno={(matId, tab) => handleOpenAlunoFicha(matId, tab || 'resumo', 'pendencias')}
-            />
-          )}
+            {currentView.type === 'tab' && currentView.tab === 'pendencias' && (
+              <PendenciasView
+                initialFilterType={currentView.filterParam}
+                onOpenAluno={(matId, tab) => handleOpenAlunoFicha(matId, tab || 'resumo', 'pendencias')}
+              />
+            )}
 
-          {currentView.type === 'tab' && currentView.tab === 'semestres' && <SemestresView />}
+            {currentView.type === 'tab' && currentView.tab === 'semestres' && <SemestresView />}
 
-          {currentView.type === 'tab' && currentView.tab === 'configuracoes' && (
-            <ConfiguracoesView />
-          )}
+            {currentView.type === 'tab' && currentView.tab === 'configuracoes' && (
+              <ConfiguracoesView />
+            )}
 
-          {currentView.type === 'turma-detalhe' && (
-            <TurmaDetalheView
-              turmaId={currentView.turmaId}
-              onVoltar={() => setCurrentView({ type: 'tab', tab: 'turmas' })}
-              onIniciarSupervisao={handleIniciarSupervisao}
-              onOpenAluno={matId =>
-                handleOpenAlunoFicha(matId, 'resumo', 'turma', currentView.turmaId)
-              }
-            />
-          )}
+            {currentView.type === 'turma-detalhe' && (
+              <TurmaDetalheView
+                turmaId={currentView.turmaId}
+                onVoltar={() => setCurrentView({ type: 'tab', tab: 'turmas' })}
+                onIniciarSupervisao={handleIniciarSupervisao}
+                onOpenAluno={matId =>
+                  handleOpenAlunoFicha(matId, 'resumo', 'turma', currentView.turmaId)
+                }
+              />
+            )}
 
-          {currentView.type === 'modo-supervisao' && (
-            <ModoSupervisaoView
-              turmaId={currentView.turmaId}
-              onEncerrar={() => setCurrentView({ type: 'turma-detalhe', turmaId: currentView.turmaId })}
-              onOpenFichaAluno={(matId, tab) =>
-                handleOpenAlunoFicha(matId, tab || 'resumo', 'supervisao', currentView.turmaId)
-              }
-            />
-          )}
+            {currentView.type === 'modo-supervisao' && (
+              <ModoSupervisaoView
+                turmaId={currentView.turmaId}
+                onEncerrar={() => setCurrentView({ type: 'turma-detalhe', turmaId: currentView.turmaId })}
+                onOpenFichaAluno={(matId, tab) =>
+                  handleOpenAlunoFicha(matId, tab || 'resumo', 'supervisao', currentView.turmaId)
+                }
+              />
+            )}
 
-          {currentView.type === 'aluno-ficha' && (
-            <AlunoFichaView
-              matriculaId={currentView.matriculaId}
-              initialTab={currentView.initialTab}
-              onVoltar={handleVoltarDeAluno}
-            />
-          )}
+            {currentView.type === 'aluno-ficha' && (
+              <AlunoFichaView
+                matriculaId={currentView.matriculaId}
+                initialTab={currentView.initialTab}
+                onVoltar={handleVoltarDeAluno}
+              />
+            )}
+          </ViewErrorBoundary>
         </div>
       </main>
     </div>

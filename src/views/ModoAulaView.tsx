@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { useSupervisao } from '../context/SupervisaoContext';
 import { ItemFilaSupervisao } from '../types';
+import { calcularMetricasCronogramaRss } from '../services/supervisaoOperacionalService';
 
 interface ModoAulaViewProps {
   turmaId: string;
@@ -48,6 +49,7 @@ export const ModoAulaView: React.FC<ModoAulaViewProps> = ({
     gruposPratica,
     grupoIntegrantes,
     calendarioRss,
+    situacaoAtualTurmas,
     regrasRss,
     statusRssUnidades,
     marcosAcademicos,
@@ -71,9 +73,13 @@ export const ModoAulaView: React.FC<ModoAulaViewProps> = ({
     leiturasResponsaveis.find(l => l.turma_id === turmaId) ||
     null;
 
-  // Semana de prática e RSS esperados da turma (sem fallbacks hardcoded)
-  const semanas = calendarioRss.filter(c => c.turma_id === turmaId || !c.turma_id).map(c => Number(c.semana) || 0).filter(s => s > 0);
-  const semanaPratica = semanas.length > 0 ? Math.max(...semanas) : 0;
+  // Semana de prática e RSS esperados da turma (sem fallbacks hardcoded, filtragem estrita por turma_id)
+  const metricasCronograma = React.useMemo(() => {
+    return calcularMetricasCronogramaRss(turmaId, calendarioRss, situacaoAtualTurmas, hojeStr);
+  }, [turmaId, calendarioRss, situacaoAtualTurmas, hojeStr]);
+
+  const semanaPraticaTexto = metricasCronograma.semanaTexto;
+  const rssEsperadosTexto = metricasCronograma.semanasEncerradasTexto;
   const regraTurma = regrasRss.find(r => r.turma_id === turmaId || r.disciplina_id === turma?.disciplina_id);
   const totalRssEsperado = regraTurma?.total_esperado ? Number(regraTurma.total_esperado) : 0;
 
@@ -205,9 +211,9 @@ export const ModoAulaView: React.FC<ModoAulaViewProps> = ({
           <div className="flex flex-wrap items-center gap-4 text-xs text-slate-300 font-medium">
             <span>Data: <strong>{new Date().toLocaleDateString('pt-BR')}</strong></span>
             <span>•</span>
-            <span>Semana de Prática: <strong>{semanaPratica} de 12</strong></span>
+            <span>Semana de Prática: <strong>{semanaPraticaTexto}</strong></span>
             <span>•</span>
-            <span>RSS Esperados até Agora: <strong>{Math.max(0, semanaPratica - 1)}</strong></span>
+            <span>RSS Esperados até Agora: <strong>{rssEsperadosTexto}</strong></span>
           </div>
         </div>
 

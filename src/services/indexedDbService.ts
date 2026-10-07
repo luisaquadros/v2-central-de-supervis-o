@@ -6,11 +6,14 @@
  * 2. IndexedDB = Cópia Persistente de Trabalho
  * 3. syncQueue = Fila Persistente de Alterações Pendentes
  *
- * Garante que:
- * - O app abre instantaneamente com os dados da última sincronização
- * - A interface NUNCA zera após recompilações ou falhas temporárias de rede/OAuth
- * - Alterações offline/sem OAuth entram na fila persistente e não são perdidas
+ * Versionamento explícito:
+ * - CURRENT_CACHE_SCHEMA_VERSION = 2
+ * - Valida integridade e compatibilidade dos schemas das tabelas locais
+ * - Invalida apenas tabelas incompatíveis (ex: calendario_rss legado sem sequencia)
+ * - Preserva tabelas locais válidas sem limpar a base inteira
  */
+
+export const CURRENT_CACHE_SCHEMA_VERSION = 2;
 
 export interface SyncMeta {
   ultimaSincronizacao: string | null;
@@ -19,6 +22,7 @@ export interface SyncMeta {
   status: 'SINCRONIZADO' | 'LOCAL' | 'SINCRONIZANDO' | 'ERRO' | 'PARCIAL';
   erros: string[];
   tabelasStatus: Record<string, { ok: boolean; count: number; error?: string }>;
+  cache_schema_version?: number;
 }
 
 export type SyncQueueOpTipo = 'INSERT' | 'UPDATE' | 'DELETE';
@@ -72,6 +76,76 @@ function openDatabase(): Promise<IDBDatabase> {
 }
 
 /**
+ * Validação rigorosa de compatibilidade por tabela com o schema v2 da base oficial
+ */
+function isTabelaCompativel(tabela: string, rows: any[]): { compativel: boolean; motivo?: string } {
+  if (!Array.isArray(rows) || rows.length === 0) return { compativel: true };
+  const first = rows[0];
+  if (!first || typeof first !== 'object') {
+    return { compativel: false, motivo: 'Registro não é um objeto válido.' };
+  }
+
+  // Validação específica de calendario_rss (deve usar sequencia, semana_inicio, etc.)
+  if (tabela === 'calendario_rss') {
+    const hasValidKey = 'sequencia' in first || 'semana_inicio' in first || 'rss_previsto_id' in first;
+    if (!hasValidKey) {
+      return { compativel: false, motivo: 'Schema legado de calendario_rss sem campos oficiais (sequencia / semana_inicio).' };
+    }
+  }
+
+  // Validação específica de status_rss_unidades (deve usar unidade_id, status_rss, etc.)
+  if (tabela === 'status_rss_unidades') {
+    const hasValidKey = 'unidade_id' in first || 'status_rss' in first || 'rss_esperados_ate_hoje' in first;
+    if (!hasValidKey) {
+      return { compativel: false, motivo: 'Schema legado de status_rss_unidades sem campos oficiais (unidade_id / status_rss).' };
+    }
+  }
+
+  // Validação específica de situacao_atual_turmas (deve usar turma_id e campos oficiais)
+  if (tabela === 'situacao_atual_turmas') {
+    const hasValidKey = 'turma_id' in first && ('turma_nome' in first || 'rss_total_previsto' in first || 'unidade_rss' in first || 'aula_cronograma_atual' in first);
+    if (!hasValidKey && ('situacao' in first || 'total_pendencias' in first)) {
+      return { compativel: false, motivo: 'Schema obsoleto de situacao_atual_turmas com colunas inventadas.' };
+    }
+  }
+
+  // Validação de configuracoes (deve ter chave e valor)
+  if (tabela === 'configuracoes') {
+    if (!('chave' in first)) {
+      return { compativel: false, motivo: 'Tabela configuracoes sem coluna chave.' };
+    }
+  }
+
+  // Validação de criterios_avaliacao
+  if (tabela === 'criterios_avaliacao') {
+    if (!('criterio_id' in first) && !('nome' in first)) {
+      return { compativel: false, motivo: 'Tabela criterios_avaliacao sem identificador ou nome.' };
+    }
+  }
+
+  return { compativel: true };
+}
+
+/**
+ * Invalida/remove uma tabela incompatível do cache persistente
+ */
+export async function invalidarTabelaNoIndexedDb(tabela: string, motivo: string): Promise<void> {
+  console.warn(`[CACHE_SCHEMA_V${CURRENT_CACHE_SCHEMA_VERSION}] Invalidando tabela "${tabela}" no IndexedDB. Motivo: ${motivo}`);
+  try {
+    const db = await openDatabase();
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction([STORE_TABELAS], 'readwrite');
+      const store = tx.objectStore(STORE_TABELAS);
+      store.delete(tabela);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+  } catch (err) {
+    console.error(`Erro ao invalidar tabela ${tabela} no IndexedDB:`, err);
+  }
+}
+
+/**
  * Salva múltiplas tabelas normalizadas no cache persistente do IndexedDB
  */
 export async function salvarTabelasNoIndexedDb(dadosTabelas: Record<string, any[]>): Promise<void> {
@@ -109,6 +183,7 @@ export async function salvarTabelaUnicaNoIndexedDb(tabela: string, rows: any[]):
 
 /**
  * Carrega todas as tabelas normalizadas armazenadas no IndexedDB
+ * Valida a compatibilidade de schema: descarta e remove de forma controlada apenas tabelas incompatíveis
  */
 export async function carregarTodasTabelasDoIndexedDb(): Promise<Record<string, any[]> | null> {
   const db = await openDatabase();
@@ -131,7 +206,15 @@ export async function carregarTodasTabelasDoIndexedDb(): Promise<Record<string, 
       keys.forEach((key) => {
         const getReq = store.get(key);
         getReq.onsuccess = () => {
-          result[key] = getReq.result || [];
+          const rows = getReq.result || [];
+          const check = isTabelaCompativel(key, rows);
+          if (check.compativel) {
+            result[key] = rows;
+          } else {
+            console.warn(`[CACHE_INVALIDATION] Tabela "${key}" incompatível no cache. ${check.motivo}`);
+            // Agenda remoção assíncrona da tabela incompatível
+            invalidarTabelaNoIndexedDb(key, check.motivo || 'Incompatível com schema oficial');
+          }
           pending--;
           if (pending === 0) {
             resolve(result);
@@ -146,14 +229,18 @@ export async function carregarTodasTabelasDoIndexedDb(): Promise<Record<string, 
 }
 
 /**
- * Salva metadados de sincronização (horários, erros e status)
+ * Salva metadados de sincronização com carimbo explícito de cache_schema_version
  */
 export async function salvarMetaSincronizacao(meta: SyncMeta): Promise<void> {
   const db = await openDatabase();
   return new Promise((resolve, reject) => {
     const tx = db.transaction([STORE_META], 'readwrite');
     const store = tx.objectStore(STORE_META);
-    store.put(meta, 'current_meta');
+    const metaComVersao: SyncMeta = {
+      ...meta,
+      cache_schema_version: CURRENT_CACHE_SCHEMA_VERSION,
+    };
+    store.put(metaComVersao, 'current_meta');
     tx.oncomplete = () => resolve();
     tx.onerror = () => reject(tx.error);
   });

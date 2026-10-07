@@ -46,7 +46,15 @@ import {
  */
 
 // 18 Tabelas Originais Mapeadas
-export const initialPeriodos: Periodo[] = [];
+export const initialPeriodos: Periodo[] = [
+  {
+    periodo_id: 'per_2026_2',
+    nome: '2026.2',
+    data_inicio: '2026-08-10',
+    data_fim: '2026-12-05', // Término oficial na semana de 01/12/2026
+    status: 'ATIVO',
+  },
+];
 export const initialDisciplinas: Disciplina[] = [];
 export const initialTurmas: Turma[] = [];
 export const initialTurmasOrigem: TurmaOrigem[] = [];

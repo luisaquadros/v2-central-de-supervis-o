@@ -15,6 +15,7 @@ import {
   Check,
 } from 'lucide-react';
 import { useSupervisao } from '../context/SupervisaoContext';
+import { normalizarNota, formatarNotaParaExibicao } from '../utils/gradeUtils';
 import {
   ModalNovaOrientacao,
   ModalNovoFeedback,
@@ -49,6 +50,9 @@ export const AlunoFichaView: React.FC<AlunoFichaViewProps> = ({
     frequencias,
     turmasOrigem,
     pontosAcompanhamento,
+    leiturasResponsaveis,
+    getOrigemDoAluno,
+    getSituacaoRssEstudante,
     toggleOrientacaoStatus,
     deleteOrientacao,
     deleteFeedback,
@@ -91,16 +95,52 @@ export const AlunoFichaView: React.FC<AlunoFichaViewProps> = ({
 
   // Related data for this student
   const studentOrientacoes = orientacoes.filter(o => o.matricula_id === matriculaId);
-  const studentRegistros = registrosSemanais.filter(r => r.matricula_id === matriculaId);
-  const studentDocumentos = documentos.filter(d => d.matricula_id === matriculaId);
-  const studentAvaliacoes = avaliacoes.filter(a => a.matricula_id === matriculaId);
-  const studentFeedbacks = feedbacks.filter(f => f.matricula_id === matriculaId);
-  const studentOcorrencias = ocorrencias.filter(o => o.matricula_id === matriculaId);
-  const studentFrequencias = frequencias.filter(f => f.matricula_id === matriculaId);
-  const studentPontos = pontosAcompanhamento.filter(p => p.matricula_id === matriculaId);
+  const studentRegistros = registrosSemanais.filter(
+    r => r.matricula_id === matriculaId || (aluno && (r.aluno_id === aluno.aluno_id || r.matricula_id === aluno.identificador_academico))
+  );
+  const studentDocumentos = documentos.filter(
+    d => d.matricula_id === matriculaId || (aluno && (d.aluno_id === aluno.aluno_id || d.matricula_id === aluno.identificador_academico))
+  );
+  const studentAvaliacoes = avaliacoes.filter(
+    a => a.matricula_id === matriculaId || (aluno && (a.aluno_id === aluno.aluno_id || a.matricula_id === aluno.identificador_academico))
+  );
+  const studentFeedbacks = feedbacks.filter(
+    f => f.matricula_id === matriculaId || (aluno && (f.aluno_id === aluno.aluno_id || f.matricula_id === aluno.identificador_academico))
+  );
+  const studentOcorrencias = ocorrencias.filter(
+    o => o.matricula_id === matriculaId || (aluno && (o.aluno_id === aluno.aluno_id || o.matricula_id === aluno.identificador_academico))
+  );
+  const studentFrequencias = frequencias.filter(
+    f => f.matricula_id === matriculaId || (aluno && (f.aluno_id === aluno.aluno_id || f.matricula_id === aluno.identificador_academico))
+  );
+  const studentPontos = pontosAcompanhamento.filter(
+    p => p.matricula_id === matriculaId || (aluno && (p.aluno_id === aluno.aluno_id || p.matricula_id === aluno.identificador_academico))
+  );
+
+  // Situação canônica de RSS unificada
+  const situacaoRss = getSituacaoRssEstudante(matriculaId);
+  const totalRegistrosEntregues = situacaoRss?.registrosRealizados ?? studentRegistros.filter(r => r.status === 'ENTREGUE').length;
+  const totalRegistrosEsperados = situacaoRss?.registrosEsperadosAteHoje ?? 0;
+  const totalPrevistoNoPeriodo = situacaoRss?.totalPrevistoNoPeriodo ?? 12;
+
+  // Docente Online individual do estudante
+  const origemDoAluno = getOrigemDoAluno(matriculaId);
+
+  // Estudos Dirigidos / Leituras vinculadas ao estudante
+  const estudosTitular = leiturasResponsaveis.filter(l => {
+    if (l.responsavel_id === matriculaId || l.aluno_id === aluno.aluno_id) return true;
+    if (l.responsaveis_previstos && l.responsaveis_previstos.includes(matriculaId)) return true;
+    return false;
+  });
+
+  const estudosComoSubstituto = leiturasResponsaveis.filter(l => {
+    const isTitular = l.responsavel_id === matriculaId || l.aluno_id === aluno.aluno_id;
+    if (isTitular) return false;
+    if (l.responsaveis_efetivos && l.responsaveis_efetivos.includes(matriculaId)) return true;
+    return false;
+  });
 
   // Metrics
-  const totalRegistrosEntregues = studentRegistros.filter(r => r.status === 'ENTREGUE').length;
   const docsPendentes = studentDocumentos.filter(d => d.status === 'PENDENTE').length;
   const orientacoesAbertas = studentOrientacoes.filter(o => o.status === 'ABERTA').length;
   const totalAtrasos = studentOcorrencias.filter(o => o.tipo === 'ATRASO').length;
@@ -119,10 +159,14 @@ export const AlunoFichaView: React.FC<AlunoFichaViewProps> = ({
   const disciplinaCriterios = criterios.filter(
     c => c.disciplina_id === turma.disciplina_id && c.ativo
   );
-  const notaTotal = disciplinaCriterios.reduce((acc, crit) => {
-    const av = studentAvaliacoes.find(a => a.criterio_id === crit.criterio_id);
-    return acc + (av ? av.nota : 0);
+  const studentAvaliacoesValidas = studentAvaliacoes.filter(a => a.nota !== null && a.nota !== undefined && String(a.nota).trim() !== '');
+  const notaTotal = studentAvaliacoesValidas.reduce((acc, av) => {
+    const isDeCriterioAtivo = disciplinaCriterios.some(c => c.criterio_id === av.criterio_id);
+    if (!isDeCriterioAtivo) return acc;
+    const n = Number(String(av.nota).replace(',', '.'));
+    return acc + (isNaN(n) ? 0 : n);
   }, 0);
+  const notaTotalNumero = typeof notaTotal === 'number' && !isNaN(notaTotal) ? notaTotal : 0;
 
   // Build unified chronological history/timeline
   const timelineEvents: {
@@ -205,9 +249,10 @@ export const AlunoFichaView: React.FC<AlunoFichaViewProps> = ({
     { id: 'resumo', label: 'Resumo' },
     { id: 'pontos', label: 'Pontos de Acompanhamento' },
     { id: 'orientacoes', label: `Orientações (${studentOrientacoes.length})` },
-    { id: 'registros', label: `Registros (${totalRegistrosEntregues}/12)` },
+    { id: 'registros', label: `Registros (${totalRegistrosEntregues} de ${totalRegistrosEsperados} esp.)` },
     { id: 'documentos', label: `Documentos (${studentDocumentos.length})` },
-    { id: 'avaliacao', label: `Avaliação (${notaTotal.toFixed(1)})` },
+    { id: 'avaliacao', label: `Avaliação (${studentAvaliacoesValidas.length > 0 ? notaTotalNumero.toFixed(1) : '—'})` },
+    { id: 'estudos', label: `Estudo Dirigido (${estudosTitular.length + estudosComoSubstituto.length})` },
     { id: 'frequencia', label: 'Frequência' },
     { id: 'ocorrencias', label: `Ocorrências (${studentOcorrencias.length})` },
     { id: 'feedback', label: `Feedback (${studentFeedbacks.length})` },
@@ -233,11 +278,16 @@ export const AlunoFichaView: React.FC<AlunoFichaViewProps> = ({
           <ArrowLeft className="w-4 h-4" />
         </button>
         <div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <h2 className="text-xl font-bold tracking-tight text-slate-900">{aluno.nome}</h2>
             <span className="font-mono text-xs bg-slate-100 text-slate-700 px-2 py-0.5 rounded font-medium">
               {aluno.identificador_academico}
             </span>
+            {origemDoAluno && (
+              <span className="font-mono text-xs bg-slate-100 text-slate-700 px-2 py-0.5 rounded font-medium border border-slate-200">
+                Docente Online: {origemDoAluno.codigo_externo}
+              </span>
+            )}
           </div>
           <p className="text-xs text-slate-500 mt-0.5">
             {turma.nome} · {disciplina?.nome} · Turno {turma.turno} · Período {periodo?.nome}
@@ -285,11 +335,16 @@ export const AlunoFichaView: React.FC<AlunoFichaViewProps> = ({
                 onClick={() => setActiveTab('registros')}
                 className="p-3 rounded-lg border border-slate-200 hover:bg-slate-50 text-left transition-colors cursor-pointer"
               >
-                <div className="text-[11px] text-slate-500">Registros Semanais</div>
+                <div className="text-[11px] text-slate-500">Registros Semanais (RSS)</div>
                 <div className="text-base font-bold font-mono text-slate-900 mt-0.5">
-                  {totalRegistrosEntregues} / 12
+                  {totalRegistrosEntregues}
+                  <span className="text-slate-400 font-normal"> de </span>
+                  {totalRegistrosEsperados}
+                  <span className="text-[11px] text-slate-400 font-normal"> esp.</span>
                 </div>
-                <div className="text-[10px] text-emerald-600 mt-0.5">Ver entregas</div>
+                <div className="text-[10px] text-slate-500 mt-0.5">
+                  ({totalPrevistoNoPeriodo} previstos no período)
+                </div>
               </button>
 
               <button
@@ -576,13 +631,13 @@ export const AlunoFichaView: React.FC<AlunoFichaViewProps> = ({
         <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs space-y-4">
           <div className="flex items-center justify-between">
             <div>
-              <h3 className="text-sm font-bold text-slate-900">Registros Semanais de Estágio</h3>
+              <h3 className="text-sm font-bold text-slate-900">Registros Semanais de Estágio (RSS)</h3>
               <p className="text-xs text-slate-500">
-                Acompanhamento das 12 entregas esperadas para o semestre.
+                Acompanhamento das entregas semanais: {totalRegistrosEntregues} realizadas de {totalRegistrosEsperados} esperadas até hoje ({totalPrevistoNoPeriodo} no total do período).
               </p>
             </div>
             <div className="text-xs font-bold font-mono text-slate-800 bg-slate-100 px-3 py-1.5 rounded-lg">
-              Total entregue: {totalRegistrosEntregues} / 12
+              {totalRegistrosEntregues} de {totalRegistrosEsperados} esp. ({totalPrevistoNoPeriodo} previstos)
             </div>
           </div>
 
@@ -747,7 +802,7 @@ export const AlunoFichaView: React.FC<AlunoFichaViewProps> = ({
             <div className="text-right">
               <span className="text-xs text-slate-500 block">Nota Total</span>
               <span className="text-lg font-bold font-mono text-slate-900">
-                {notaTotal.toFixed(1)} / 10.0
+                {studentAvaliacoesValidas.length > 0 ? `${notaTotalNumero.toFixed(1)} / 10.0` : '—'}
               </span>
             </div>
           </div>
@@ -755,7 +810,9 @@ export const AlunoFichaView: React.FC<AlunoFichaViewProps> = ({
           <div className="divide-y divide-slate-100 border border-slate-200 rounded-xl overflow-hidden text-xs">
             {disciplinaCriterios.map(crit => {
               const avaliacao = studentAvaliacoes.find(a => a.criterio_id === crit.criterio_id);
-              const notaAtual = avaliacao ? avaliacao.nota : 0;
+              const normNota = avaliacao ? normalizarNota(avaliacao.nota) : 'ausente';
+              const notaExibicao = normNota === 'ausente' || normNota === 'invalido' ? '' : normNota;
+              const maxNota = typeof crit.nota_maxima === 'number' ? crit.nota_maxima : (parseFloat(String(crit.nota_maxima).replace(',', '.')) || 0);
 
               return (
                 <div
@@ -766,7 +823,7 @@ export const AlunoFichaView: React.FC<AlunoFichaViewProps> = ({
                     <div className="flex items-center gap-2">
                       <span className="font-bold text-slate-900">{crit.nome}</span>
                       <span className="text-slate-400 font-mono text-[11px]">
-                        (Máx: {crit.nota_maxima.toFixed(1)})
+                        (Máx: {maxNota.toFixed(1)})
                       </span>
                     </div>
                     {avaliacao?.observacao && (
@@ -779,20 +836,30 @@ export const AlunoFichaView: React.FC<AlunoFichaViewProps> = ({
                       type="number"
                       step="0.1"
                       min="0"
-                      max={crit.nota_maxima}
-                      value={notaAtual || ''}
+                      max={maxNota}
+                      value={notaExibicao}
                       onChange={e => {
-                        const val = parseFloat(e.target.value) || 0;
-                        saveAvaliacao(
-                          matriculaId,
-                          crit.criterio_id,
-                          Math.min(val, crit.nota_maxima),
-                          avaliacao?.observacao || ''
-                        );
+                        const raw = e.target.value;
+                        if (raw === '') {
+                          saveAvaliacao(
+                            matriculaId,
+                            crit.criterio_id,
+                            null as any,
+                            avaliacao?.observacao || ''
+                          );
+                        } else {
+                          const val = parseFloat(raw.replace(',', '.'));
+                          saveAvaliacao(
+                            matriculaId,
+                            crit.criterio_id,
+                            Math.min(isNaN(val) ? 0 : val, maxNota),
+                            avaliacao?.observacao || ''
+                          );
+                        }
                       }}
                       className="w-20 px-2.5 py-1.5 border border-slate-200 rounded-lg text-center font-mono font-bold text-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-900"
                     />
-                    <span className="text-slate-400 text-xs">/ {crit.nota_maxima.toFixed(1)}</span>
+                    <span className="text-slate-400 text-xs">/ {maxNota.toFixed(1)}</span>
                   </div>
                 </div>
               );
@@ -982,6 +1049,121 @@ export const AlunoFichaView: React.FC<AlunoFichaViewProps> = ({
                   </button>
                 </div>
               ))
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ESTUDOS DIRIGIDOS / APRESENTAÇÕES DO ALUNO */}
+      {activeTab === 'estudos' && (
+        <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs space-y-5">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-100">
+            <div>
+              <h3 className="text-sm font-bold text-slate-900">
+                Histórico Formativo de Estudos Dirigidos e Leituras
+              </h3>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Apresentação e discussão de artigos, casos e textos atribuídos ao estudante ou substituídos.
+              </p>
+            </div>
+            <div className="text-[11px] bg-slate-100 text-slate-600 px-2.5 py-1 rounded-lg">
+              Registro Formativo Acadêmico
+            </div>
+          </div>
+
+          {/* Aviso institucional */}
+          <div className="p-3 bg-blue-50/70 border border-blue-200 rounded-xl text-xs text-blue-900 flex items-start gap-2">
+            <span className="font-bold text-blue-700 shrink-0">ℹ</span>
+            <span>
+              A realização, ausência ou substituição em estudo dirigido documenta a trajetória formativa do estudante nesta supervisão e <strong>não gera automaticamente</strong> nota, falta ou ocorrência disciplinar. Qualquer impacto avaliativo segue exclusivamente os critérios de avaliação configurados da disciplina.
+            </span>
+          </div>
+
+          {/* 1. Estudos em que o estudante foi previsto como titular */}
+          <div className="space-y-3">
+            <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
+              1. Atividades Previstas como Titular ({estudosTitular.length})
+            </h4>
+
+            {estudosTitular.length === 0 ? (
+              <p className="text-xs text-slate-400 py-2">
+                Nenhum estudo dirigido atribuído originalmente a este estudante nesta turma.
+              </p>
+            ) : (
+              <div className="divide-y divide-slate-100 border border-slate-200 rounded-xl overflow-hidden">
+                {estudosTitular.map((est, i) => (
+                  <div key={i} className="p-3.5 bg-white hover:bg-slate-50 text-xs space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-slate-900 text-sm">
+                        {est.tema || est.artigo_leitura || 'Apresentação'}
+                      </span>
+                      <span
+                        className={`text-[10px] font-bold px-2 py-0.5 rounded ${
+                          est.status_realizacao === 'REALIZADO'
+                            ? 'bg-emerald-100 text-emerald-900'
+                            : est.status_realizacao === 'PARCIAL'
+                            ? 'bg-blue-100 text-blue-900'
+                            : est.status_realizacao === 'SUBSTITUICAO'
+                            ? 'bg-purple-100 text-purple-900'
+                            : est.status_realizacao === 'NAO_REALIZADO'
+                            ? 'bg-red-100 text-red-900'
+                            : 'bg-slate-100 text-slate-700'
+                        }`}
+                      >
+                        {est.status_realizacao || 'PLANEJADO'}
+                      </span>
+                    </div>
+
+                    <div className="text-[11px] text-slate-500 font-mono">
+                      Data prevista: {est.data}
+                      {est.artigo_leitura && est.tema && ` · Artigo: ${est.artigo_leitura}`}
+                    </div>
+
+                    {est.observacao && (
+                      <p className="text-[11px] text-slate-600 italic">
+                        Observação: {est.observacao}
+                      </p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* 2. Ocasiões em que substituiu colega */}
+          <div className="space-y-3 pt-2 border-t border-slate-100">
+            <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
+              2. Ocasiões em que Substituiu Colega ({estudosComoSubstituto.length})
+            </h4>
+
+            {estudosComoSubstituto.length === 0 ? (
+              <p className="text-xs text-slate-400 py-2">
+                O estudante não realizou substituições de colegas nesta turma.
+              </p>
+            ) : (
+              <div className="divide-y divide-slate-100 border border-slate-200 rounded-xl overflow-hidden">
+                {estudosComoSubstituto.map((est, i) => (
+                  <div key={i} className="p-3.5 bg-purple-50/20 hover:bg-purple-50/40 text-xs space-y-1">
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-purple-950">
+                        {est.tema || est.artigo_leitura}
+                      </span>
+                      <span className="text-[10px] font-bold bg-purple-100 text-purple-900 px-2 py-0.5 rounded">
+                        Apresentou como Substituto
+                      </span>
+                    </div>
+                    <div className="text-[11px] text-slate-600">
+                      Data da apresentação: <strong className="font-mono">{est.data}</strong> · Titular original:{' '}
+                      <strong>{est.responsavel_nome || 'Colega'}</strong>
+                    </div>
+                    {est.motivo_substituicao && (
+                      <p className="text-[11px] text-slate-600 italic">
+                        Motivo: {est.motivo_substituicao}
+                      </p>
+                    )}
+                  </div>
+                ))}
+              </div>
             )}
           </div>
         </div>

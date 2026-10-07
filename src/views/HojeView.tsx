@@ -15,8 +15,11 @@ import {
   Layers,
   ChevronRight,
   Bell,
+  UserCheck,
+  AlertCircle,
 } from 'lucide-react';
 import { useSupervisao } from '../context/SupervisaoContext';
+import { calcularMetricasCronogramaRss } from '../services/supervisaoOperacionalService';
 
 interface HojeViewProps {
   onOpenTurma: (turmaId: string) => void;
@@ -47,7 +50,16 @@ export const HojeView: React.FC<HojeViewProps> = ({
     marcosAcademicos,
     selectedPeriodoId,
     filaProfessora,
+    situacaoAtualTurmas,
+    avaliacoesCompletas,
+    getSupervisaoAtual,
+    getProximaSupervisao,
+    getPendenciasOperacionais,
   } = useSupervisao();
+
+  const supervisaoAtual = getSupervisaoAtual();
+  const proximaSupervisao = getProximaSupervisao();
+  const pendenciasAtencao = getPendenciasOperacionais();
 
   // Filtragem de turmas do período ativo
   const turmasAtivas = turmas.filter(
@@ -62,22 +74,33 @@ export const HojeView: React.FC<HojeViewProps> = ({
 
   // Cálculos consolidados da base
   const totalAlunosAtivos = alunos.filter(a => a.status === 'ATIVO').length;
+  const hojeStr = new Date().toISOString().split('T')[0];
 
-  // RSS: Consome exclusivamente os dados materializados das tabelas oficiais
-  const regraTurmaDestaque = turmaEmDestaque ? regrasRss.find(r => r.turma_id === turmaEmDestaque.turma_id) : undefined;
-  const semanasCalendario = calendarioRss.map(c => Number(c.semana) || 0).filter(s => s > 0);
-  const totalSemanasPeriodo = regraTurmaDestaque?.total_esperado ? Number(regraTurmaDestaque.total_esperado) : (semanasCalendario.length > 0 ? Math.max(...semanasCalendario) : 0);
-  const semanaAtual = semanasCalendario.length > 0 ? Math.max(...semanasCalendario) : 0;
-  const semanasEncerradas = Math.max(0, semanaAtual - 1);
+  // RSS & Cronograma Semanal: Calculado canonicamente com filtragem estrita por turma_id
+  const metricasCronograma = React.useMemo(() => {
+    return calcularMetricasCronogramaRss(
+      turmaEmDestaque?.turma_id,
+      calendarioRss,
+      situacaoAtualTurmas,
+      hojeStr
+    );
+  }, [turmaEmDestaque, calendarioRss, situacaoAtualTurmas, hojeStr]);
+
+  const semanaDePraticaTexto = metricasCronograma.semanaTexto;
+  const semanasEncerradasTexto = metricasCronograma.semanasEncerradasTexto;
 
   // Status de RSS: Consome exclusivamente os cabeçalhos reais de status_rss_unidades (status_rss, saldo_rss)
-  const unidadesComRssPendente = statusRssUnidades.filter(
+  const statusFiltrados = turmaEmDestaque
+    ? statusRssUnidades.filter(s => s.turma_id === turmaEmDestaque.turma_id)
+    : statusRssUnidades;
+
+  const unidadesComRssPendente = statusFiltrados.filter(
     s => s.status_rss === 'PENDENTE' || s.status_rss === 'ATRASADO' || s.status_rss === 'CRITICO' || (s.saldo_rss !== undefined && Number(s.saldo_rss) < 0)
   ).length;
 
-  const alunosRssEmDia = statusRssUnidades.length > 0
-    ? statusRssUnidades.filter(s => s.status_rss === 'EM_DIA' || (s.saldo_rss !== undefined && Number(s.saldo_rss) >= 0)).length
-    : Math.max(0, totalAlunosAtivos - unidadesComRssPendente);
+  const alunosRssEmDia = statusFiltrados.length > 0
+    ? statusFiltrados.filter(s => s.status_rss === 'EM_DIA' || (s.saldo_rss !== undefined && Number(s.saldo_rss) >= 0)).length
+    : (totalAlunosAtivos > 0 ? Math.max(0, totalAlunosAtivos - unidadesComRssPendente) : null);
 
   // Frequência
   const faltasInjustificadas = frequencias.filter(f => f.status === 'FALTA_SEM_JUSTIFICATIVA').length;
@@ -88,11 +111,19 @@ export const HojeView: React.FC<HojeViewProps> = ({
   const docsPendentes = documentos.filter(d => d.status === 'PENDENTE').length;
   const docsCompletos = documentos.filter(d => d.status === 'ENTREGUE').length;
 
+  // Avaliação Semestral: cálculo real a partir de avaliacoesCompletas e matrículas
+  const totalMatriculas = matriculas.filter(m => m.status === 'MATRICULADO').length;
+  const totalAvaliados = avaliacoesCompletas.filter(
+    a => a.status === 'AVALIADA' || a.status === 'ENVIADO' || a.status === 'APROVADO_ENVIO'
+  ).length;
+  const percentualAvaliacao = totalMatriculas > 0
+    ? Math.round((totalAvaliados / totalMatriculas) * 100)
+    : null;
+
   // Orientações abertas
   const orientacoesAbertas = orientacoes.filter(o => o.status === 'ABERTA');
 
   // Próxima Leitura vinculada à data e turma (sem índice arbitrário)
-  const hojeStr = new Date().toISOString().split('T')[0];
   const proximaLeitura = leiturasResponsaveis.find(
     l => (l.data || '') >= hojeStr && (!turmaEmDestaque || l.turma_id === turmaEmDestaque.turma_id)
   ) || leiturasResponsaveis.find(l => (l.data || '') >= hojeStr) || null;
@@ -106,6 +137,75 @@ export const HojeView: React.FC<HojeViewProps> = ({
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
+      {/* 1. AGORA: Supervisão em andamento, Chamada pendente ou Informativo */}
+      {supervisaoAtual.emAndamento && supervisaoAtual.turma && (
+        <div className="bg-slate-900 border-2 border-amber-400 rounded-2xl p-5 text-white shadow-md">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping inline-block" />
+                <span className="text-xs uppercase tracking-wider font-bold text-amber-400">
+                  Supervisão em Andamento
+                </span>
+              </div>
+              <h3 className="text-xl font-bold text-white mt-1">
+                {supervisaoAtual.turma.nome} — Turno {supervisaoAtual.turma.turno}
+              </h3>
+              <p className="text-sm text-slate-300 font-mono mt-0.5">
+                Horário: {supervisaoAtual.horaInicio}–{supervisaoAtual.horaFim}
+              </p>
+            </div>
+            <button
+              onClick={() => onIniciarSupervisao(supervisaoAtual.turma!.turma_id)}
+              className="px-6 py-3 bg-amber-400 hover:bg-amber-300 active:scale-98 text-slate-950 font-bold rounded-xl text-sm flex items-center justify-center gap-2 shadow-md cursor-pointer transition-all self-start sm:self-auto"
+            >
+              <Play className="w-4 h-4 fill-current" />
+              <span>Entrar na Supervisão</span>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {supervisaoAtual.chamadaPendenteHoje && supervisaoAtual.turma && (
+        <div className="bg-red-50 border-2 border-red-300 rounded-2xl p-5 text-red-950 shadow-xs">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-2 text-red-700 font-bold text-xs uppercase tracking-wider">
+                <AlertTriangle className="w-4 h-4" />
+                <span>Chamada Pendente</span>
+              </div>
+              <h3 className="text-lg font-bold text-red-950 mt-1">
+                {supervisaoAtual.turma.nome}
+              </h3>
+              <p className="text-xs text-red-800 mt-0.5">
+                A supervisão encerrou às {supervisaoAtual.horaFim}, mas a chamada ainda não foi salva.
+              </p>
+            </div>
+            <button
+              onClick={() => onIniciarSupervisao(supervisaoAtual.turma!.turma_id)}
+              className="px-5 py-2.5 bg-red-700 hover:bg-red-800 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-2 cursor-pointer shadow-xs self-start sm:self-auto"
+            >
+              <UserCheck className="w-4 h-4" />
+              <span>Finalizar Chamada</span>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {supervisaoAtual.naoRealizadaHoje && supervisaoAtual.turma && (
+        <div className="bg-amber-50 border border-amber-300 rounded-2xl p-4 text-amber-900">
+          <div className="flex items-center gap-2 font-bold text-xs uppercase tracking-wider text-amber-800">
+            <Calendar className="w-4 h-4 text-amber-700" />
+            <span>Hoje: Aula Não Realizada</span>
+          </div>
+          <h4 className="text-sm font-bold text-slate-900 mt-1">{supervisaoAtual.turma.nome}</h4>
+          <p className="text-xs text-amber-800 mt-0.5">
+            Não haverá supervisão — <strong>{supervisaoAtual.motivoNaoRealizada || 'Feriado/Recesso'}</strong>.{' '}
+            {supervisaoAtual.observacaoNaoRealizada && `(${supervisaoAtual.observacaoNaoRealizada})`}
+          </p>
+        </div>
+      )}
+
       {/* Top Banner: Central Operacional & Próxima Supervisão */}
       <div className="bg-white border border-slate-200 rounded-2xl p-5 sm:p-6 shadow-xs relative overflow-hidden">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-5">
@@ -131,12 +231,20 @@ export const HojeView: React.FC<HojeViewProps> = ({
             <div className="flex flex-wrap items-center gap-4 text-xs text-slate-500 font-medium">
               <span className="flex items-center gap-1.5">
                 <Clock className="w-3.5 h-3.5 text-slate-400" />
-                Semana de Prática: <strong className="text-slate-800">{semanaAtual} / {totalSemanasPeriodo}</strong>
+                Semana de Prática: <strong className="text-slate-800">{semanaDePraticaTexto}</strong>
               </span>
               <span>•</span>
               <span>
-                Semanas RSS Encerradas: <strong className="text-slate-800">{semanasEncerradas}</strong>
+                Semanas RSS Encerradas: <strong className="text-slate-800">{semanasEncerradasTexto}</strong>
               </span>
+              {metricasCronograma.conflitoIdentificado && (
+                <span
+                  className="text-[10px] text-amber-800 bg-amber-100/80 border border-amber-300 px-2 py-0.5 rounded font-semibold cursor-help"
+                  title={metricasCronograma.avisoInconsistencia || 'Inconsistência entre datas do calendário e semana atual'}
+                >
+                  ⚠ Inconsistência na base
+                </span>
+              )}
               {proximaLeitura && (
                 <>
                   <span>•</span>
@@ -186,11 +294,13 @@ export const HojeView: React.FC<HojeViewProps> = ({
             <span>Semana de Prática</span>
             <Calendar className="w-4 h-4 text-indigo-500" />
           </div>
-          <div className="text-2xl font-black text-slate-900">
-            {semanaAtual} <span className="text-sm font-normal text-slate-400">/ {totalSemanasPeriodo}</span>
+          <div className="text-2xl font-black text-slate-900 font-mono">
+            {semanaDePraticaTexto}
           </div>
           <div className="mt-2 text-xs text-slate-500">
-            {semanasEncerradas} semanas já encerradas
+            {metricasCronograma.semanasEncerradas !== null
+              ? `${metricasCronograma.semanasEncerradas} semana(s) já encerrada(s)`
+              : 'Aguardando cronograma'}
           </div>
         </button>
 
@@ -203,9 +313,9 @@ export const HojeView: React.FC<HojeViewProps> = ({
             <span>Estudantes Ativos</span>
             <Users className="w-4 h-4 text-blue-500" />
           </div>
-          <div className="text-2xl font-black text-slate-900">{totalAlunosAtivos}</div>
+          <div className="text-2xl font-black text-slate-900 font-mono">{totalAlunosAtivos > 0 ? totalAlunosAtivos : '—'}</div>
           <div className="mt-2 text-xs text-slate-500">
-            Distribuídos em {turmasAtivas.length} turmas ativas
+            {turmasAtivas.length > 0 ? `Distribuídos em ${turmasAtivas.length} turmas ativas` : 'Nenhuma turma ativa'}
           </div>
         </button>
 
@@ -218,14 +328,20 @@ export const HojeView: React.FC<HojeViewProps> = ({
             <span>Registros Semanais (RSS)</span>
             <FileText className="w-4 h-4 text-amber-500" />
           </div>
-          <div className="text-2xl font-black text-slate-900">
-            {unidadesComRssPendente}{' '}
-            <span className="text-xs font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full">
-              pendências
-            </span>
+          <div className="text-2xl font-black text-slate-900 font-mono">
+            {statusFiltrados.length > 0 ? (
+              <>
+                {unidadesComRssPendente}{' '}
+                <span className="text-xs font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full font-sans">
+                  pendências
+                </span>
+              </>
+            ) : (
+              '—'
+            )}
           </div>
           <div className="mt-2 text-xs text-slate-500 flex items-center justify-between">
-            <span>{alunosRssEmDia} em dia</span>
+            <span>{alunosRssEmDia !== null ? `${alunosRssEmDia} em dia` : 'Aguardando sincronização'}</span>
             <span className="text-slate-400">semana atual aberta</span>
           </div>
         </button>
@@ -239,15 +355,81 @@ export const HojeView: React.FC<HojeViewProps> = ({
             <span>Frequência</span>
             <AlertTriangle className="w-4 h-4 text-red-500" />
           </div>
-          <div className="text-2xl font-black text-slate-900">
-            {frequenciasParaRevisar}{' '}
-            <span className="text-xs font-bold text-slate-500">situações</span>
+          <div className="text-2xl font-black text-slate-900 font-mono">
+            {frequencias.length > 0 ? frequenciasParaRevisar : '—'}{' '}
+            <span className="text-xs font-bold text-slate-500 font-sans">situações</span>
           </div>
           <div className="mt-2 text-xs text-slate-500">
             {faltasInjustificadas} sem justificativa • {justificativasPendentes} pendentes
           </div>
         </button>
       </div>
+
+      {/* 2. PRECISA DA SUA ATENÇÃO (Somente Itens Acionáveis) */}
+      <section className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs space-y-3">
+        <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 text-red-600" />
+            <h3 className="text-sm font-bold text-slate-900 tracking-tight">
+              Precisa da sua Atenção
+            </h3>
+          </div>
+          <span className="text-xs font-semibold text-slate-500">
+            {pendenciasAtencao.length} item(ns) acionável(is)
+          </span>
+        </div>
+
+        {pendenciasAtencao.length === 0 ? (
+          <div className="p-6 text-center text-xs text-slate-400">
+            <CheckCircle className="w-7 h-7 text-emerald-500 mx-auto mb-1.5 opacity-80" />
+            <p className="font-bold text-slate-700 text-sm">Tudo em dia!</p>
+            <p className="text-slate-400 text-[11px] mt-0.5">
+              Não há chamadas pendentes, justificativas aguardando análise ou prazos vencidos.
+            </p>
+          </div>
+        ) : (
+          <div className="divide-y divide-slate-100">
+            {pendenciasAtencao.slice(0, 6).map(item => (
+              <div
+                key={item.id}
+                className="py-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs hover:bg-slate-50 px-2 rounded-lg transition-colors"
+              >
+                <div className="flex items-start gap-2.5">
+                  <span
+                    className={`mt-0.5 px-2 py-0.5 rounded font-mono font-bold text-[10px] uppercase shrink-0 ${
+                      item.urgencia === 'CRITICA'
+                        ? 'bg-red-100 text-red-800'
+                        : item.urgencia === 'ALTA'
+                        ? 'bg-amber-100 text-amber-800'
+                        : 'bg-blue-100 text-blue-800'
+                    }`}
+                  >
+                    {item.tipo}
+                  </span>
+                  <div>
+                    <span className="font-bold text-slate-900 block">{item.titulo}</span>
+                    <span className="text-slate-600 text-[11px] mt-0.5 block">{item.descricao}</span>
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => {
+                    if (item.tipo === 'CHAMADA' && item.turma_id) {
+                      onIniciarSupervisao(item.turma_id);
+                    } else {
+                      onNavigateToTab(item.targetTab, item.targetParam);
+                    }
+                  }}
+                  className="px-3 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-100 font-semibold text-slate-700 text-xs shrink-0 self-start sm:self-auto cursor-pointer flex items-center gap-1"
+                >
+                  <span>Resolver</span>
+                  <ChevronRight className="w-3 h-3" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
 
       {/* Second Row of Cards: Documentos, Orientações, Avaliação, Minha Fila */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -260,14 +442,18 @@ export const HojeView: React.FC<HojeViewProps> = ({
             <span>Documentos</span>
             <CheckCircle className="w-4 h-4 text-emerald-500" />
           </div>
-          <div className="text-2xl font-black text-slate-900">
-            {docsPendentes > 0 ? (
+          <div className="text-2xl font-black text-slate-900 font-mono">
+            {documentos.length === 0 ? (
+              '—'
+            ) : docsPendentes > 0 ? (
               <span className="text-amber-600">{docsPendentes} pendentes</span>
             ) : (
-              <span className="text-emerald-700">100% em dia</span>
+              <span className="text-emerald-700">{docsCompletos} entregues</span>
             )}
           </div>
-          <div className="mt-2 text-xs text-slate-500">{docsCompletos} entregues e conferidos</div>
+          <div className="mt-2 text-xs text-slate-500">
+            {documentos.length === 0 ? 'Aguardando sincronização' : `${docsCompletos} entregues e conferidos`}
+          </div>
         </button>
 
         {/* ORIENTAÇÕES ABERTAS */}
@@ -279,7 +465,7 @@ export const HojeView: React.FC<HojeViewProps> = ({
             <span>Orientações Abertas</span>
             <Clock className="w-4 h-4 text-indigo-500" />
           </div>
-          <div className="text-2xl font-black text-slate-900">{orientacoesAbertas.length}</div>
+          <div className="text-2xl font-black text-slate-900 font-mono">{orientacoesAbertas.length}</div>
           <div className="mt-2 text-xs text-slate-500">Para retomar na supervisão</div>
         </button>
 
@@ -292,8 +478,14 @@ export const HojeView: React.FC<HojeViewProps> = ({
             <span>Avaliação Semestral</span>
             <Award className="w-4 h-4 text-purple-500" />
           </div>
-          <div className="text-2xl font-black text-slate-900">
-            71% <span className="text-xs font-bold text-slate-400">preenchida</span>
+          <div className="text-2xl font-black text-slate-900 font-mono">
+            {percentualAvaliacao !== null ? (
+              <>
+                {percentualAvaliacao}% <span className="text-xs font-bold text-slate-400 font-sans">preenchida</span>
+              </>
+            ) : (
+              '—'
+            )}
           </div>
           <div className="mt-2 text-xs text-indigo-600 font-semibold group-hover:underline flex items-center gap-1">
             <span>Abrir Central de Avaliação</span>
@@ -310,8 +502,8 @@ export const HojeView: React.FC<HojeViewProps> = ({
             <span>Fila da Professora</span>
             <Bell className="w-4 h-4 text-amber-500" />
           </div>
-          <div className="text-2xl font-black text-slate-900">{tarefasPendentesFila} itens</div>
-          <div className="mt-2 text-xs text-slate-500">Tarefas de 5, 15 e 30+ minutos</div>
+          <div className="text-2xl font-black text-slate-900 font-mono">{tarefasPendentesFila} itens</div>
+          <div className="mt-2 text-xs text-slate-500">Tarefas prioritárias da supervisora</div>
         </button>
       </div>
 

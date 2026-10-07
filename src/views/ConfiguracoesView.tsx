@@ -842,25 +842,84 @@ function importarAlunosLote(payload) {
             </div>
           </div>
 
+          {/* Tabela Oficial configuracoes da Base */}
+          <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs space-y-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-sm font-bold text-slate-900">Parâmetros do Sistema (Tabela configuracoes)</h3>
+                <p className="text-[11px] text-slate-500">Chaves e valores registrados na aba normalizada da base</p>
+              </div>
+              <span className="text-[11px] text-slate-400 font-medium">Total: {configuracoes.length}</span>
+            </div>
+
+            {configuracoes.length === 0 ? (
+              <div className="p-4 bg-slate-50 border border-slate-100 rounded-xl text-center text-slate-500 text-xs">
+                Nenhuma configuração personalizada registrada na base. As diretrizes padrão do semestre estão ativas.
+              </div>
+            ) : (
+              <div className="divide-y divide-slate-100 border border-slate-200 rounded-xl overflow-hidden">
+                {configuracoes.map((cfg, idx) => (
+                  <div key={cfg.configuracao_id || idx} className="p-3 flex items-center justify-between bg-white text-xs">
+                    <div>
+                      <span className="font-mono font-bold text-slate-800">{cfg.chave || 'CHAVE_SEM_NOME'}</span>
+                      {(cfg.turma_id || cfg.disciplina_id) && (
+                        <span className="text-[10px] text-slate-400 ml-2">
+                          {cfg.turma_id ? `Turma: ${cfg.turma_id}` : `Disciplina: ${cfg.disciplina_id}`}
+                        </span>
+                      )}
+                    </div>
+                    <span className="font-semibold text-slate-900 bg-slate-100 px-2 py-0.5 rounded font-mono text-[11px]">
+                      {cfg.valor || '—'}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Governança Acadêmica e Regras Institucionais */}
+          <div className="bg-slate-50 border border-slate-200 rounded-xl p-5 space-y-2">
+            <div className="flex items-center gap-2">
+              <ShieldCheck className="w-4 h-4 text-slate-700" />
+              <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
+                Governança Acadêmica & Regras Institucionais (Somente Leitura)
+              </h3>
+            </div>
+            <p className="text-xs text-slate-600 leading-relaxed">
+              Tabelas como <code className="font-mono bg-white px-1 py-0.5 rounded border border-slate-200">regras_rss</code>, <code className="font-mono bg-white px-1 py-0.5 rounded border border-slate-200">regras_prazo</code>, <code className="font-mono bg-white px-1 py-0.5 rounded border border-slate-200">contrato_app</code> e <code className="font-mono bg-white px-1 py-0.5 rounded border border-slate-200">dicionario_dados</code> contêm diretrizes normativas da coordenação acadêmica. Elas são gerenciadas exclusivamente na planilha oficial do Google Sheets e <strong>não podem ser modificadas como preferências comuns pelo aplicativo</strong> para garantir a integridade dos dados e o cumprimento das normas pedagógicas.
+            </p>
+          </div>
+
           {/* Critérios de Avaliação Ativos */}
           <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs space-y-3">
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-bold text-slate-900">Critérios de Avaliação do Semestre</h3>
               <span className="text-slate-400">Total: {criterios.length} critérios</span>
             </div>
-            <div className="divide-y divide-slate-100 border border-slate-200 rounded-xl overflow-hidden">
-              {criterios.map(c => (
-                <div key={c.criterio_id} className="p-3 flex items-center justify-between bg-white">
-                  <div>
-                    <span className="font-bold text-slate-800">{c.nome}</span>
-                    <span className="text-slate-400 ml-2">Ordem {c.ordem}</span>
-                  </div>
-                  <span className="font-mono font-bold text-slate-900">
-                    Nota Máx: {c.nota_maxima.toFixed(1)}
-                  </span>
-                </div>
-              ))}
-            </div>
+            {criterios.length === 0 ? (
+              <div className="p-4 bg-slate-50 border border-slate-100 rounded-xl text-center text-slate-500 text-xs">
+                Nenhum critério de avaliação registrado na base oficial.
+              </div>
+            ) : (
+              <div className="divide-y divide-slate-100 border border-slate-200 rounded-xl overflow-hidden">
+                {criterios.map(c => {
+                  const notaMax = Number(c.nota_maxima || 0);
+                  return (
+                    <div key={c.criterio_id} className="p-3 flex items-center justify-between bg-white">
+                      <div>
+                        <span className="font-bold text-slate-800">{c.nome}</span>
+                        {c.ordem !== undefined && c.ordem !== null && (
+                          <span className="text-slate-400 ml-2">Ordem {c.ordem}</span>
+                        )}
+                      </div>
+                      <span className="font-mono font-bold text-slate-900">
+                        Nota Máx: {notaMax.toFixed(1)}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
 
           {/* Backup e Reset */}

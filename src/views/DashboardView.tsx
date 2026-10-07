@@ -11,13 +11,18 @@ import {
   CalendarCheck,
   ChevronRight,
   GraduationCap,
+  UserCheck,
+  BookOpen,
+  AlertCircle,
+  HelpCircle,
 } from 'lucide-react';
 import { useSupervisao } from '../context/SupervisaoContext';
+import { NavTab } from '../types';
 
 interface DashboardViewProps {
   onOpenTurma: (turmaId: string) => void;
   onIniciarSupervisao: (turmaId: string) => void;
-  onNavigateToTab: (tab: any, filterParam?: string) => void;
+  onNavigateToTab: (tab: NavTab, filterParam?: string) => void;
 }
 
 export const DashboardView: React.FC<DashboardViewProps> = ({
@@ -33,348 +38,424 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     matriculas,
     horariosTurma,
     turmasOrigem,
-    orientacoes,
-    documentos,
-    frequencias,
-    registrosSemanais,
     marcosAcademicos,
+    leiturasResponsaveis,
+    encontrosTurma,
+    getSupervisaoAtual,
+    getProximaSupervisao,
+    getPendenciasCanonicas,
   } = useSupervisao();
 
   const currentPeriodo = periodos.find(p => p.periodo_id === selectedPeriodoId);
   const turmas = getTurmasDoPeriodo(selectedPeriodoId);
 
-  // Day of week formatter
-  const diasSemanaNome = [
-    'Domingo',
-    'Segunda-feira',
-    'Terça-feira',
-    'Quarta-feira',
-    'Quinta-feira',
-    'Sexta-feira',
-    'Sábado',
-  ];
+  const hojeIso = new Date().toISOString().split('T')[0];
+  const supervisaoAtual = getSupervisaoAtual();
+  const proximaSupervisao = getProximaSupervisao();
+  const pendenciasAtencao = getPendenciasCanonicas();
 
-  // Helper to format schedules for a turma
-  const getHorariosDaTurma = (turmaId: string) => {
-    return horariosTurma.filter(h => h.turma_id === turmaId && h.ativo);
-  };
-
-  // Helper to count enrolled students
-  const countAlunosDaTurma = (turmaId: string) => {
-    return matriculas.filter(m => m.turma_id === turmaId && m.status === 'MATRICULADO').length;
-  };
-
-  // Helper to get Docente Online codes
-  const getOrigensDaTurma = (turmaId: string) => {
-    return turmasOrigem.filter(o => o.turma_id === turmaId && o.ativo);
-  };
-
-  // Pending counts for the selected period
-  const turmasIds = turmas.map(t => t.turma_id);
-  const matriculasDoPeriodo = matriculas.filter(m => turmasIds.includes(m.turma_id));
-  const matriculasIds = matriculasDoPeriodo.map(m => m.matricula_id);
-
-  const orientacoesAbertas = orientacoes.filter(
-    o => matriculasIds.includes(o.matricula_id) && o.status === 'ABERTA'
-  ).length;
-
-  const docsPendentes = documentos.filter(
-    d => matriculasIds.includes(d.matricula_id) && d.status === 'PENDENTE'
-  ).length;
-
-  const faltasInjustificadas = frequencias.filter(
-    f => matriculasIds.includes(f.matricula_id) && f.status === 'FALTA_SEM_JUSTIFICATIVA'
-  ).length;
-
-  const justificativasPendentes = frequencias.filter(
-    f => matriculasIds.includes(f.matricula_id) && f.status === 'JUSTIFICATIVA_PENDENTE'
-  ).length;
-
-  const registrosFaltantes = registrosSemanais.filter(
-    r => matriculasIds.includes(r.matricula_id) && r.status === 'FALTANTE'
-  ).length;
-
-  // Marcos acadêmicos do período ordenados por data
-  const marcosDoPeriodo = marcosAcademicos
-    .filter(m => m.periodo_id === selectedPeriodoId)
-    .sort((a, b) => new Date(a.data_prazo).getTime() - new Date(b.data_prazo).getTime())
+  // Prazos finais de hoje e próximos marcos acadêmicos
+  const prazosHoje = marcosAcademicos.filter(
+    m => m.data_prazo === hojeIso && m.status !== 'CONCLUIDO'
+  );
+  const proximosMarcos = marcosAcademicos
+    .filter(m => m.data_prazo && m.data_prazo > hojeIso && m.status !== 'CONCLUIDO')
+    .sort((a, b) => a.data_prazo.localeCompare(b.data_prazo))
     .slice(0, 4);
 
+  // Leituras e estudos dirigidos previstos para hoje
+  const estudosDirigidosHoje = leiturasResponsaveis.filter(
+    l => l.data === hojeIso && turmas.some(t => t.turma_id === l.turma_id)
+  );
+
   return (
-    <div className="space-y-6">
-      {/* Top Banner Context */}
+    <div className="space-y-6 max-w-6xl mx-auto">
+      {/* HEADER OPERACIONAL */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-200">
         <div>
           <h2 className="text-xl font-bold tracking-tight text-slate-900">
-            Painel da Supervisora
+            Painel Operacional da Supervisora
           </h2>
           <p className="text-xs text-slate-500 mt-0.5">
-            Semestre letivo <span className="font-semibold text-slate-800">{currentPeriodo?.nome}</span> · Supervisão acadêmica de estágios
+            Semestre letivo <strong className="text-slate-800">{currentPeriodo?.nome}</strong> · Supervisão clínica e acadêmica
           </p>
         </div>
       </div>
 
-      {/* 1. SEÇÃO PRINCIPAL: SUAS TURMAS / AULAS */}
-      <section>
-        <div className="flex items-center justify-between mb-3">
+      {/* 1. SEÇÃO: AGORA (Supervisão em andamento, Chamada pendente ou Informativo) */}
+      <section className="space-y-3">
+        {supervisaoAtual.emAndamento && supervisaoAtual.turma ? (
+          <div className="bg-slate-900 border-2 border-amber-400 rounded-2xl p-5 text-white shadow-md">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping inline-block" />
+                  <span className="text-xs uppercase tracking-wider font-bold text-amber-400">
+                    Supervisão em Andamento
+                  </span>
+                </div>
+                <h3 className="text-xl font-bold text-white mt-1">
+                  {supervisaoAtual.turma.nome} — Turno {supervisaoAtual.turma.turno}
+                </h3>
+                <p className="text-sm text-slate-300 font-mono mt-0.5">
+                  Horário: {supervisaoAtual.horaInicio}–{supervisaoAtual.horaFim}
+                </p>
+              </div>
+
+              <button
+                onClick={() => onIniciarSupervisao(supervisaoAtual.turma!.turma_id)}
+                className="px-6 py-3 bg-amber-400 hover:bg-amber-300 active:scale-98 text-slate-950 font-bold rounded-xl text-sm flex items-center justify-center gap-2 shadow-md cursor-pointer transition-all self-start sm:self-auto"
+              >
+                <Play className="w-4 h-4 fill-current" />
+                <span>Entrar na Supervisão</span>
+              </button>
+            </div>
+          </div>
+        ) : supervisaoAtual.chamadaPendenteHoje && supervisaoAtual.turma ? (
+          <div className="bg-red-50 border-2 border-red-300 rounded-2xl p-5 text-red-950 shadow-xs">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <div className="flex items-center gap-2 text-red-700 font-bold text-xs uppercase tracking-wider">
+                  <AlertTriangle className="w-4 h-4" />
+                  <span>Chamada Pendente</span>
+                </div>
+                <h3 className="text-lg font-bold text-red-950 mt-1">
+                  {supervisaoAtual.turma.nome} — Turno {supervisaoAtual.turma.turno}
+                </h3>
+                <p className="text-xs text-red-800 mt-0.5">
+                  A supervisão de hoje encerrou às {supervisaoAtual.horaFim}, mas a chamada ainda não foi salva.
+                </p>
+              </div>
+
+              <button
+                onClick={() => onIniciarSupervisao(supervisaoAtual.turma!.turma_id)}
+                className="px-5 py-2.5 bg-red-700 hover:bg-red-800 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-2 cursor-pointer shadow-xs self-start sm:self-auto"
+              >
+                <UserCheck className="w-4 h-4" />
+                <span>Finalizar Chamada</span>
+              </button>
+            </div>
+          </div>
+        ) : supervisaoAtual.naoRealizadaHoje && supervisaoAtual.turma ? (
+          <div className="bg-amber-50 border border-amber-300 rounded-2xl p-4 text-amber-900">
+            <div className="flex items-center gap-2 font-bold text-xs uppercase tracking-wider text-amber-800">
+              <Calendar className="w-4 h-4 text-amber-700" />
+              <span>Hoje: Aula Não Realizada</span>
+            </div>
+            <h4 className="text-sm font-bold text-slate-900 mt-1">
+              {supervisaoAtual.turma.nome}
+            </h4>
+            <p className="text-xs text-amber-800 mt-0.5">
+              Não haverá supervisão — <strong>{supervisaoAtual.motivoNaoRealizada || 'Feriado/Recesso'}</strong>.{' '}
+              {supervisaoAtual.observacaoNaoRealizada && `(${supervisaoAtual.observacaoNaoRealizada})`}
+            </p>
+          </div>
+        ) : null}
+      </section>
+
+      {/* 2. GRID PRINCIPAL: HOJE × PRÓXIMA SUPERVISÃO */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* CARD: HOJE */}
+        <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs space-y-3">
+          <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+            <div className="flex items-center gap-2">
+              <Clock className="w-4 h-4 text-slate-700" />
+              <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider">
+                Hoje ({hojeIso})
+              </h3>
+            </div>
+            <span className="text-[11px] text-slate-500">Programação do dia</span>
+          </div>
+
+          {/* Supervisão de hoje se houver */}
+          {supervisaoAtual.turma ? (
+            <div className="p-3 bg-slate-50 rounded-xl space-y-1">
+              <span className="text-[11px] text-slate-500">Supervisão:</span>
+              <div className="font-bold text-slate-900 text-sm">
+                {supervisaoAtual.turma.nome} ({supervisaoAtual.horaInicio}–{supervisaoAtual.horaFim})
+              </div>
+            </div>
+          ) : (
+            <p className="text-xs text-slate-400 py-1">
+              Nenhuma supervisão regular agendada para o dia de hoje.
+            </p>
+          )}
+
+          {/* Estudos Dirigidos / Leituras de Hoje */}
+          <div>
+            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1.5">
+              Estudo Dirigido / Leitura Prevista
+            </span>
+            {estudosDirigidosHoje.length === 0 ? (
+              <p className="text-xs text-slate-400">
+                Nenhum estudo dirigido programado para hoje.
+              </p>
+            ) : (
+              <div className="space-y-1.5">
+                {estudosDirigidosHoje.map((est, i) => (
+                  <div
+                    key={i}
+                    className="p-2.5 rounded-lg bg-amber-50 border border-amber-200 text-xs"
+                  >
+                    <div className="font-bold text-slate-900">
+                      {est.tema || est.artigo_leitura}
+                    </div>
+                    <div className="text-[11px] text-slate-600 mt-0.5">
+                      Responsável: <strong>{est.responsavel_nome || 'Estudante titular'}</strong>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Prazos Finais de Hoje */}
+          {prazosHoje.length > 0 && (
+            <div className="pt-2 border-t border-slate-100">
+              <span className="text-[11px] font-bold text-red-600 uppercase tracking-wider flex items-center gap-1 mb-1">
+                <AlertTriangle className="w-3 h-3" />
+                <span>Prazos que Vencem Hoje!</span>
+              </span>
+              <div className="space-y-1">
+                {prazosHoje.map(p => (
+                  <div key={p.marco_id} className="text-xs text-red-900 font-semibold">
+                    • {p.nome}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* CARD: PRÓXIMA SUPERVISÃO */}
+        <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs space-y-3">
+          <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+            <div className="flex items-center gap-2">
+              <Calendar className="w-4 h-4 text-slate-700" />
+              <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider">
+                Próxima Supervisão
+              </h3>
+            </div>
+            {proximaSupervisao && (
+              <span className="text-[11px] font-mono bg-slate-100 text-slate-700 px-2 py-0.5 rounded">
+                Em {proximaSupervisao.diasAte === 0 ? 'hoje' : `${proximaSupervisao.diasAte} dia(s)`}
+              </span>
+            )}
+          </div>
+
+          {!proximaSupervisao ? (
+            <p className="text-xs text-slate-400 py-4">
+              Nenhuma supervisão agendada nos próximos 14 dias.
+            </p>
+          ) : (
+            <div className="space-y-3">
+              <div>
+                <h4 className="text-base font-bold text-slate-900">
+                  {proximaSupervisao.turma.nome}
+                </h4>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  {proximaSupervisao.diaSemanaNome} · <strong className="font-mono text-slate-800">{proximaSupervisao.dataProxima}</strong>
+                </p>
+                <p className="text-xs font-mono text-slate-700 mt-1 font-semibold">
+                  Horário: {proximaSupervisao.horaInicio}–{proximaSupervisao.horaFim}
+                </p>
+              </div>
+
+              <div className="pt-2 flex items-center gap-2">
+                <button
+                  onClick={() => onIniciarSupervisao(proximaSupervisao.turma.turma_id)}
+                  className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-colors shadow-xs"
+                >
+                  <Play className="w-3.5 h-3.5 fill-current" />
+                  <span>Acessar Modo Supervisão</span>
+                </button>
+                <button
+                  onClick={() => onOpenTurma(proximaSupervisao.turma.turma_id)}
+                  className="px-3.5 py-2 border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-xl text-xs font-semibold cursor-pointer"
+                >
+                  Ver Turma
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* 3. SEÇÃO: PRECISA DA SUA ATENÇÃO (Somente Itens Acionáveis) */}
+      <section className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs space-y-3">
+        <div className="flex items-center justify-between pb-2 border-b border-slate-100">
           <div className="flex items-center gap-2">
-            <GraduationCap className="w-4 h-4 text-slate-700" />
-            <h3 className="text-sm font-bold text-slate-900 tracking-tight uppercase tracking-wider text-[11px]">
-              Suas Turmas / Aulas
+            <AlertCircle className="w-4 h-4 text-red-600" />
+            <h3 className="text-sm font-bold text-slate-900 tracking-tight">
+              Precisa da sua Atenção
             </h3>
           </div>
-          <span className="text-xs text-slate-400">
-            {turmas.length} {turmas.length === 1 ? 'turma cadastrada' : 'turmas cadastradas'}
+          <span className="text-xs font-semibold text-slate-500">
+            {pendenciasAtencao.length} item(ns) acionável(is)
           </span>
         </div>
 
-        {turmas.length === 0 ? (
-          <div className="bg-white border border-slate-200 rounded-xl p-8 text-center text-xs text-slate-500">
-            Nenhuma turma encontrada para o período {currentPeriodo?.nome}.
+        {pendenciasAtencao.length === 0 ? (
+          <div className="p-8 text-center text-xs text-slate-400">
+            <CheckCircle2 className="w-8 h-8 text-emerald-500 mx-auto mb-2 opacity-80" />
+            <p className="font-bold text-slate-700 text-sm">Tudo regularizado!</p>
+            <p className="text-slate-400 mt-0.5">
+              Não há chamadas pendentes, justificativas aguardando análise ou prazos vencidos.
+            </p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-4">
-            {turmas.map(turma => {
-              const disc = disciplinas.find(d => d.disciplina_id === turma.disciplina_id);
-              const qtdAlunos = countAlunosDaTurma(turma.turma_id);
-              const horarios = getHorariosDaTurma(turma.turma_id);
-              const origens = getOrigensDaTurma(turma.turma_id);
-
-              return (
-                <div
-                  key={turma.turma_id}
-                  className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs hover:border-slate-300 transition-all flex flex-col justify-between"
-                >
+          <div className="divide-y divide-slate-100">
+            {pendenciasAtencao.map(item => (
+              <div
+                key={item.id}
+                className="py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs hover:bg-slate-50 px-2 rounded-lg transition-colors"
+              >
+                <div className="flex items-start gap-2.5">
+                  <span
+                    className={`mt-0.5 px-2 py-0.5 rounded font-mono font-bold text-[10px] uppercase shrink-0 ${
+                      item.urgencia === 'CRITICA'
+                        ? 'bg-red-100 text-red-800'
+                        : item.urgencia === 'ALTA'
+                        ? 'bg-amber-100 text-amber-800'
+                        : 'bg-blue-100 text-blue-800'
+                    }`}
+                  >
+                    {item.tipo}
+                  </span>
                   <div>
-                    {/* Top Row: Shift & Discipline */}
-                    <div className="flex items-center justify-between text-[11px] text-slate-500 mb-1.5">
-                      <span className="font-semibold text-slate-700">{disc?.nome}</span>
-                      <span className="bg-slate-100 text-slate-700 font-medium px-2 py-0.5 rounded text-[10px]">
-                        {turma.turno}
-                      </span>
-                    </div>
-
-                    {/* Class Name */}
-                    <h4 className="text-base font-bold text-slate-900 leading-snug">
-                      {turma.nome}
-                    </h4>
-
-                    {/* Schedule times (from horarios_turma) */}
-                    <div className="mt-2.5 space-y-1">
-                      {horarios.length > 0 ? (
-                        horarios.map(h => (
-                          <div
-                            key={h.horario_id}
-                            className="flex items-center gap-1.5 text-xs text-slate-600"
-                          >
-                            <Clock className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                            <span>
-                              {diasSemanaNome[h.dia_semana]} ·{' '}
-                              <span className="font-mono tabular-nums font-medium text-slate-800">
-                                {h.hora_inicio} às {h.hora_fim}
-                              </span>
-                            </span>
-                          </div>
-                        ))
-                      ) : (
-                        <div className="flex items-center gap-1.5 text-xs text-slate-400">
-                          <Clock className="w-3.5 h-3.5" />
-                          <span>Horário semanal a definir</span>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Docente Online external codes */}
-                    {origens.length > 0 && (
-                      <div className="mt-2.5 pt-2 border-t border-slate-100 flex items-center gap-1.5 text-[11px] text-slate-500 flex-wrap">
-                        <span className="text-slate-400">Docente Online:</span>
-                        {origens.map(orig => (
-                          <span
-                            key={orig.origem_id}
-                            className="font-mono text-[10px] bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded"
-                            title={orig.nome_externo}
-                          >
-                            {orig.codigo_externo}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Bottom Stats & Actions */}
-                  <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-1.5 text-xs text-slate-600 font-medium">
-                      <Users className="w-3.5 h-3.5 text-slate-400" />
-                      <span>{qtdAlunos} alunos</span>
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => onOpenTurma(turma.turma_id)}
-                        className="px-3 py-2 rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-50 text-xs font-medium transition-colors cursor-pointer"
-                      >
-                        Abrir Turma
-                      </button>
-                      <button
-                        onClick={() => onIniciarSupervisao(turma.turma_id)}
-                        className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold shadow-xs transition-colors cursor-pointer active:scale-98"
-                      >
-                        <Play className="w-3 h-3 fill-current" />
-                        <span>Iniciar Supervisão</span>
-                      </button>
-                    </div>
+                    <span className="font-bold text-slate-900 block">{item.titulo}</span>
+                    <span className="text-slate-600 text-[11px] mt-0.5 block">{item.descricao}</span>
                   </div>
                 </div>
-              );
-            })}
+
+                <button
+                  onClick={() => {
+                    if (item.tipo === 'CHAMADA' && item.turma_id) {
+                      onIniciarSupervisao(item.turma_id);
+                    } else {
+                      onNavigateToTab(item.targetTab, item.targetParam);
+                    }
+                  }}
+                  className="px-3 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-100 font-semibold text-slate-700 text-xs shrink-0 self-start sm:self-auto cursor-pointer flex items-center gap-1"
+                >
+                  <span>Resolver</span>
+                  <ChevronRight className="w-3 h-3" />
+                </button>
+              </div>
+            ))}
           </div>
         )}
       </section>
 
-      {/* 2. SEÇÃO: PRECISA DA SUA ATENÇÃO (Operacional e Rápida) */}
-      <section>
-        <div className="flex items-center gap-2 mb-3">
-          <AlertTriangle className="w-4 h-4 text-amber-500" />
-          <h3 className="text-sm font-bold text-slate-900 tracking-tight uppercase tracking-wider text-[11px]">
-            Precisa da sua Atenção
-          </h3>
-        </div>
-
-        <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-4 gap-3">
-          {/* Card: Orientações Abertas */}
+      {/* 4. SEÇÃO: PRÓXIMOS PRAZOS (Marcos Acadêmicos Relevantes) */}
+      <section className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs space-y-3">
+        <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+          <div className="flex items-center gap-2">
+            <CalendarCheck className="w-4 h-4 text-slate-700" />
+            <h3 className="text-sm font-bold text-slate-900 tracking-tight">
+              Próximos Prazos e Marcos Acadêmicos
+            </h3>
+          </div>
           <button
-            onClick={() => onNavigateToTab('pendencias', 'orientacoes')}
-            className="bg-white border border-slate-200 rounded-xl p-3.5 text-left hover:border-slate-300 transition-colors shadow-xs group"
+            onClick={() => onNavigateToTab('calendario')}
+            className="text-xs text-blue-600 hover:underline font-semibold"
           >
-            <div className="flex items-center justify-between text-xs text-slate-500 mb-1">
-              <span>Orientações Abertas</span>
-              <ChevronRight className="w-3.5 h-3.5 text-slate-400 group-hover:translate-x-0.5 transition-transform" />
-            </div>
-            <div className="text-2xl font-bold font-mono text-slate-900 tabular-nums">
-              {orientacoesAbertas}
-            </div>
-            <div className="text-[11px] text-amber-700 mt-1 flex items-center gap-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
-              <span>Aguardando retorno</span>
-            </div>
-          </button>
-
-          {/* Card: Documentos Pendentes */}
-          <button
-            onClick={() => onNavigateToTab('pendencias', 'documentos')}
-            className="bg-white border border-slate-200 rounded-xl p-3.5 text-left hover:border-slate-300 transition-colors shadow-xs group"
-          >
-            <div className="flex items-center justify-between text-xs text-slate-500 mb-1">
-              <span>Documentos Pendentes</span>
-              <ChevronRight className="w-3.5 h-3.5 text-slate-400 group-hover:translate-x-0.5 transition-transform" />
-            </div>
-            <div className="text-2xl font-bold font-mono text-slate-900 tabular-nums">
-              {docsPendentes}
-            </div>
-            <div className="text-[11px] text-slate-500 mt-1">TCLE, Termos e fichas</div>
-          </button>
-
-          {/* Card: Faltas sem Justificativa */}
-          <button
-            onClick={() => onNavigateToTab('frequencia')}
-            className="bg-white border border-slate-200 rounded-xl p-3.5 text-left hover:border-slate-300 transition-colors shadow-xs group"
-          >
-            <div className="flex items-center justify-between text-xs text-slate-500 mb-1">
-              <span>Faltas Injustificadas</span>
-              <ChevronRight className="w-3.5 h-3.5 text-slate-400 group-hover:translate-x-0.5 transition-transform" />
-            </div>
-            <div className="text-2xl font-bold font-mono text-slate-900 tabular-nums">
-              {faltasInjustificadas}
-            </div>
-            <div className="text-[11px] text-red-600 mt-1 flex items-center gap-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
-              <span>Docente Online</span>
-            </div>
-          </button>
-
-          {/* Card: Registros Semanais */}
-          <button
-            onClick={() => onNavigateToTab('pendencias', 'registros')}
-            className="bg-white border border-slate-200 rounded-xl p-3.5 text-left hover:border-slate-300 transition-colors shadow-xs group"
-          >
-            <div className="flex items-center justify-between text-xs text-slate-500 mb-1">
-              <span>Registros Faltantes</span>
-              <ChevronRight className="w-3.5 h-3.5 text-slate-400 group-hover:translate-x-0.5 transition-transform" />
-            </div>
-            <div className="text-2xl font-bold font-mono text-slate-900 tabular-nums">
-              {registrosFaltantes}
-            </div>
-            <div className="text-[11px] text-slate-500 mt-1">Sem entrega registrada</div>
+            Ver Calendário Completo
           </button>
         </div>
+
+        {proximosMarcos.length === 0 ? (
+          <p className="text-xs text-slate-400 py-3 text-center">
+            Nenhum marco acadêmico futuro cadastrado para este período.
+          </p>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
+            {proximosMarcos.map(m => (
+              <div
+                key={m.marco_id}
+                className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1 text-xs"
+              >
+                <span className="font-mono text-[10px] text-slate-500 block">
+                  Prazo: <strong className="text-slate-800">{m.data_prazo}</strong>
+                </span>
+                <div className="font-bold text-slate-900 leading-snug">{m.nome}</div>
+                {m.observacao && (
+                  <div className="text-[11px] text-slate-500 truncate">{m.observacao}</div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
       </section>
 
-      {/* 3. SEÇÃO: PRÓXIMOS MARCOS ACADÊMICOS */}
-      <section>
-        <div className="flex items-center gap-2 mb-3">
-          <Calendar className="w-4 h-4 text-slate-700" />
-          <h3 className="text-sm font-bold text-slate-900 tracking-tight uppercase tracking-wider text-[11px]">
-            Próximos Marcos e Prazos do Semestre
-          </h3>
+      {/* 5. ATALHOS COMPACTOS DAS TURMAS (Sem duplicar a tela administrativa de Turmas) */}
+      <section className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs space-y-3">
+        <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+          <div className="flex items-center gap-2">
+            <Users className="w-4 h-4 text-slate-700" />
+            <h3 className="text-sm font-bold text-slate-900 tracking-tight">
+              Atalhos Rápidos de Turmas
+            </h3>
+          </div>
+          <button
+            onClick={() => onNavigateToTab('turmas')}
+            className="text-xs text-blue-600 hover:underline font-semibold"
+          >
+            Gestão Completa de Turmas
+          </button>
         </div>
 
-        <div className="bg-white border border-slate-200 rounded-xl divide-y divide-slate-100 overflow-hidden shadow-xs">
-          {marcosDoPeriodo.length === 0 ? (
-            <div className="p-4 text-center text-xs text-slate-400">
-              Nenhum marco cadastrado para este período.
-            </div>
-          ) : (
-            marcosDoPeriodo.map(marco => {
-              const isConcluido = marco.status === 'CONCLUIDO';
-              const dataParts = marco.data_prazo.split('-');
-              const dataFormatada =
-                dataParts.length === 3 ? `${dataParts[2]}/${dataParts[1]}/${dataParts[0]}` : marco.data_prazo;
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+          {turmas.map(t => {
+            const count = matriculas.filter(m => m.turma_id === t.turma_id && m.status === 'MATRICULADO').length;
+            const hor = horariosTurma.find(h => h.turma_id === t.turma_id && h.ativo);
+            const orig = turmasOrigem.filter(o => o.turma_id === t.turma_id && o.ativo);
 
-              return (
-                <div
-                  key={marco.marco_id}
-                  className="p-3.5 flex items-center justify-between gap-3 text-xs"
-                >
-                  <div className="flex items-center gap-3">
-                    <div
-                      className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 ${
-                        isConcluido
-                          ? 'bg-emerald-50 text-emerald-600'
-                          : 'bg-slate-100 text-slate-500'
-                      }`}
-                    >
-                      {isConcluido ? (
-                        <CheckCircle2 className="w-4 h-4" />
-                      ) : (
-                        <Clock className="w-3.5 h-3.5" />
-                      )}
-                    </div>
-                    <div>
-                      <div className={`font-semibold ${isConcluido ? 'line-through text-slate-400' : 'text-slate-900'}`}>
-                        {marco.nome}
-                      </div>
-                      <div className="text-[11px] text-slate-400">
-                        {marco.observacao || marco.tipo}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="text-right shrink-0">
-                    <div className="font-mono font-medium text-slate-700 tabular-nums">
-                      {dataFormatada}
-                    </div>
-                    <span
-                      className={`text-[10px] font-medium ${
-                        isConcluido ? 'text-emerald-700' : 'text-amber-700'
-                      }`}
-                    >
-                      {isConcluido ? 'Concluído' : 'Pendente'}
+            return (
+              <div
+                key={t.turma_id}
+                className="p-3.5 rounded-xl border border-slate-200 hover:border-slate-300 bg-slate-50/50 flex flex-col justify-between gap-2.5 transition-colors"
+              >
+                <div>
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-slate-900 text-xs">{t.nome}</span>
+                    <span className="text-[10px] bg-slate-200 text-slate-700 px-1.5 py-0.5 rounded font-medium">
+                      {t.turno}
                     </span>
                   </div>
+                  <p className="text-[11px] text-slate-500 mt-1">
+                    {count} estudante(s) · {hor ? `${hor.hora_inicio}–${hor.hora_fim}` : 'Horário a definir'}
+                  </p>
+                  {orig.length > 0 && (
+                    <div className="flex items-center gap-1 mt-1 text-[10px] font-mono text-slate-400 truncate">
+                      <span>Docente Online:</span>
+                      {orig.map(o => (
+                        <span key={o.origem_id} className="bg-white px-1 border border-slate-200 rounded">
+                          {o.codigo_externo}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </div>
-              );
-            })
-          )}
+
+                <div className="flex items-center gap-2 pt-1 border-t border-slate-200/60">
+                  <button
+                    onClick={() => onIniciarSupervisao(t.turma_id)}
+                    className="flex-1 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-semibold flex items-center justify-center gap-1 cursor-pointer transition-colors"
+                  >
+                    <Play className="w-3 h-3 fill-current" />
+                    <span>Modo Supervisão</span>
+                  </button>
+                  <button
+                    onClick={() => onOpenTurma(t.turma_id)}
+                    className="py-1.5 px-2.5 bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 rounded-lg text-xs font-medium cursor-pointer"
+                  >
+                    Detalhes
+                  </button>
+                </div>
+              </div>
+            );
+          })}
         </div>
       </section>
     </div>

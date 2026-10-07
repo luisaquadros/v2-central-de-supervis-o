@@ -120,7 +120,10 @@ export const AlunosListView: React.FC<AlunosListViewProps> = ({ onOpenAluno }) =
                     <div className="flex items-center gap-2">
                       <span className="font-bold text-slate-900 text-sm">{aluno!.nome}</span>
                       {resumo?.temAtencao && (
-                        <span className="text-amber-500 font-bold" title="Requer atenção">
+                        <span
+                          className="text-amber-500 font-bold cursor-help"
+                          title={`${resumo.motivosAtencao.length} pendências:\n${resumo.motivosAtencao.map(m => `· ${m}`).join('\n')}`}
+                        >
                           ⚠
                         </span>
                       )}
@@ -136,9 +139,16 @@ export const AlunosListView: React.FC<AlunosListViewProps> = ({ onOpenAluno }) =
 
                 <div className="flex items-center gap-4 text-xs text-slate-600">
                   <div className="text-right">
-                    <span className="text-[11px] text-slate-400 block">Registros</span>
+                    <span className="text-[11px] text-slate-400 block" title="Entregues de esperados até hoje (total previsto no período)">
+                      Registros RSS
+                    </span>
                     <span className="font-mono font-bold text-slate-900">
-                      {resumo?.totalRegistrosEntregues} / 12
+                      {resumo?.totalRegistrosEntregues ?? 0}
+                      <span className="text-slate-400 font-normal"> de </span>
+                      {resumo?.totalRegistrosEsperados ?? 0}
+                    </span>
+                    <span className="block text-[10px] text-slate-400">
+                      ({resumo?.totalPrevistoNoPeriodo ?? 12} previstos)
                     </span>
                   </div>
 

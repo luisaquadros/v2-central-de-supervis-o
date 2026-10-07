@@ -34,126 +34,59 @@ export const PendenciasView: React.FC<PendenciasViewProps> = ({
     registrosSemanais,
     statusRssUnidades,
     getStatusRssUnidade,
+    getSituacaoRssEstudante,
+    getPendenciasCanonicas,
     frequencias,
     caixaEntrada,
   } = useSupervisao();
 
-  const [categoriaAtiva, setCategoriaAtiva] = useState<'OBJETIVA' | 'ATENCAO' | 'CAIXA_ENTRADA' | 'INCONSISTENCIA'>('OBJETIVA');
+  const [categoriaAtiva, setCategoriaAtiva] = useState<'OBJETIVA' | 'ATENCAO' | 'CAIXA_ENTRADA' | 'INCONSISTENCIA'>(() => {
+    if (initialFilterType === 'ATENCAO' || initialFilterType === 'orientacoes' || initialFilterType === 'faltas') return 'ATENCAO';
+    if (initialFilterType === 'CAIXA_ENTRADA' || initialFilterType === 'caixa') return 'CAIXA_ENTRADA';
+    if (initialFilterType === 'INCONSISTENCIA') return 'INCONSISTENCIA';
+    return 'OBJETIVA';
+  });
   const [turmaFiltro, setTurmaFiltro] = useState<string>('TODAS');
 
-  const turmasIds = turmas.map(t => t.turma_id);
-  const matriculasDoPeriodo = matriculas.filter(
-    m => (turmaFiltro === 'TODAS' || m.turma_id === turmaFiltro) && turmasIds.includes(m.turma_id)
-  );
-
-  // A. PENDÊNCIAS OBJETIVAS (Algo faltando/atrasado de fato)
-  const pendenciasObjetivas: {
-    id: string;
-    tipo: string;
-    alunoNome: string;
-    alunoRa: string;
-    turmaNome: string;
-    matriculaId: string;
-    titulo: string;
-    detalhe: string;
-  }[] = [];
-
-  // Documentos pendentes
-  documentos
-    .filter(d => d.status === 'PENDENTE')
-    .forEach(d => {
-      const mat = matriculas.find(m => m.matricula_id === d.matricula_id);
-      if (!mat || (turmaFiltro !== 'TODAS' && mat.turma_id !== turmaFiltro)) return;
-      const al = alunos.find(a => a.aluno_id === mat.aluno_id);
-      const tur = turmas.find(t => t.turma_id === mat.turma_id);
-      pendenciasObjetivas.push({
-        id: d.documento_id,
-        tipo: 'Documentação Pendente',
-        alunoNome: al ? al.nome : 'Estudante',
-        alunoRa: al ? al.identificador_academico : '',
-        turmaNome: tur ? tur.nome : '',
-        matriculaId: d.matricula_id,
-        titulo: `Entrega pendente: ${d.tipo}`,
-        detalhe: d.observacao || 'Documento obrigatório aguardando envio',
-      });
-    });
-
-  // RSS de semanas encerradas em atraso (consumindo status da unidade da base oficial)
-  matriculasDoPeriodo.forEach(m => {
-    const rssMat = getStatusRssUnidade(m.turma_id, m.matricula_id);
-    const entregas = registrosSemanais.filter(r => r.matricula_id === m.matricula_id && r.status === 'ENTREGUE').length;
-    const esperado = rssMat?.total_esperado_ate_hoje !== undefined && rssMat?.total_esperado_ate_hoje !== null
-      ? Number(rssMat.total_esperado_ate_hoje)
-      : 0;
-
-    const estaAtrasado = rssMat?.status_semanal === 'ATRASADO' || rssMat?.status_semanal === 'PENDENTE' || (esperado > 0 && esperado > entregas);
-
-    if (estaAtrasado) {
-      const al = alunos.find(a => a.aluno_id === m.aluno_id);
-      const tur = turmas.find(t => t.turma_id === m.turma_id);
-      pendenciasObjetivas.push({
-        id: `rss-${m.matricula_id}`,
-        tipo: 'RSS em Atraso',
-        alunoNome: al ? al.nome : 'Estudante',
-        alunoRa: al ? al.identificador_academico : '',
-        turmaNome: tur ? tur.nome : '',
-        matriculaId: m.matricula_id,
-        titulo: `RSS: ${rssMat?.status_semanal || 'Pendente'}`,
-        detalhe: `${entregas} entregas registradas${esperado > 0 ? ` de ${esperado} esperadas até o momento` : ''}`,
-      });
-    }
+  const todasPendenciasCanonicas = getPendenciasCanonicas().filter(p => {
+    if (turmaFiltro === 'TODAS') return true;
+    return p.turma_id === turmaFiltro;
   });
 
-  // B. PONTOS DE ATENÇÃO (Acompanhamento pedagógico)
-  const pontosDeAtencao: {
-    id: string;
-    tipo: string;
-    alunoNome: string;
-    alunoRa: string;
-    turmaNome: string;
-    matriculaId: string;
-    titulo: string;
-    detalhe: string;
-  }[] = [];
-
-  // Faltas sem justificativa
-  frequencias
-    .filter(f => f.status === 'FALTA_SEM_JUSTIFICATIVA')
-    .forEach(f => {
-      const mat = matriculas.find(m => m.matricula_id === f.matricula_id);
-      if (!mat || (turmaFiltro !== 'TODAS' && mat.turma_id !== turmaFiltro)) return;
-      const al = alunos.find(a => a.aluno_id === mat.aluno_id);
-      const tur = turmas.find(t => t.turma_id === mat.turma_id);
-      pontosDeAtencao.push({
-        id: f.frequencia_id,
-        tipo: 'Falta Injustificada',
-        alunoNome: al ? al.nome : 'Estudante',
+  // A. PENDÊNCIAS OBJETIVAS (Algo faltando/atrasado de fato)
+  const pendenciasObjetivas = todasPendenciasCanonicas
+    .filter(p => p.tipo === 'DOCUMENTO' || p.tipo === 'RSS_ATRASADO' || p.tipo === 'PRAZO')
+    .map(p => {
+      const mat = matriculas.find(m => m.matricula_id === p.matricula_id);
+      const al = mat ? alunos.find(a => a.aluno_id === mat.aluno_id) : null;
+      return {
+        id: p.id,
+        tipo: p.tipo === 'DOCUMENTO' ? 'Documentação Pendente' : p.tipo === 'RSS_ATRASADO' ? 'RSS em Atraso' : 'Prazos Vencidos',
+        alunoNome: p.aluno_nome || 'Estudante',
         alunoRa: al ? al.identificador_academico : '',
-        turmaNome: tur ? tur.nome : '',
-        matriculaId: f.matricula_id,
-        titulo: `Ausência sem justificativa em aula`,
-        detalhe: `Data da aula: ${f.data_aula}`,
-      });
+        turmaNome: p.turma_nome || '',
+        matriculaId: p.matricula_id || '',
+        titulo: p.titulo,
+        detalhe: p.descricao,
+      };
     });
 
-  // Orientações abertas
-  orientacoes
-    .filter(o => o.status === 'ABERTA')
-    .forEach(o => {
-      const mat = matriculas.find(m => m.matricula_id === o.matricula_id);
-      if (!mat || (turmaFiltro !== 'TODAS' && mat.turma_id !== turmaFiltro)) return;
-      const al = alunos.find(a => a.aluno_id === mat.aluno_id);
-      const tur = turmas.find(t => t.turma_id === mat.turma_id);
-      pontosDeAtencao.push({
-        id: o.orientacao_id,
-        tipo: 'Orientação em Aberto',
-        alunoNome: al ? al.nome : 'Estudante',
+  // B. PONTOS DE ATENÇÃO (Acompanhamento pedagógico)
+  const pontosDeAtencao = todasPendenciasCanonicas
+    .filter(p => p.tipo === 'FALTA_INJUSTIFICADA' || p.tipo === 'ORIENTACAO' || p.tipo === 'JUSTIFICATIVA' || p.tipo === 'CHAMADA')
+    .map(p => {
+      const mat = matriculas.find(m => m.matricula_id === p.matricula_id);
+      const al = mat ? alunos.find(a => a.aluno_id === mat.aluno_id) : null;
+      return {
+        id: p.id,
+        tipo: p.tipo === 'FALTA_INJUSTIFICADA' ? 'Falta Injustificada' : p.tipo === 'ORIENTACAO' ? 'Orientação em Aberto' : p.tipo === 'JUSTIFICATIVA' ? 'Justificativa Pendente' : 'Chamada Pendente',
+        alunoNome: p.aluno_nome || (p.tipo === 'CHAMADA' ? 'Turma' : 'Estudante'),
         alunoRa: al ? al.identificador_academico : '',
-        turmaNome: tur ? tur.nome : '',
-        matriculaId: o.matricula_id,
-        titulo: `Orientação pedagógica aguardando acompanhamento`,
-        detalhe: `[${o.categoria}]: "${o.texto}"`,
-      });
+        turmaNome: p.turma_nome || '',
+        matriculaId: p.matricula_id || '',
+        titulo: p.titulo,
+        detalhe: p.descricao,
+      };
     });
 
   // C. CAIXA DE ENTRADA PENDENTE
@@ -175,6 +108,16 @@ export const PendenciasView: React.FC<PendenciasViewProps> = ({
       });
     }
   });
+
+  // Garante que o usuário veja a categoria com pendências imediatamente caso OBJETIVA esteja zerada
+  const categoriaEfetiva = React.useMemo(() => {
+    if (categoriaAtiva === 'OBJETIVA' && pendenciasObjetivas.length === 0) {
+      if (pontosDeAtencao.length > 0) return 'ATENCAO';
+      if (itensCaixaPendente.length > 0) return 'CAIXA_ENTRADA';
+      if (inconsistencias.length > 0) return 'INCONSISTENCIA';
+    }
+    return categoriaAtiva;
+  }, [categoriaAtiva, pendenciasObjetivas.length, pontosDeAtencao.length, itensCaixaPendente.length, inconsistencias.length]);
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto pb-12">
@@ -218,7 +161,7 @@ export const PendenciasView: React.FC<PendenciasViewProps> = ({
         <button
           onClick={() => setCategoriaAtiva('OBJETIVA')}
           className={`p-4 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
-            categoriaAtiva === 'OBJETIVA'
+            categoriaEfetiva === 'OBJETIVA'
               ? 'bg-slate-900 text-white border-slate-900 shadow-xs'
               : 'bg-white border-slate-200 hover:border-slate-300 text-slate-700'
           }`}
@@ -228,7 +171,7 @@ export const PendenciasView: React.FC<PendenciasViewProps> = ({
             <AlertCircle className="w-4 h-4 text-red-400" />
           </div>
           <span className="text-xl font-black">{pendenciasObjetivas.length}</span>
-          <span className={`text-[11px] mt-1 ${categoriaAtiva === 'OBJETIVA' ? 'text-slate-300' : 'text-slate-400'}`}>
+          <span className={`text-[11px] mt-1 ${categoriaEfetiva === 'OBJETIVA' ? 'text-slate-300' : 'text-slate-400'}`}>
             Faltando / Atrasado
           </span>
         </button>
@@ -236,7 +179,7 @@ export const PendenciasView: React.FC<PendenciasViewProps> = ({
         <button
           onClick={() => setCategoriaAtiva('ATENCAO')}
           className={`p-4 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
-            categoriaAtiva === 'ATENCAO'
+            categoriaEfetiva === 'ATENCAO'
               ? 'bg-slate-900 text-white border-slate-900 shadow-xs'
               : 'bg-white border-slate-200 hover:border-slate-300 text-slate-700'
           }`}
@@ -246,7 +189,7 @@ export const PendenciasView: React.FC<PendenciasViewProps> = ({
             <Clock className="w-4 h-4 text-amber-400" />
           </div>
           <span className="text-xl font-black">{pontosDeAtencao.length}</span>
-          <span className={`text-[11px] mt-1 ${categoriaAtiva === 'ATENCAO' ? 'text-slate-300' : 'text-slate-400'}`}>
+          <span className={`text-[11px] mt-1 ${categoriaEfetiva === 'ATENCAO' ? 'text-slate-300' : 'text-slate-400'}`}>
             Acompanhamento
           </span>
         </button>
@@ -254,7 +197,7 @@ export const PendenciasView: React.FC<PendenciasViewProps> = ({
         <button
           onClick={() => setCategoriaAtiva('CAIXA_ENTRADA')}
           className={`p-4 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
-            categoriaAtiva === 'CAIXA_ENTRADA'
+            categoriaEfetiva === 'CAIXA_ENTRADA'
               ? 'bg-slate-900 text-white border-slate-900 shadow-xs'
               : 'bg-white border-slate-200 hover:border-slate-300 text-slate-700'
           }`}
@@ -264,7 +207,7 @@ export const PendenciasView: React.FC<PendenciasViewProps> = ({
             <Inbox className="w-4 h-4 text-indigo-400" />
           </div>
           <span className="text-xl font-black">{itensCaixaPendente.length}</span>
-          <span className={`text-[11px] mt-1 ${categoriaAtiva === 'CAIXA_ENTRADA' ? 'text-slate-300' : 'text-slate-400'}`}>
+          <span className={`text-[11px] mt-1 ${categoriaEfetiva === 'CAIXA_ENTRADA' ? 'text-slate-300' : 'text-slate-400'}`}>
             Não Classificados
           </span>
         </button>
@@ -272,7 +215,7 @@ export const PendenciasView: React.FC<PendenciasViewProps> = ({
         <button
           onClick={() => setCategoriaAtiva('INCONSISTENCIA')}
           className={`p-4 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
-            categoriaAtiva === 'INCONSISTENCIA'
+            categoriaEfetiva === 'INCONSISTENCIA'
               ? 'bg-slate-900 text-white border-slate-900 shadow-xs'
               : 'bg-white border-slate-200 hover:border-slate-300 text-slate-700'
           }`}
@@ -282,7 +225,7 @@ export const PendenciasView: React.FC<PendenciasViewProps> = ({
             <ShieldAlert className="w-4 h-4 text-purple-400" />
           </div>
           <span className="text-xl font-black">{inconsistencias.length}</span>
-          <span className={`text-[11px] mt-1 ${categoriaAtiva === 'INCONSISTENCIA' ? 'text-slate-300' : 'text-slate-400'}`}>
+          <span className={`text-[11px] mt-1 ${categoriaEfetiva === 'INCONSISTENCIA' ? 'text-slate-300' : 'text-slate-400'}`}>
             Auditoria / Base
           </span>
         </button>
@@ -291,7 +234,7 @@ export const PendenciasView: React.FC<PendenciasViewProps> = ({
       {/* List Content */}
       <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs space-y-4">
         {/* A. Pendência Objetiva */}
-        {categoriaAtiva === 'OBJETIVA' && (
+        {categoriaEfetiva === 'OBJETIVA' && (
           <div className="space-y-3">
             <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400">
               Pendências Objetivas ({pendenciasObjetivas.length})
@@ -326,7 +269,7 @@ export const PendenciasView: React.FC<PendenciasViewProps> = ({
         )}
 
         {/* B. Ponto de Atenção */}
-        {categoriaAtiva === 'ATENCAO' && (
+        {categoriaEfetiva === 'ATENCAO' && (
           <div className="space-y-3">
             <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400">
               Pontos de Atenção Pedagógica ({pontosDeAtencao.length})
@@ -361,7 +304,7 @@ export const PendenciasView: React.FC<PendenciasViewProps> = ({
         )}
 
         {/* C. Caixa de Entrada Pendente */}
-        {categoriaAtiva === 'CAIXA_ENTRADA' && (
+        {categoriaEfetiva === 'CAIXA_ENTRADA' && (
           <div className="space-y-3">
             <div className="flex items-center justify-between">
               <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400">
@@ -398,7 +341,7 @@ export const PendenciasView: React.FC<PendenciasViewProps> = ({
         )}
 
         {/* D. Inconsistência de Dados */}
-        {categoriaAtiva === 'INCONSISTENCIA' && (
+        {categoriaEfetiva === 'INCONSISTENCIA' && (
           <div className="space-y-3">
             <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400">
               Inconsistências Identificadas na Base ({inconsistencias.length})

@@ -9,6 +9,7 @@ import {
   Settings,
   ChevronDown,
   Layers,
+  CalendarCheck,
 } from 'lucide-react';
 import { useSupervisao } from '../context/SupervisaoContext';
 import { NavTab } from '../types';
@@ -31,9 +32,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
     periodos,
     selectedPeriodoId,
     setSelectedPeriodoId,
+    turmas,
+    matriculas,
     orientacoes,
     documentos,
     frequencias,
+    getSituacaoRssEstudante,
+    getPendenciasCanonicas,
+    registrosSemanais,
     connectionStatus,
     saveStatus,
     currentUser,
@@ -42,16 +48,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
     logoutGoogle,
   } = useSupervisao();
 
-  // Quick total attention count
-  const openOrientacoes = orientacoes.filter(o => o.status === 'ABERTA').length;
-  const pendingDocs = documentos.filter(d => d.status === 'PENDENTE').length;
-  const unexcusedAbsences = frequencias.filter(f => f.status === 'FALTA_SEM_JUSTIFICATIVA').length;
-  const totalAlerts = openOrientacoes + pendingDocs + unexcusedAbsences;
+  // Total unificado de itens que vem da coleção canônica de pendências
+  const totalAlerts = getPendenciasCanonicas().length;
 
   const currentPeriodo = periodos.find(p => p.periodo_id === selectedPeriodoId);
 
   const navItems = [
-    { id: 'hoje' as NavTab, label: 'Hoje', icon: LayoutDashboard },
+    { id: 'hoje' as NavTab, label: 'Hoje / Dashboard', icon: LayoutDashboard },
+    { id: 'frequencia' as NavTab, label: 'Frequência', icon: CalendarCheck },
     { id: 'turmas' as NavTab, label: 'Turmas', icon: Users },
     { id: 'alunos' as NavTab, label: 'Alunos', icon: GraduationCap },
     { id: 'avaliacao' as NavTab, label: 'Avaliação', icon: Award },
@@ -260,21 +264,35 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </div>
         )}
 
-        {/* Save status notification */}
+        {/* Save status notification with strict differentiation between local and Google Sheets */}
         {saveStatus === 'SALVANDO' && (
           <div className="text-[10px] font-semibold text-amber-600 flex items-center gap-1">
             <span className="animate-spin inline-block w-2.5 h-2.5 border-2 border-amber-600 border-t-transparent rounded-full" />
-            Gravando no Sheets...
+            <span>
+              {currentUser && connectionStatus === 'CONECTADO'
+                ? 'Gravando no Google Sheets...'
+                : 'Gravando localmente (IndexedDB)...'}
+            </span>
           </div>
         )}
         {saveStatus === 'SALVO' && (
-          <div className="text-[10px] font-semibold text-emerald-600">
-            ✓ Sincronizado no Sheets
+          <div className="text-[10px] font-semibold text-emerald-600 flex items-center gap-1">
+            <span>✓</span>
+            <span>
+              {currentUser && connectionStatus === 'CONECTADO'
+                ? 'Sincronizado no Google Sheets'
+                : 'Salvo localmente (cache de trabalho)'}
+            </span>
           </div>
         )}
         {saveStatus === 'ERRO_SALVAR' && (
-          <div className="text-[10px] font-semibold text-red-600">
-            ⚠ Falha ao salvar no Sheets
+          <div className="text-[10px] font-semibold text-red-600 flex items-center gap-1">
+            <span>⚠</span>
+            <span>
+              {currentUser && connectionStatus === 'CONECTADO'
+                ? 'Falha ao gravar no Google Sheets'
+                : 'Falha ao salvar localmente'}
+            </span>
           </div>
         )}
       </div>

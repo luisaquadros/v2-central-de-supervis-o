@@ -62,53 +62,88 @@ export const auth = getAuth(app);
 const provider = new GoogleAuthProvider();
 provider.addScope('https://www.googleapis.com/auth/spreadsheets');
 
-// Gerenciamento persistente de token OAuth
-const TOKEN_KEY = 'cs_google_access_token_v2';
-const TOKEN_TIME_KEY = 'cs_google_access_token_time_v2';
-const TOKEN_MAX_AGE_MS = 55 * 60 * 1000; // 55 minutos para renovação segura
+// Persistência segura da sessão e token de acesso OAuth no sessionStorage (com expiração de 55 minutos)
+const SESSION_TOKEN_KEY = 'cs_google_access_token_session';
+const SESSION_EXPIRY_KEY = 'cs_google_access_token_exp';
 
-export function getStoredAccessToken(): string | null {
-  if (typeof window === 'undefined') return null;
-  const token = localStorage.getItem(TOKEN_KEY) || sessionStorage.getItem(TOKEN_KEY);
-  const timeStr = localStorage.getItem(TOKEN_TIME_KEY);
-  if (!token) return null;
-  if (timeStr) {
-    const age = Date.now() - Number(timeStr);
-    if (age > TOKEN_MAX_AGE_MS) {
-      // Token expirado
-      localStorage.removeItem(TOKEN_KEY);
-      localStorage.removeItem(TOKEN_TIME_KEY);
-      sessionStorage.removeItem(TOKEN_KEY);
-      return null;
+function saveTokenToSession(token: string) {
+  try {
+    if (typeof window !== 'undefined') {
+      const expiresAt = Date.now() + 55 * 60 * 1000; // 55 minutos
+      try {
+        sessionStorage.setItem(SESSION_TOKEN_KEY, token);
+        sessionStorage.setItem(SESSION_EXPIRY_KEY, String(expiresAt));
+      } catch {}
+      try {
+        localStorage.setItem(SESSION_TOKEN_KEY, token);
+        localStorage.setItem(SESSION_EXPIRY_KEY, String(expiresAt));
+      } catch {}
     }
-  }
-  return token;
-}
-
-export function setStoredAccessToken(token: string | null) {
-  if (typeof window === 'undefined') return;
-  if (token) {
-    localStorage.setItem(TOKEN_KEY, token);
-    localStorage.setItem(TOKEN_TIME_KEY, String(Date.now()));
-    sessionStorage.setItem(TOKEN_KEY, token);
-  } else {
-    localStorage.removeItem(TOKEN_KEY);
-    localStorage.removeItem(TOKEN_TIME_KEY);
-    sessionStorage.removeItem(TOKEN_KEY);
+  } catch (e) {
+    // ignore
   }
 }
 
+function getStoredTokenFromSession(): string | null {
+  try {
+    if (typeof window !== 'undefined') {
+      let token: string | null = null;
+      let expStr: string | null = null;
+      try {
+        token = sessionStorage.getItem(SESSION_TOKEN_KEY);
+        expStr = sessionStorage.getItem(SESSION_EXPIRY_KEY);
+      } catch {}
+      if (!token) {
+        try {
+          token = localStorage.getItem(SESSION_TOKEN_KEY);
+          expStr = localStorage.getItem(SESSION_EXPIRY_KEY);
+        } catch {}
+      }
+      if (token && expStr) {
+        const exp = Number(expStr);
+        if (Date.now() < exp) {
+          return token;
+        } else {
+          clearSessionToken();
+        }
+      }
+    }
+  } catch (e) {
+    // ignore
+  }
+  return null;
+}
+
+function clearSessionToken() {
+  try {
+    if (typeof window !== 'undefined') {
+      try {
+        sessionStorage.removeItem(SESSION_TOKEN_KEY);
+        sessionStorage.removeItem(SESSION_EXPIRY_KEY);
+      } catch {}
+      try {
+        localStorage.removeItem(SESSION_TOKEN_KEY);
+        localStorage.removeItem(SESSION_EXPIRY_KEY);
+      } catch {}
+    }
+  } catch (e) {
+    // ignore
+  }
+}
+
+let inMemoryAccessToken: string | null = getStoredTokenFromSession();
 let isSigningIn = false;
-let cachedAccessToken: string | null = getStoredAccessToken();
 
 export const initAuth = (
-  onAuthSuccess?: (user: User, token: string) => void,
+  onAuthSuccess?: (user: User, token: string | null) => void,
   onAuthFailure?: () => void
 ) => {
   return onAuthStateChanged(auth, async (user: User | null) => {
-    const token = await getAccessToken();
-    if (user && token) {
-      cachedAccessToken = token;
+    if (user) {
+      const token = inMemoryAccessToken || getStoredTokenFromSession();
+      if (token) {
+        inMemoryAccessToken = token;
+      }
       if (onAuthSuccess) onAuthSuccess(user, token);
     } else {
       if (!isSigningIn) {
@@ -126,9 +161,9 @@ export const googleSignIn = async (): Promise<{ user: User; accessToken: string 
     if (!credential?.accessToken) {
       throw new Error('Falha ao obter token de acesso do Google.');
     }
-    cachedAccessToken = credential.accessToken;
-    setStoredAccessToken(cachedAccessToken);
-    return { user: result.user, accessToken: cachedAccessToken };
+    inMemoryAccessToken = credential.accessToken;
+    saveTokenToSession(credential.accessToken);
+    return { user: result.user, accessToken: inMemoryAccessToken };
   } catch (error: any) {
     console.error('Erro de autenticação Google:', error);
     throw error;
@@ -138,22 +173,30 @@ export const googleSignIn = async (): Promise<{ user: User; accessToken: string 
 };
 
 export const getAccessToken = async (): Promise<string | null> => {
-  if (cachedAccessToken) {
-    const stored = getStoredAccessToken();
-    if (stored) return stored;
-  }
-  const stored = getStoredAccessToken();
+  if (inMemoryAccessToken) return inMemoryAccessToken;
+  const stored = getStoredTokenFromSession();
   if (stored) {
-    cachedAccessToken = stored;
+    inMemoryAccessToken = stored;
     return stored;
   }
   return null;
 };
 
+export const setMockToken = (token: string | null) => {
+  inMemoryAccessToken = token;
+  if (token) saveTokenToSession(token);
+  else clearSessionToken();
+};
+
+export const clearAccessToken = () => {
+  inMemoryAccessToken = null;
+  clearSessionToken();
+};
+
 export const googleLogout = async () => {
   await signOut(auth);
-  cachedAccessToken = null;
-  setStoredAccessToken(null);
+  inMemoryAccessToken = null;
+  clearSessionToken();
 };
 
 /**
@@ -187,6 +230,72 @@ function parseSheetRowsToObjects<T>(rows: any[][]): T[] {
   });
 }
 
+// Cache em memória dos títulos reais das abas existentes na planilha oficial
+let cachedRealSheetTitles: string[] | null = null;
+let lastTitlesFetchTime = 0;
+
+export function normalizarChaveAba(str: string): string {
+  return str
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim()
+    .replace(/[\s\-_]+/g, '_');
+}
+
+export async function obterTitulosReaisDasAbas(token: string, forceRefresh = false): Promise<string[]> {
+  const now = Date.now();
+  if (!forceRefresh && cachedRealSheetTitles && cachedRealSheetTitles.length > 0 && now - lastTitlesFetchTime < 300000) {
+    return cachedRealSheetTitles;
+  }
+  const metaUrl = `https://sheets.googleapis.com/v4/spreadsheets/${OFFICIAL_SPREADSHEET_ID}?fields=sheets.properties.title`;
+  const metaRes = await fetch(metaUrl, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!metaRes.ok) {
+    if (metaRes.status === 401) {
+      clearAccessToken();
+      throw new Error('Sessão expirada do Google. É necessário autenticar novamente.');
+    }
+    return cachedRealSheetTitles || [];
+  }
+  const metaData = await metaRes.json();
+  const sheets: Array<{ properties?: { title?: string } }> = metaData.sheets || [];
+  cachedRealSheetTitles = sheets.map(s => s.properties?.title || '').filter(Boolean);
+  lastTitlesFetchTime = now;
+  return cachedRealSheetTitles;
+}
+
+export async function resolverNomeRealAba(token: string, tabelaCanonica: string): Promise<string> {
+  const titles = await obterTitulosReaisDasAbas(token);
+  if (!titles || titles.length === 0) return tabelaCanonica;
+
+  const targetNorm = normalizarChaveAba(tabelaCanonica);
+
+  // 1. Match exato
+  const exact = titles.find(t => t === tabelaCanonica);
+  if (exact) return exact;
+
+  // 2. Match normalizado (sem acentos e símbolos)
+  const normMatch = titles.find(t => normalizarChaveAba(t) === targetNorm);
+  if (normMatch) return normMatch;
+
+  // 3. Match sem conectivos ('de', 'da', 'do')
+  const targetSemConectivo = targetNorm.replace(/_(de|da|do)_/g, '_');
+  const flexMatch = titles.find(t => {
+    const tNorm = normalizarChaveAba(t).replace(/_(de|da|do)_/g, '_');
+    return tNorm === targetSemConectivo;
+  });
+  if (flexMatch) return flexMatch;
+
+  return tabelaCanonica;
+}
+
+export function formatarRangeSheet(nomeRealAba: string, range?: string): string {
+  const quoted = `'${nomeRealAba.replace(/'/g, "''")}'`;
+  return range ? `${quoted}!${range}` : quoted;
+}
+
 export interface ResultadoLeituraPlanilha extends DadosIniciaisGas {
   _rawMap: Record<string, any[]>;
   _missingSheets: string[];
@@ -205,35 +314,24 @@ export async function carregarDadosDaPlanilhaOficial(): Promise<ResultadoLeitura
   }
 
   // 1. Obtém metadados da planilha para saber quais abas existem
-  const metaUrl = `https://sheets.googleapis.com/v4/spreadsheets/${OFFICIAL_SPREADSHEET_ID}?fields=sheets.properties.title`;
-  const metaRes = await fetch(metaUrl, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
-  });
-
-  if (!metaRes.ok) {
-    if (metaRes.status === 401) {
-      setStoredAccessToken(null);
-      cachedAccessToken = null;
-      throw new Error('Sessão expirada do Google. É necessário autenticar novamente.');
-    }
-    const errJson = await metaRes.json().catch(() => null);
-    throw new Error(errJson?.error?.message || `Erro ${metaRes.status} ao acessar metadados da planilha oficial.`);
-  }
-
-  const metaData = await metaRes.json();
-  const sheets: Array<{ properties?: { title?: string } }> = metaData.sheets || [];
-  const existingTitles = sheets.map(s => s.properties?.title || '').filter(Boolean);
+  const existingTitles = await obterTitulosReaisDasAbas(token, true);
 
   // Mapeia tabelas normalizadas com os títulos reais das abas
   const matchedTables: { canonicalName: string; realSheetName: string }[] = [];
   const missingSheets: string[] = [];
 
   TABELAS_NORMALIZADAS.forEach(targetTab => {
-    const match = existingTitles.find(
-      t => t.trim().toLowerCase() === targetTab.trim().toLowerCase()
-    );
+    const targetNorm = normalizarChaveAba(targetTab);
+    const targetSemConectivo = targetNorm.replace(/_(de|da|do)_/g, '_');
+
+    const match = existingTitles.find(t => {
+      if (t === targetTab) return true;
+      const tNorm = normalizarChaveAba(t);
+      if (tNorm === targetNorm) return true;
+      const tNormSemConectivo = tNorm.replace(/_(de|da|do)_/g, '_');
+      return tNormSemConectivo === targetSemConectivo;
+    });
+
     if (match) {
       matchedTables.push({ canonicalName: targetTab, realSheetName: match });
     } else {
@@ -245,7 +343,7 @@ export async function carregarDadosDaPlanilhaOficial(): Promise<ResultadoLeitura
 
   if (matchedTables.length > 0) {
     const rangesQuery = matchedTables
-      .map(m => `ranges=${encodeURIComponent(`${m.realSheetName}!A1:ZZ`)}`)
+      .map(m => `ranges=${encodeURIComponent(formatarRangeSheet(m.realSheetName, 'A1:ZZ'))}`)
       .join('&');
     const batchUrl = `https://sheets.googleapis.com/v4/spreadsheets/${OFFICIAL_SPREADSHEET_ID}/values:batchGet?${rangesQuery}`;
 
@@ -269,7 +367,7 @@ export async function carregarDadosDaPlanilhaOficial(): Promise<ResultadoLeitura
       await Promise.all(
         matchedTables.map(async m => {
           try {
-            const singleUrl = `https://sheets.googleapis.com/v4/spreadsheets/${OFFICIAL_SPREADSHEET_ID}/values/${encodeURIComponent(m.realSheetName)}!A1:ZZ`;
+            const singleUrl = `https://sheets.googleapis.com/v4/spreadsheets/${OFFICIAL_SPREADSHEET_ID}/values/${encodeURIComponent(formatarRangeSheet(m.realSheetName, 'A1:ZZ'))}`;
             const singleRes = await fetch(singleUrl, {
               headers: { Authorization: `Bearer ${token}` },
             });
@@ -327,6 +425,8 @@ export async function carregarDadosDaPlanilhaOficial(): Promise<ResultadoLeitura
 
 /**
  * Grava uma nova linha diretamente na tabela da planilha oficial via Google Sheets API v4
+ * Com prevenção estrita contra duplicações: se a linha já existir pelo identificador único,
+ * atualiza a linha correspondente em vez de duplicar.
  */
 export async function gravarRegistroNaPlanilhaOficial(
   tabela: string,
@@ -335,18 +435,26 @@ export async function gravarRegistroNaPlanilhaOficial(
   const token = await getAccessToken();
   if (!token) throw new Error('Não autenticado com Google Workspace.');
 
-  // 1. Obtém o cabeçalho existente da tabela
-  const headerUrl = `https://sheets.googleapis.com/v4/spreadsheets/${OFFICIAL_SPREADSHEET_ID}/values/${encodeURIComponent(tabela)}!1:1`;
-  const headerRes = await fetch(headerUrl, {
+  // Obtém o nome real exato da aba na planilha (com acentos e formatação correta)
+  const realSheetName = await resolverNomeRealAba(token, tabela);
+
+  // 1. Obtém o cabeçalho e dados existentes da tabela para verificação de duplicidade
+  const tableDataUrl = `https://sheets.googleapis.com/v4/spreadsheets/${OFFICIAL_SPREADSHEET_ID}/values/${encodeURIComponent(formatarRangeSheet(realSheetName, 'A1:ZZ'))}`;
+  const tableDataRes = await fetch(tableDataUrl, {
     headers: { Authorization: `Bearer ${token}` },
   });
 
-  if (!headerRes.ok) {
-    throw new Error(`Falha ao ler cabeçalhos da tabela ${tabela} no Google Sheets.`);
+  if (!tableDataRes.ok) {
+    if (tableDataRes.status === 401) {
+      clearAccessToken();
+      throw new Error('Sessão expirada do Google. É necessário autenticar novamente.');
+    }
+    throw new Error(`Falha ao ler dados da tabela ${realSheetName} no Google Sheets.`);
   }
 
-  const headerData = await headerRes.json();
-  const headers: string[] = headerData.values?.[0] || Object.keys(registro);
+  const tableDataJson = await tableDataRes.json();
+  const allRows: any[][] = tableDataJson.values || [];
+  const headers: string[] = allRows[0] || Object.keys(registro);
 
   // 2. Monta a linha conforme a ordem exata dos cabeçalhos reais
   const rowValues = headers.map(h => {
@@ -358,8 +466,86 @@ export async function gravarRegistroNaPlanilhaOficial(
     return String(val);
   });
 
-  // 3. Executa o append seguro
-  const appendUrl = `https://sheets.googleapis.com/v4/spreadsheets/${OFFICIAL_SPREADSHEET_ID}/values/${encodeURIComponent(tabela)}!A1:append?valueInputOption=USER_ENTERED`;
+  // 3. Procura por linha existente com a mesma chave primária / chave composta
+  let existingRowIndex = -1; // 1-indexed
+
+  if (allRows.length > 1) {
+    const lowerHeaders = headers.map(h => h.trim().toLowerCase());
+
+    if (tabela === 'frequencias') {
+      const matIdx = lowerHeaders.indexOf('matricula_id');
+      const dataIdx = lowerHeaders.indexOf('data_aula');
+      if (matIdx >= 0 && dataIdx >= 0) {
+        for (let i = 1; i < allRows.length; i++) {
+          const row = allRows[i];
+          if (
+            String(row[matIdx] || '').trim() === String(registro.matricula_id || '').trim() &&
+            String(row[dataIdx] || '').trim() === String(registro.data_aula || '').trim()
+          ) {
+            existingRowIndex = i + 1; // 1-indexed
+            break;
+          }
+        }
+      }
+    } else {
+      // Procura por coluna de ID
+      const primaryKeyCol =
+        lowerHeaders.find(h => h === `${tabela.toLowerCase()}_id`) ||
+        lowerHeaders.find(h => h === 'id') ||
+        lowerHeaders.find(h => h.endsWith('_id'));
+
+      if (primaryKeyCol) {
+        const keyIdx = lowerHeaders.indexOf(primaryKeyCol);
+        const recordKeyVal = String(
+          registro[primaryKeyCol] ||
+          registro[primaryKeyCol.toUpperCase()] ||
+          registro.id ||
+          ''
+        ).trim();
+
+        if (recordKeyVal) {
+          for (let i = 1; i < allRows.length; i++) {
+            const row = allRows[i];
+            if (String(row[keyIdx] || '').trim() === recordKeyVal) {
+              existingRowIndex = i + 1;
+              break;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // 4. Se a linha já existe, executa UPDATE (PUT) evitando duplicação
+  if (existingRowIndex > 0) {
+    const updateRange = formatarRangeSheet(realSheetName, `A${existingRowIndex}`);
+    const updateUrl = `https://sheets.googleapis.com/v4/spreadsheets/${OFFICIAL_SPREADSHEET_ID}/values/${encodeURIComponent(updateRange)}?valueInputOption=USER_ENTERED`;
+    const updateRes = await fetch(updateUrl, {
+      method: 'PUT',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        values: [rowValues],
+      }),
+    });
+
+    if (!updateRes.ok) {
+      if (updateRes.status === 401) {
+        clearAccessToken();
+        throw new Error('Sessão expirada do Google. É necessário autenticar novamente.');
+      }
+      const err = await updateRes.json().catch(() => null);
+      throw new Error(err?.error?.message || `Falha ao atualizar registro existente na tabela ${realSheetName}`);
+    }
+
+    return true;
+  }
+
+  // 5. Caso não exista, executa o APPEND seguro
+  const appendRange = formatarRangeSheet(realSheetName, 'A1:append');
+  const appendUrl = `https://sheets.googleapis.com/v4/spreadsheets/${OFFICIAL_SPREADSHEET_ID}/values/${encodeURIComponent(appendRange)}?valueInputOption=USER_ENTERED`;
   const appendRes = await fetch(appendUrl, {
     method: 'POST',
     headers: {
@@ -372,8 +558,12 @@ export async function gravarRegistroNaPlanilhaOficial(
   });
 
   if (!appendRes.ok) {
+    if (appendRes.status === 401) {
+      clearAccessToken();
+      throw new Error('Sessão expirada do Google. É necessário autenticar novamente.');
+    }
     const err = await appendRes.json().catch(() => null);
-    throw new Error(err?.error?.message || `Falha ao gravar na tabela ${tabela}`);
+    throw new Error(err?.error?.message || `Falha ao gravar na tabela ${realSheetName}`);
   }
 
   return true;

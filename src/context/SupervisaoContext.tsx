@@ -19,6 +19,7 @@ import {
   PontoAcompanhamento,
   MarcoAcademico,
   AlunoResumoSupervisao,
+  SituacaoRssEstudante,
   RegraRss,
   CalendarioRss,
   StatusRssUnidade,
@@ -40,15 +41,34 @@ import {
   ItemFilaSupervisao,
   AvaliacaoCompleta,
   HistoricoAuditoria,
+  EncontroTurma,
+  StatusEncontro,
+  MotivoNaoRealizado,
+  NotificacaoDerivada,
+  ItemPendenciaOperacional,
 } from '../types';
+import {
+  identificarSupervisaoAtual,
+  identificarProximaSupervisao,
+  identificarChamadasPendentes,
+  derivarNotificacoesOperacionais,
+  derivarPendenciasOperacionais,
+  obterSituacaoRssEstudante,
+  gerarPendenciasCanonicas,
+  ResultadoSupervisaoAtual,
+  ResultadoProximaSupervisao,
+  ItemChamadaPendente,
+} from '../services/supervisaoOperacionalService';
 import { validarEscritaTabela, gerarIdEstavel } from '../services/safeWriteService';
 import {
   inicializarCacheLocal,
   sincronizarDaBaseOficial,
   salvarRegistroResiliente,
+  processarFilaSincronizacao,
   subscribeSyncStatus,
   SyncStatusState,
 } from '../services/syncService';
+import { salvarTabelaUnicaNoIndexedDb } from '../services/indexedDbService';
 import {
   initialPeriodos,
   initialDisciplinas,
@@ -119,10 +139,18 @@ import {
   googleSignIn,
   googleLogout,
   carregarDadosDaPlanilhaOficial,
+  getAccessToken,
 } from '../services/googleSheetsService';
 
 export type ConnectionStatus = 'CARREGANDO' | 'CONECTADO' | 'ERRO_CONEXAO' | 'LOCAL_DEV';
-export type SaveStatus = 'IDLE' | 'SALVANDO' | 'SALVO' | 'ERRO_SALVAR';
+export type SaveStatus =
+  | 'IDLE'
+  | 'SALVANDO'
+  | 'SINCRONIZADO_SHEETS'
+  | 'SALVO_LOCAL_AGUARDANDO_SYNC'
+  | 'ERRO_SINCRONIZACAO'
+  | 'SALVO'
+  | 'ERRO_SALVAR';
 
 export interface NovoHorarioInput {
   dia_semana: number;
@@ -194,8 +222,12 @@ interface SupervisaoContextType {
   connectionErrorMessage: string | null;
   saveStatus: SaveStatus;
   saveErrorMessage: string | null;
+  saveStatusMessage: string | null;
+  isTokenExpired: boolean;
+  tokenExpiredAviso: string | null;
   syncStatusState: SyncStatusState;
   sincronizarAgora: () => Promise<void>;
+  reconectarESincronizar: () => Promise<void>;
   recarregarDados: () => Promise<void>;
 
   // Ações de Turmas (Dinâmicas)
@@ -263,6 +295,8 @@ interface SupervisaoContextType {
 
   // Consultas
   getResumoAlunoSupervisao: (matriculaId: string) => AlunoResumoSupervisao | null;
+  getSituacaoRssEstudante: (matriculaId: string) => SituacaoRssEstudante | null;
+  getPendenciasCanonicas: (periodoId?: string) => ItemPendenciaOperacional[];
   getTurmasDoPeriodo: (periodoId?: string, incluirArquivadas?: boolean) => Turma[];
   getAlunosDaTurma: (turmaId: string) => { matricula: Matricula; aluno: Aluno }[];
 
@@ -288,6 +322,88 @@ interface SupervisaoContextType {
   registrarEnvioDevolutiva: (id: string, emailDestino?: string) => Promise<void>;
   registrarAuditoria: (acaoOrObj: any, entidade?: string, entidadeId?: string, valorAnterior?: any, valorNovo?: any, motivo?: string) => Promise<void>;
   
+  // Gestão de Encontros, Aulas Não Realizadas e Reagendamentos
+  encontrosTurma: EncontroTurma[];
+  marcarEncontroNaoRealizado: (
+    turmaId: string,
+    data: string,
+    motivo: MotivoNaoRealizado | string,
+    observacao?: string
+  ) => Promise<void>;
+  reagendarEncontro: (
+    turmaId: string,
+    dataOriginal: string,
+    novaData: string,
+    novoHorario?: string,
+    motivo?: string,
+    transferirEstudoDirigido?: boolean
+  ) => Promise<void>;
+  reverterNaoRealizadoOuReagendado: (turmaId: string, data: string) => Promise<void>;
+
+  // Estudo Dirigido / Leitura (Planejado vs Realizado / Substituição)
+  atualizarStatusEstudoDirigido: (
+    leituraId: string,
+    status: 'PLANEJADO' | 'REALIZADO' | 'PARCIAL' | 'NAO_REALIZADO' | 'SUBSTITUICAO',
+    responsaveisEfetivosIds?: string[],
+    motivoSubstituicao?: string
+  ) => Promise<void>;
+
+  // Chamada por Exceção
+  salvarChamadaPorExcecao: (
+    turmaId: string,
+    dataAula: string,
+    excecoes: {
+      matriculaId: string;
+      status: Frequencia['status'];
+      justificativa?: string;
+      atraso?: boolean;
+      celular?: boolean;
+      observacao?: string;
+    }[],
+    origemIdPadrao?: string
+  ) => Promise<{
+    salvos: number;
+    atualizados: number;
+    sincronizadoRemoto: boolean;
+    salvoLocal: boolean;
+    tokenExpirado: boolean;
+    statusTexto: string;
+  }>;
+
+  // Docente Online
+  getOrigemDoAluno: (matriculaId: string) => TurmaOrigem | undefined;
+  setOrigemDoAluno: (matriculaId: string, origemId: string) => Promise<void>;
+
+  // Consultas contextuais do Dashboard / Modo Supervisão / Notificações
+  getSupervisaoAtual: () => ResultadoSupervisaoAtual;
+  getProximaSupervisao: () => ResultadoProximaSupervisao | null;
+  getChamadasPendentes: () => ItemChamadaPendente[];
+  getNotificacoesDerivadas: () => NotificacaoDerivada[];
+  getPendenciasOperacionais: () => ItemPendenciaOperacional[];
+
+  // Política Global de Exclusão & Desfazer
+  confirmacaoExclusaoModal: {
+    isOpen: boolean;
+    itemNome: string;
+    descricaoAfetada?: string;
+    onConfirmar: () => void;
+  } | null;
+  solicitarConfirmacaoExclusao: (config: {
+    itemNome: string;
+    descricaoAfetada?: string;
+    onConfirmar: () => void | Promise<void>;
+  }) => void;
+  fecharConfirmacaoExclusao: () => void;
+  itemExcluidoRecente: {
+    id: string;
+    tabela: string;
+    itemNome: string;
+    dado: any;
+    timestamp: string;
+  } | null;
+  desfazerUltimaExclusao: () => Promise<boolean>;
+  limparItemDesfazer: () => void;
+
   // Backup / Export
   resetDatabaseToSeed: () => void;
   exportDatabaseAsJson: () => string;
@@ -353,6 +469,9 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const [connectionErrorMessage, setConnectionErrorMessage] = useState<string | null>(null);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('IDLE');
   const [saveErrorMessage, setSaveErrorMessage] = useState<string | null>(null);
+  const [saveStatusMessage, setSaveStatusMessage] = useState<string | null>(null);
+  const [isTokenExpired, setIsTokenExpired] = useState<boolean>(false);
+  const [tokenExpiredAviso, setTokenExpiredAviso] = useState<string | null>(null);
 
   // Status global de sincronização e persistência
   const [syncStatusState, setSyncStatusState] = useState<SyncStatusState>({
@@ -371,6 +490,109 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const [filaProfessora, setFilaProfessora] = useState<ItemFilaProfessora[]>([]);
   const [filaSupervisao, setFilaSupervisao] = useState<ItemFilaSupervisao[]>([]);
   const [avaliacoesCompletas, setAvaliacoesCompletas] = useState<AvaliacaoCompleta[]>([]);
+
+  // Política Global de Exclusão & Desfazer
+  const [confirmacaoExclusaoModal, setConfirmacaoExclusaoModal] = useState<{
+    isOpen: boolean;
+    itemNome: string;
+    descricaoAfetada?: string;
+    onConfirmar: () => void;
+  } | null>(null);
+
+  const [itemExcluidoRecente, setItemExcluidoRecente] = useState<{
+    id: string;
+    tabela: string;
+    itemNome: string;
+    dado: any;
+    timestamp: string;
+  } | null>(null);
+
+  const solicitarConfirmacaoExclusao = useCallback((config: {
+    itemNome: string;
+    descricaoAfetada?: string;
+    onConfirmar: () => void | Promise<void>;
+  }) => {
+    setConfirmacaoExclusaoModal({
+      isOpen: true,
+      itemNome: config.itemNome,
+      descricaoAfetada: config.descricaoAfetada,
+      onConfirmar: async () => {
+        setConfirmacaoExclusaoModal(null);
+        await config.onConfirmar();
+      },
+    });
+  }, []);
+
+  const fecharConfirmacaoExclusao = useCallback(() => {
+    setConfirmacaoExclusaoModal(null);
+  }, []);
+
+  const limparItemDesfazer = useCallback(() => {
+    setItemExcluidoRecente(null);
+  }, []);
+
+  const desfazerUltimaExclusao = useCallback(async (): Promise<boolean> => {
+    if (!itemExcluidoRecente) return false;
+    const { tabela, dado } = itemExcluidoRecente;
+    setSaveStatus('SALVANDO');
+
+    try {
+      if (tabela === 'orientacoes') {
+        setOrientacoes(prev => [dado, ...prev]);
+        if (isRunningInAppsScript()) {
+          await salvarOrientacaoNoSheets(dado);
+        }
+      } else if (tabela === 'ocorrencias') {
+        setOcorrencias(prev => [dado, ...prev]);
+        if (isRunningInAppsScript()) {
+          await salvarOcorrenciaNoSheets(dado);
+        }
+      } else if (tabela === 'feedbacks') {
+        setFeedbacks(prev => [dado, ...prev]);
+        if (isRunningInAppsScript()) {
+          await salvarFeedbackNoSheets(dado);
+        }
+      } else if (tabela === 'pontos_acompanhamento') {
+        setPontosAcompanhamento(prev => [dado, ...prev]);
+        if (isRunningInAppsScript()) {
+          await salvarPontoAcompanhamentoNoSheets(dado);
+        }
+      } else if (tabela === 'documentos') {
+        setDocumentos(prev => [dado, ...prev]);
+      } else if (tabela === 'registros_semanais') {
+        setRegistrosSemanais(prev => [dado, ...prev]);
+      }
+      setItemExcluidoRecente(null);
+      notifySaveSuccess();
+      return true;
+    } catch (err) {
+      handleSaveError(err);
+      return false;
+    }
+  }, [itemExcluidoRecente, notifySaveSuccess, handleSaveError]);
+
+  // Gestão Operacional de Encontros (Feriados, Cancelamentos e Reagendamentos)
+  const [encontrosTurma, setEncontrosTurma] = useState<EncontroTurma[]>(() => {
+    try {
+      if (typeof window !== 'undefined') {
+        const stored = localStorage.getItem('cs_encontros_turma_v2');
+        if (stored) return JSON.parse(stored);
+      }
+    } catch (e) {
+      // ignore
+    }
+    return [];
+  });
+
+  useEffect(() => {
+    try {
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('cs_encontros_turma_v2', JSON.stringify(encontrosTurma));
+      }
+    } catch (e) {
+      // ignore
+    }
+  }, [encontrosTurma]);
   const [auditoriaApp, setAuditoriaApp] = useState<HistoricoAuditoria[]>([]);
 
   // Helper para aplicar dados recebidos das 30 tabelas normalizadas
@@ -452,14 +674,18 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       (user, _token) => {
         if (!isMounted) return;
         setCurrentUser(user);
-        sincronizarDaBaseOficial().then(res => {
-          if (!isMounted) return;
-          if (res.sucesso && res.dados) {
-            aplicarDados(res.dados);
-            setHasLocalCache(true);
-            setConnectionStatus('CONECTADO');
-          }
-        });
+        // Ao autenticar, primeiro esvazia alterações locais pendentes e depois busca o estado atualizado
+        processarFilaSincronizacao()
+          .catch(() => {})
+          .then(() => sincronizarDaBaseOficial())
+          .then(res => {
+            if (!isMounted) return;
+            if (res.sucesso && res.dados) {
+              aplicarDados(res.dados);
+              setHasLocalCache(true);
+              setConnectionStatus('CONECTADO');
+            }
+          });
       },
       () => {
         if (!isMounted) return;
@@ -472,7 +698,43 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     };
   }, [aplicarDados]);
 
-  // 3. SINCRONIZAÇÃO DA BASE OFICIAL
+  // 3. SINCRONIZAÇÃO AUTOMÁTICA EM SEGUNDO PLANO (FOCO, REDE ONLINE E INTERVALO)
+  useEffect(() => {
+    let isMounted = true;
+
+    const autoSyncSePossivel = async () => {
+      if (!isMounted) return;
+      const token = await getAccessToken();
+      if (token && document.visibilityState === 'visible') {
+        try {
+          await processarFilaSincronizacao();
+          const res = await sincronizarDaBaseOficial();
+          if (!isMounted) return;
+          if (res.sucesso && res.dados) {
+            aplicarDados(res.dados);
+            setHasLocalCache(true);
+            setConnectionStatus('CONECTADO');
+          }
+        } catch (e) {
+          console.warn('Auto-sync em segundo plano:', e);
+        }
+      }
+    };
+
+    window.addEventListener('focus', autoSyncSePossivel);
+    window.addEventListener('online', autoSyncSePossivel);
+
+    const intervalId = setInterval(autoSyncSePossivel, 60 * 1000); // 1 minuto automático
+
+    return () => {
+      isMounted = false;
+      window.removeEventListener('focus', autoSyncSePossivel);
+      window.removeEventListener('online', autoSyncSePossivel);
+      clearInterval(intervalId);
+    };
+  }, [aplicarDados]);
+
+  // 4. SINCRONIZAÇÃO DA BASE OFICIAL COM RENOVAÇÃO INTERATIVA SE NECESSÁRIO
   const sincronizarAgora = useCallback(async () => {
     setConnectionStatus('CARREGANDO');
     setConnectionErrorMessage(null);
@@ -492,11 +754,43 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     }
 
     // Ambiente Web / AI Studio
+    let token = await getAccessToken();
+    if (!token) {
+      // Se não há token ativo (expirou ou sessão nova), abre o popup de login do Google!
+      setIsLoggingIn(true);
+      try {
+        const resLogin = await googleSignIn();
+        if (resLogin) {
+          setCurrentUser(resLogin.user);
+          setIsTokenExpired(false);
+          setTokenExpiredAviso(null);
+          token = resLogin.accessToken;
+        }
+      } catch (e: any) {
+        console.error('Falha ao autenticar:', e);
+        setConnectionErrorMessage('Autenticação necessária para sincronizar com Google Sheets.');
+        setConnectionStatus(hasLocalCache ? 'CONECTADO' : 'ERRO_CONEXAO');
+        return;
+      } finally {
+        setIsLoggingIn(false);
+      }
+    }
+
+    // 1. PRIMEIRO: Processa e envia alterações pendentes na fila local (syncQueue) para o Google Sheets!
+    try {
+      await processarFilaSincronizacao();
+    } catch (e) {
+      console.warn('Erro ao processar fila antes de ler:', e);
+    }
+
+    // 2. SEGUNDO: Lê a base oficial atualizada com as novas alterações gravadas!
     const res = await sincronizarDaBaseOficial();
     if (res.sucesso && res.dados) {
       aplicarDados(res.dados);
       setHasLocalCache(true);
       setConnectionStatus('CONECTADO');
+      setIsTokenExpired(false);
+      setTokenExpiredAviso(null);
     } else {
       setConnectionErrorMessage(res.erro || 'Falha ao sincronizar com Google Sheets');
       if (hasLocalCache) {
@@ -532,15 +826,52 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     setConnectionStatus('LOCAL_DEV');
   };
 
-  const notifySaveSuccess = () => {
-    setSaveStatus('SALVO');
-    setTimeout(() => setSaveStatus('IDLE'), 2500);
+  const notifySaveSuccess = (remoto: boolean = false) => {
+    if (remoto) {
+      setSaveStatus('SINCRONIZADO_SHEETS');
+      setSaveStatusMessage('✓ Sincronizado no Google Sheets');
+    } else {
+      setSaveStatus('SALVO_LOCAL_AGUARDANDO_SYNC');
+      setSaveStatusMessage('● Salvo neste dispositivo — aguardando sincronização');
+    }
+    setTimeout(() => {
+      setSaveStatus('IDLE');
+      setSaveStatusMessage(null);
+    }, 3500);
   };
 
   const handleSaveError = (err: any) => {
     console.error('Erro de persistência:', err);
-    setSaveStatus('ERRO_SALVAR');
+    setSaveStatus('ERRO_SINCRONIZACAO');
     setSaveErrorMessage(err?.message || 'Erro ao sincronizar com Google Sheets');
+    setSaveStatusMessage('⚠ Erro de sincronização');
+  };
+
+  const reconectarESincronizar = async (): Promise<void> => {
+    try {
+      setSaveStatus('SALVANDO');
+      setSaveStatusMessage('Reconectando ao Google Workspace...');
+      await loginGoogle();
+      setIsTokenExpired(false);
+      setTokenExpiredAviso(null);
+      setSaveStatusMessage('Reenviando alterações da fila segura...');
+      const resFila = await processarFilaSincronizacao();
+      if (resFila.erros === 0) {
+        setSaveStatus('SINCRONIZADO_SHEETS');
+        setSaveStatusMessage('✓ Sincronizado no Google Sheets');
+        setTimeout(() => {
+          setSaveStatus('IDLE');
+          setSaveStatusMessage(null);
+        }, 3500);
+      } else {
+        setSaveStatus('SALVO_LOCAL_AGUARDANDO_SYNC');
+        setSaveStatusMessage('● Salvo neste dispositivo — aguardando sincronização');
+      }
+    } catch (err: any) {
+      console.error('Erro ao reconectar e sincronizar:', err);
+      setSaveStatus('ERRO_SINCRONIZACAO');
+      setSaveStatusMessage('⚠ Erro de sincronização');
+    }
   };
 
   // ==========================================
@@ -759,7 +1090,18 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         atualizado_em: now,
       };
       setOrientacoes(prev => [newOri, ...prev]);
-      notifySaveSuccess();
+
+      try {
+        const res = await salvarRegistroResiliente('orientacoes', 'INSERT', newOri);
+        if (res.gravadoOnline) {
+          notifySaveSuccess(true);
+        } else {
+          notifySaveSuccess(false);
+        }
+      } catch (err: any) {
+        console.warn('Erro ao persistir orientação de forma resiliente:', err);
+        notifySaveSuccess(false);
+      }
       return newOri;
     }
   };
@@ -768,7 +1110,8 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     setSaveStatus('SALVANDO');
     const now = new Date().toISOString();
     const ori = orientacoes.find(o => o.orientacao_id === orientacaoId);
-    const novoStatus = ori?.status === 'ABERTA' ? 'CONCLUÍDA' : 'ABERTA';
+    if (!ori) return;
+    const novoStatus: 'ABERTA' | 'CONCLUÍDA' = ori.status === 'ABERTA' ? 'CONCLUÍDA' : 'ABERTA';
 
     if (isRunningInAppsScript()) {
       try {
@@ -778,14 +1121,24 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       }
     }
 
+    const oriAtualizada = { ...ori, status: novoStatus, atualizado_em: now };
     setOrientacoes(prev =>
       prev.map(o =>
-        o.orientacao_id === orientacaoId
-          ? { ...o, status: novoStatus, atualizado_em: now }
-          : o
+        o.orientacao_id === orientacaoId ? oriAtualizada : o
       )
     );
-    notifySaveSuccess();
+
+    try {
+      const res = await salvarRegistroResiliente('orientacoes', 'INSERT', oriAtualizada);
+      if (res.gravadoOnline) {
+        notifySaveSuccess(true);
+      } else {
+        notifySaveSuccess(false);
+      }
+    } catch (err: any) {
+      console.warn('Erro ao persistir atualização de orientação:', err);
+      notifySaveSuccess(false);
+    }
   };
 
   const deleteOrientacao = async (orientacaoId: string): Promise<void> => {
@@ -1569,6 +1922,30 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       .sort((a, b) => a.aluno.nome.localeCompare(b.aluno.nome));
   };
 
+  const getSituacaoRssEstudante = useCallback((matriculaId: string): SituacaoRssEstudante | null => {
+    const matricula = matriculas.find(m => m.matricula_id === matriculaId);
+    if (!matricula) return null;
+    const turma = turmas.find(t => t.turma_id === matricula.turma_id);
+    if (!turma) return null;
+
+    const statusRss = getStatusRssUnidade(turma.turma_id, matriculaId);
+    const regraTurma = regrasRss.find(
+      r => r.turma_id === turma.turma_id || r.disciplina_id === turma.disciplina_id
+    );
+    const situacaoTurma = situacaoAtualTurmas.find(s => s.turma_id === turma.turma_id);
+    const calTurma = calendarioRss.filter(c => c.turma_id === turma.turma_id);
+
+    return obterSituacaoRssEstudante(
+      matriculaId,
+      turma.turma_id,
+      registrosSemanais,
+      statusRss,
+      regraTurma,
+      situacaoTurma,
+      calTurma
+    );
+  }, [matriculas, turmas, getStatusRssUnidade, regrasRss, situacaoAtualTurmas, calendarioRss, registrosSemanais]);
+
   const getResumoAlunoSupervisao = (matriculaId: string): AlunoResumoSupervisao | null => {
     const matricula = matriculas.find(m => m.matricula_id === matriculaId);
     if (!matricula) return null;
@@ -1582,24 +1959,12 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       tipo: 'ESTÁGIO',
     };
 
-    const regs = registrosSemanais.filter(r => r.matricula_id === matriculaId);
-    
-    // Obtém status da unidade de RSS (individual ou grupo em Clínica Ampliada)
-    const statusRss = getStatusRssUnidade(turma.turma_id, matriculaId);
-    const regraTurma = regrasRss.find(
-      r => r.turma_id === turma.turma_id || r.disciplina_id === turma.disciplina_id
-    );
-    const totalRegistrosEsperados = statusRss?.rss_esperados_ate_hoje !== undefined && statusRss?.rss_esperados_ate_hoje !== null
-      ? Number(statusRss.rss_esperados_ate_hoje)
-      : (regraTurma?.total_esperado ? Number(regraTurma.total_esperado) : 0);
-
-    const totalRegistrosEntregues = statusRss?.rss_recebidos_validos !== undefined && statusRss?.rss_recebidos_validos !== null
-      ? Number(statusRss.rss_recebidos_validos)
-      : regs.filter(r => r.status === 'ENTREGUE').length;
-
-    const saldoRss = statusRss?.saldo_rss !== undefined && statusRss?.saldo_rss !== null
-      ? Number(statusRss.saldo_rss)
-      : (totalRegistrosEntregues - totalRegistrosEsperados);
+    // Situação canônica RSS unificada
+    const situacaoRss = getSituacaoRssEstudante(matriculaId);
+    const totalRegistrosEntregues = situacaoRss?.registrosRealizados ?? 0;
+    const totalRegistrosEsperados = situacaoRss?.registrosEsperadosAteHoje ?? 0;
+    const totalPrevistoNoPeriodo = situacaoRss?.totalPrevistoNoPeriodo ?? 12;
+    const saldoRss = situacaoRss?.saldoRss ?? (totalRegistrosEntregues - totalRegistrosEsperados);
 
     const docsPendentesCount = documentos.filter(
       d => d.matricula_id === matriculaId && d.status === 'PENDENTE'
@@ -1632,14 +1997,14 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       .slice(0, 3);
 
     const motivosAtencao: string[] = [];
-    if (statusRss?.status_rss === 'ATRASADO' || statusRss?.status_rss === 'PENDENTE' || saldoRss < 0) {
-      motivosAtencao.push(`RSS: ${statusRss?.status_rss || 'Pendente'} (${totalRegistrosEntregues}/${totalRegistrosEsperados})`);
-    }
-    if (faltasInjustificadasCount > 0) {
-      motivosAtencao.push(`${faltasInjustificadasCount} falta(s) sem justificativa`);
+    if (situacaoRss?.estaAtrasado) {
+      motivosAtencao.push(`1 RSS atrasado`);
     }
     if (docsPendentesCount > 0) {
       motivosAtencao.push(`${docsPendentesCount} documento(s) pendente(s)`);
+    }
+    if (faltasInjustificadasCount > 0) {
+      motivosAtencao.push(`${faltasInjustificadasCount} falta(s) sem justificativa`);
     }
     if (justificativasPendentesCount > 0) {
       motivosAtencao.push(`${justificativasPendentesCount} justificativa(s) pendente(s)`);
@@ -1647,14 +2012,11 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     if (orientacoesAbertasCount > 0) {
       motivosAtencao.push(`${orientacoesAbertasCount} orientação(ões) aberta(s)`);
     }
-    if (ultimasOcorrencias.length > 1) {
-      motivosAtencao.push(`${ultimasOcorrencias.length} ocorrências registradas`);
-    }
 
     let statusAtencao: 'NORMAL' | 'ATENCAO' | 'PRIORIDADE' = 'NORMAL';
-    if (statusRss?.status_rss === 'ATRASADO' || motivosAtencao.length >= 2 || faltasInjustificadasCount >= 2 || saldoRss < -1) {
+    if (motivosAtencao.length >= 2 || faltasInjustificadasCount >= 2 || (situacaoRss?.estaAtrasado && saldoRss < -1)) {
       statusAtencao = 'PRIORIDADE';
-    } else if (motivosAtencao.length === 1 || statusRss?.status_rss === 'PENDENTE' || saldoRss < 0) {
+    } else if (motivosAtencao.length === 1) {
       statusAtencao = 'ATENCAO';
     }
 
@@ -1667,6 +2029,8 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       disciplina,
       totalRegistrosEntregues,
       totalRegistrosEsperados,
+      totalPrevistoNoPeriodo,
+      situacaoRss: situacaoRss || undefined,
       docsPendentesCount,
       faltasInjustificadasCount,
       orientacoesAbertasCount,
@@ -1679,6 +2043,576 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       ultimasOcorrencias,
     };
   };
+
+  // ==========================================
+  // OPERAÇÃO: ENCONTROS, AULAS NÃO REALIZADAS E REAGENDAMENTOS
+  // ==========================================
+
+  const marcarEncontroNaoRealizado = async (
+    turmaId: string,
+    data: string,
+    motivo: MotivoNaoRealizado | string,
+    observacao?: string
+  ) => {
+    setSaveStatus('SALVANDO');
+    const now = new Date().toISOString();
+    setEncontrosTurma(prev => {
+      const idx = prev.findIndex(e => e.turma_id === turmaId && e.data === data);
+      const updated: EncontroTurma = {
+        encontro_id: idx >= 0 ? prev[idx].encontro_id : generateUuid(),
+        turma_id: turmaId,
+        periodo_id: selectedPeriodoId,
+        data,
+        status: 'NAO_REALIZADO',
+        motivo_nao_realizado: motivo,
+        observacao: observacao || '',
+        atualizado_em: now,
+      };
+      if (idx >= 0) {
+        const copy = [...prev];
+        copy[idx] = updated;
+        return copy;
+      }
+      return [...prev, updated];
+    });
+
+    // Se havia estudo dirigido programado para esta data, registrar nota explicativa sem marcar como não cumprimento do aluno
+    setLeiturasResponsaveis(prev =>
+      prev.map(l => {
+        if (l.turma_id === turmaId && l.data === data) {
+          return {
+            ...l,
+            observacao: `Aula não realizada (${motivo})${observacao ? `: ${observacao}` : ''}`,
+          };
+        }
+        return l;
+      })
+    );
+
+    // Registra auditoria
+    await registrarAuditoria({
+      acao: 'MARCAR_AULA_NAO_REALIZADA',
+      entidade: 'encontros_turma',
+      entidade_id: `${turmaId}_${data}`,
+      valor_novo: JSON.stringify({ motivo, observacao }),
+      motivo: String(motivo),
+    });
+
+    notifySaveSuccess();
+  };
+
+  const reagendarEncontro = async (
+    turmaId: string,
+    dataOriginal: string,
+    novaData: string,
+    novoHorario?: string,
+    motivo?: string,
+    transferirEstudoDirigido: boolean = true
+  ) => {
+    setSaveStatus('SALVANDO');
+    const now = new Date().toISOString();
+    const horarioOriginal = horariosTurma.find(h => h.turma_id === turmaId);
+
+    setEncontrosTurma(prev => {
+      // 1. Marca encontro original como REAGENDADO
+      const idxOrig = prev.findIndex(e => e.turma_id === turmaId && e.data === dataOriginal);
+      const origAtualizado: EncontroTurma = {
+        encontro_id: idxOrig >= 0 ? prev[idxOrig].encontro_id : generateUuid(),
+        turma_id: turmaId,
+        periodo_id: selectedPeriodoId,
+        data: dataOriginal,
+        status: 'REAGENDADO',
+        motivo_nao_realizado: motivo || 'Reagendamento',
+        data_reagendada: novaData,
+        hora_reagendada: novoHorario,
+        atualizado_em: now,
+      };
+
+      // 2. Cria novo encontro para a novaData
+      const idxNovo = prev.findIndex(e => e.turma_id === turmaId && e.data === novaData);
+      const novoEncontro: EncontroTurma = {
+        encontro_id: idxNovo >= 0 ? prev[idxNovo].encontro_id : generateUuid(),
+        turma_id: turmaId,
+        periodo_id: selectedPeriodoId,
+        data: novaData,
+        status: 'PREVISTO',
+        data_original: dataOriginal,
+        hora_inicio: novoHorario || horarioOriginal?.hora_inicio || '18:30',
+        hora_fim: horarioOriginal?.hora_fim || '21:12',
+        observacao: `Reagendado de ${dataOriginal}. Motivo: ${motivo || 'Reorganização acadêmica'}`,
+        atualizado_em: now,
+      };
+
+      const copy = [...prev];
+      if (idxOrig >= 0) copy[idxOrig] = origAtualizado;
+      else copy.push(origAtualizado);
+
+      if (idxNovo >= 0) copy[idxNovo] = novoEncontro;
+      else copy.push(novoEncontro);
+
+      return copy;
+    });
+
+    // Se transferirEstudoDirigido: transfere leituras da data original para a nova data mantendo responsáveis
+    if (transferirEstudoDirigido) {
+      setLeiturasResponsaveis(prev =>
+        prev.map(l => {
+          if (l.turma_id === turmaId && l.data === dataOriginal) {
+            return {
+              ...l,
+              data: novaData,
+              observacao: `Transferido de ${dataOriginal} (Reagendamento)`,
+            };
+          }
+          return l;
+        })
+      );
+    }
+
+    await registrarAuditoria({
+      acao: 'REAGENDAR_SUPERVISAO',
+      entidade: 'encontros_turma',
+      entidade_id: `${turmaId}_${dataOriginal}_to_${novaData}`,
+      valor_anterior: dataOriginal,
+      valor_novo: novaData,
+      motivo: motivo || 'Reagendamento de aula',
+    });
+
+    notifySaveSuccess();
+  };
+
+  const reverterNaoRealizadoOuReagendado = async (turmaId: string, data: string) => {
+    setEncontrosTurma(prev => prev.filter(e => !(e.turma_id === turmaId && e.data === data)));
+    notifySaveSuccess();
+  };
+
+  // ==========================================
+  // OPERAÇÃO: ESTUDO DIRIGIDO / LEITURAS
+  // ==========================================
+
+  const atualizarStatusEstudoDirigido = async (
+    leituraId: string,
+    status: 'PLANEJADO' | 'REALIZADO' | 'PARCIAL' | 'NAO_REALIZADO' | 'SUBSTITUICAO',
+    responsaveisEfetivosIds?: string[],
+    motivoSubstituicao?: string
+  ) => {
+    setSaveStatus('SALVANDO');
+    setLeiturasResponsaveis(prev =>
+      prev.map(l => {
+        if (l.leitura_id === leituraId || (l.data && l.data === leituraId)) {
+          return {
+            ...l,
+            status_realizacao: status,
+            responsaveis_efetivos:
+              responsaveisEfetivosIds !== undefined
+                ? responsaveisEfetivosIds
+                : (l.responsaveis_efetivos || l.responsaveis_previstos || []),
+            motivo_substituicao:
+              motivoSubstituicao !== undefined ? motivoSubstituicao : l.motivo_substituicao,
+          };
+        }
+        return l;
+      })
+    );
+    notifySaveSuccess();
+  };
+
+  // ==========================================
+  // OPERAÇÃO: CHAMADA POR EXCEÇÃO
+  // ==========================================
+
+  const salvarChamadaPorExcecao = async (
+    turmaId: string,
+    dataAula: string,
+    excecoes: {
+      matriculaId: string;
+      status: Frequencia['status'];
+      justificativa?: string;
+      atraso?: boolean;
+      celular?: boolean;
+      observacao?: string;
+    }[],
+    origemIdPadrao?: string
+  ): Promise<{
+    salvos: number;
+    atualizados: number;
+    sincronizadoRemoto: boolean;
+    salvoLocal: boolean;
+    tokenExpirado: boolean;
+    statusTexto: string;
+  }> => {
+    setSaveStatus('SALVANDO');
+    const now = new Date().toISOString();
+    const matriculasDaTurma = matriculas.filter(
+      m => m.turma_id === turmaId && m.status === 'MATRICULADO'
+    );
+    const origensDaTurma = turmasOrigem.filter(o => o.turma_id === turmaId && o.ativo);
+    const fallbackOrigem =
+      origemIdPadrao || (origensDaTurma.length > 0 ? origensDaTurma[0].origem_id : '');
+
+    let novosCount = 0;
+    let atualizadosCount = 0;
+
+    const mapNovasFreqs: Record<string, Frequencia> = {};
+    const novasOcorrencias: Ocorrencia[] = [];
+
+    matriculasDaTurma.forEach(mat => {
+      const exc = excecoes.find(e => e.matriculaId === mat.matricula_id);
+      const statusFinal: Frequencia['status'] = exc ? exc.status : 'PRESENTE';
+      const justFinal = exc?.justificativa || '';
+      const origemFinal = mat.origem_id || fallbackOrigem;
+
+      const existente = frequencias.find(
+        f => f.matricula_id === mat.matricula_id && f.data_aula === dataAula
+      );
+
+      if (existente) {
+        atualizadosCount++;
+        mapNovasFreqs[mat.matricula_id] = {
+          ...existente,
+          status: statusFinal,
+          justificativa: justFinal,
+          origem_id: origemFinal,
+          atraso: exc?.atraso,
+          celular: exc?.celular,
+          observacao: exc?.observacao,
+          atualizado_em: now,
+        };
+      } else {
+        novosCount++;
+        mapNovasFreqs[mat.matricula_id] = {
+          frequencia_id: generateUuid(),
+          matricula_id: mat.matricula_id,
+          data_aula: dataAula,
+          status: statusFinal,
+          justificativa: justFinal,
+          origem_id: origemFinal,
+          atraso: exc?.atraso,
+          celular: exc?.celular,
+          observacao: exc?.observacao,
+          criado_em: now,
+          atualizado_em: now,
+        };
+      }
+
+      if (exc?.atraso) {
+        novasOcorrencias.push({
+          ocorrencia_id: generateUuid(),
+          matricula_id: mat.matricula_id,
+          data_hora: `${dataAula}T19:00:00`,
+          tipo: 'ATRASO',
+          observacao: exc.observacao || 'Chegada após o início da supervisão',
+        });
+      }
+
+      if (exc?.celular) {
+        novasOcorrencias.push({
+          ocorrencia_id: generateUuid(),
+          matricula_id: mat.matricula_id,
+          data_hora: `${dataAula}T19:30:00`,
+          tipo: 'USO_INADEQUADO_DISPOSITIVO',
+          observacao: exc.observacao || 'Uso indevido de smartphone durante discussão de caso clínico',
+        });
+      }
+    });
+
+    setFrequencias(prev => {
+      const filtradas = prev.filter(
+        f =>
+          !(
+            matriculasDaTurma.some(m => m.matricula_id === f.matricula_id) &&
+            f.data_aula === dataAula
+          )
+      );
+      return [...Object.values(mapNovasFreqs), ...filtradas];
+    });
+
+    if (novasOcorrencias.length > 0) {
+      setOcorrencias(prev => [...novasOcorrencias, ...prev]);
+    }
+
+    setEncontrosTurma(prev => {
+      const idx = prev.findIndex(e => e.turma_id === turmaId && e.data === dataAula);
+      const encAtualizado: EncontroTurma = {
+        encontro_id: idx >= 0 ? prev[idx].encontro_id : generateUuid(),
+        turma_id: turmaId,
+        periodo_id: selectedPeriodoId,
+        data: dataAula,
+        status: 'REALIZADO',
+        chamada_salva: true,
+        total_presentes: Object.values(mapNovasFreqs).filter(f => f.status === 'PRESENTE').length,
+        total_faltas: Object.values(mapNovasFreqs).filter(f => f.status !== 'PRESENTE').length,
+        atualizado_em: now,
+      };
+      if (idx >= 0) {
+        const copy = [...prev];
+        copy[idx] = encAtualizado;
+        return copy;
+      }
+      return [...prev, encAtualizado];
+    });
+
+    // 1. Persistência local imediata e segura em cache persistente (IndexedDB)
+    const novasFreqsArray = Object.values(mapNovasFreqs);
+    const todasFreqsAtualizadas = [
+      ...novasFreqsArray,
+      ...frequencias.filter(
+        f => !(matriculasDaTurma.some(m => m.matricula_id === f.matricula_id) && f.data_aula === dataAula)
+      ),
+    ];
+    await salvarTabelaUnicaNoIndexedDb('frequencias', todasFreqsAtualizadas).catch(err =>
+      console.warn('Erro ao salvar frequências no IndexedDB:', err)
+    );
+
+    if (novasOcorrencias.length > 0) {
+      await salvarTabelaUnicaNoIndexedDb('ocorrencias', [...novasOcorrencias, ...ocorrencias]).catch(err =>
+        console.warn('Erro ao salvar ocorrencias no IndexedDB:', err)
+      );
+    }
+
+    // 2. Persistência remota com tratamento rigoroso para token expirado / offline
+    const token = await getAccessToken();
+    let todasGravadasRemotamente = true;
+    let houveTokenExpirado = false;
+
+    if (!token) {
+      todasGravadasRemotamente = false;
+      // Enfileira na fila segura syncQueue com chave determinística (evita duplicidade)
+      for (const freq of novasFreqsArray) {
+        await salvarRegistroResiliente('frequencias', 'INSERT', freq);
+      }
+      for (const oc of novasOcorrencias) {
+        await salvarRegistroResiliente('ocorrencias', 'INSERT', oc);
+      }
+    } else {
+      // Tenta persistir diretamente no Google Sheets com confirmação remota
+      for (const freq of novasFreqsArray) {
+        try {
+          const res = await salvarRegistroResiliente('frequencias', 'INSERT', freq);
+          if (!res.gravadoOnline) {
+            todasGravadasRemotamente = false;
+          }
+        } catch (err: any) {
+          todasGravadasRemotamente = false;
+          if (err?.message?.includes('Sessão expirada') || err?.message?.includes('401')) {
+            houveTokenExpirado = true;
+          }
+        }
+      }
+
+      for (const oc of novasOcorrencias) {
+        try {
+          const res = await salvarRegistroResiliente('ocorrencias', 'INSERT', oc);
+          if (!res.gravadoOnline) {
+            todasGravadasRemotamente = false;
+          }
+        } catch (err: any) {
+          todasGravadasRemotamente = false;
+          if (err?.message?.includes('Sessão expirada') || err?.message?.includes('401')) {
+            houveTokenExpirado = true;
+          }
+        }
+      }
+    }
+
+    if (houveTokenExpirado) {
+      setIsTokenExpired(true);
+      setTokenExpiredAviso(
+        'Sessão expirada do Google Workspace. Os dados da chamada foram preservados com segurança neste dispositivo. Reconecte para sincronizar com o Google Sheets.'
+      );
+      setSaveStatus('SALVO_LOCAL_AGUARDANDO_SYNC');
+      setSaveStatusMessage('● Salvo neste dispositivo — aguardando sincronização');
+      return {
+        salvos: novosCount,
+        atualizados: atualizadosCount,
+        sincronizadoRemoto: false,
+        salvoLocal: true,
+        tokenExpirado: true,
+        statusTexto: '● Salvo neste dispositivo — aguardando sincronização',
+      };
+    }
+
+    if (todasGravadasRemotamente) {
+      setIsTokenExpired(false);
+      setTokenExpiredAviso(null);
+      setSaveStatus('SINCRONIZADO_SHEETS');
+      setSaveStatusMessage('✓ Sincronizado no Google Sheets');
+      setTimeout(() => {
+        setSaveStatus('IDLE');
+        setSaveStatusMessage(null);
+      }, 4000);
+      return {
+        salvos: novosCount,
+        atualizados: atualizadosCount,
+        sincronizadoRemoto: true,
+        salvoLocal: true,
+        tokenExpirado: false,
+        statusTexto: '✓ Sincronizado no Google Sheets',
+      };
+    }
+
+    // Salvo localmente na fila segura, aguardando sincronização
+    setSaveStatus('SALVO_LOCAL_AGUARDANDO_SYNC');
+    setSaveStatusMessage('● Salvo neste dispositivo — aguardando sincronização');
+    return {
+      salvos: novosCount,
+      atualizados: atualizadosCount,
+      sincronizadoRemoto: false,
+      salvoLocal: true,
+      tokenExpirado: false,
+      statusTexto: '● Salvo neste dispositivo — aguardando sincronização',
+    };
+  };
+
+  // ==========================================
+  // OPERAÇÃO: DOCENTE ONLINE
+  // ==========================================
+
+  const getOrigemDoAluno = (matriculaId: string): TurmaOrigem | undefined => {
+    const mat = matriculas.find(m => m.matricula_id === matriculaId);
+    if (!mat) return undefined;
+    if (mat.origem_id) {
+      return turmasOrigem.find(o => o.origem_id === mat.origem_id);
+    }
+    return turmasOrigem.find(o => o.turma_id === mat.turma_id && o.ativo);
+  };
+
+  const setOrigemDoAluno = async (matriculaId: string, origemId: string): Promise<void> => {
+    setMatriculas(prev =>
+      prev.map(m => (m.matricula_id === matriculaId ? { ...m, origem_id: origemId } : m))
+    );
+    notifySaveSuccess();
+  };
+
+  // ==========================================
+  // OPERAÇÃO: CONSULTAS CONTEXTUAIS E NOTIFICAÇÕES
+  // ==========================================
+
+  const getSupervisaoAtual = useCallback((): ResultadoSupervisaoAtual => {
+    const turmasDoPeriodo = getTurmasDoPeriodo(selectedPeriodoId);
+    return identificarSupervisaoAtual(
+      turmasDoPeriodo,
+      horariosTurma,
+      frequencias,
+      encontrosTurma,
+      matriculas
+    );
+  }, [getTurmasDoPeriodo, selectedPeriodoId, horariosTurma, frequencias, encontrosTurma, matriculas]);
+
+  const getProximaSupervisao = useCallback((): ResultadoProximaSupervisao | null => {
+    const turmasDoPeriodo = getTurmasDoPeriodo(selectedPeriodoId);
+    return identificarProximaSupervisao(turmasDoPeriodo, horariosTurma, encontrosTurma);
+  }, [getTurmasDoPeriodo, selectedPeriodoId, horariosTurma, encontrosTurma]);
+
+  const getChamadasPendentes = useCallback((): ItemChamadaPendente[] => {
+    const turmasDoPeriodo = getTurmasDoPeriodo(selectedPeriodoId);
+    return identificarChamadasPendentes(
+      turmasDoPeriodo,
+      horariosTurma,
+      frequencias,
+      encontrosTurma,
+      matriculas
+    );
+  }, [getTurmasDoPeriodo, selectedPeriodoId, horariosTurma, frequencias, encontrosTurma, matriculas]);
+
+  const getNotificacoesDerivadas = useCallback((): NotificacaoDerivada[] => {
+    const turmasDoPeriodo = getTurmasDoPeriodo(selectedPeriodoId);
+    return derivarNotificacoesOperacionais(
+      turmasDoPeriodo,
+      matriculas,
+      frequencias,
+      documentos,
+      registrosSemanais,
+      marcosAcademicos,
+      leiturasResponsaveis,
+      encontrosTurma,
+      horariosTurma,
+      new Date(),
+      periodos,
+      selectedPeriodoId
+    );
+  }, [
+    getTurmasDoPeriodo,
+    selectedPeriodoId,
+    matriculas,
+    frequencias,
+    documentos,
+    registrosSemanais,
+    marcosAcademicos,
+    leiturasResponsaveis,
+    encontrosTurma,
+    horariosTurma,
+    periodos,
+  ]);
+
+  const getPendenciasOperacionais = useCallback((): ItemPendenciaOperacional[] => {
+    const turmasDoPeriodo = getTurmasDoPeriodo(selectedPeriodoId);
+    return derivarPendenciasOperacionais(
+      turmasDoPeriodo,
+      matriculas,
+      alunos,
+      frequencias,
+      documentos,
+      registrosSemanais,
+      orientacoes,
+      marcosAcademicos,
+      leiturasResponsaveis,
+      encontrosTurma,
+      horariosTurma
+    );
+  }, [
+    getTurmasDoPeriodo,
+    selectedPeriodoId,
+    matriculas,
+    alunos,
+    frequencias,
+    documentos,
+    registrosSemanais,
+    orientacoes,
+    marcosAcademicos,
+    leiturasResponsaveis,
+    encontrosTurma,
+    horariosTurma,
+  ]);
+
+  const getPendenciasCanonicas = useCallback((periodoId?: string): ItemPendenciaOperacional[] => {
+    const pId = periodoId || selectedPeriodoId;
+    return gerarPendenciasCanonicas(
+      pId,
+      turmas,
+      matriculas,
+      alunos,
+      frequencias,
+      documentos,
+      registrosSemanais,
+      orientacoes,
+      marcosAcademicos,
+      leiturasResponsaveis,
+      encontrosTurma,
+      horariosTurma,
+      regrasRss,
+      situacaoAtualTurmas,
+      calendarioRss,
+      statusRssUnidades
+    );
+  }, [
+    selectedPeriodoId,
+    turmas,
+    matriculas,
+    alunos,
+    frequencias,
+    documentos,
+    registrosSemanais,
+    orientacoes,
+    marcosAcademicos,
+    leiturasResponsaveis,
+    encontrosTurma,
+    horariosTurma,
+    regrasRss,
+    situacaoAtualTurmas,
+    calendarioRss,
+    statusRssUnidades
+  ]);
 
   const resetDatabaseToSeed = () => {
     setPeriodos(initialPeriodos);
@@ -1818,6 +2752,10 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         connectionErrorMessage,
         saveStatus,
         saveErrorMessage,
+        saveStatusMessage,
+        isTokenExpired,
+        tokenExpiredAviso,
+        reconectarESincronizar,
         recarregarDados: carregarDadosReais,
         addTurma,
         updateTurma,
@@ -1848,6 +2786,7 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         addRegistroSupervisao,
         addEntrega,
         getResumoAlunoSupervisao,
+        getSituacaoRssEstudante,
         getTurmasDoPeriodo,
         getAlunosDaTurma,
         // Componentes de apoio / filas / avaliação
@@ -1868,6 +2807,21 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         aprovarDevolutiva,
         registrarEnvioDevolutiva,
         registrarAuditoria,
+        // Operação: Encontros, Aulas Não Realizadas e Reagendamentos
+        encontrosTurma,
+        marcarEncontroNaoRealizado,
+        reagendarEncontro,
+        reverterNaoRealizadoOuReagendado,
+        atualizarStatusEstudoDirigido,
+        salvarChamadaPorExcecao,
+        getOrigemDoAluno,
+        setOrigemDoAluno,
+        getSupervisaoAtual,
+        getProximaSupervisao,
+        getChamadasPendentes,
+        getNotificacoesDerivadas,
+        getPendenciasOperacionais,
+        getPendenciasCanonicas,
         resetDatabaseToSeed,
         exportDatabaseAsJson,
       }}

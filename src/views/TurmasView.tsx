@@ -890,7 +890,10 @@ export const TurmaDetalheView: React.FC<{
                       <div className="flex items-center gap-2">
                         <span className="font-bold text-slate-900 text-sm">{aluno.nome}</span>
                         {resumo?.temAtencao && (
-                          <span className="text-amber-500 font-bold" title="Requer atenção">
+                          <span
+                            className="text-amber-500 font-bold cursor-help"
+                            title={`${resumo.motivosAtencao.length} pendências:\n${resumo.motivosAtencao.map(m => `· ${m}`).join('\n')}`}
+                          >
                             ⚠
                           </span>
                         )}
@@ -903,9 +906,16 @@ export const TurmaDetalheView: React.FC<{
 
                   <div className="flex items-center gap-6">
                     <div className="text-right">
-                      <div className="text-slate-500">Registros</div>
+                      <div className="text-slate-500 text-[11px]" title="Entregues de esperados até hoje (total previsto no período)">
+                        Registros RSS
+                      </div>
                       <div className="font-mono font-bold text-slate-900">
-                        {resumo?.totalRegistrosEntregues} / 12
+                        {resumo?.totalRegistrosEntregues ?? 0}
+                        <span className="text-slate-400 font-normal"> de </span>
+                        {resumo?.totalRegistrosEsperados ?? 0}
+                      </div>
+                      <div className="text-[10px] text-slate-400">
+                        ({resumo?.totalPrevistoNoPeriodo ?? 12} previstos)
                       </div>
                     </div>
 
@@ -994,7 +1004,14 @@ export const TurmaDetalheView: React.FC<{
                     <div>
                       <div className="font-bold text-slate-900 flex items-center gap-1.5">
                         <span>{aluno.nome}</span>
-                        <span className="text-amber-500">⚠</span>
+                        {resumo?.temAtencao && (
+                          <span
+                            className="text-amber-500 font-bold cursor-help"
+                            title={`${resumo.motivosAtencao.length} pendências:\n${resumo.motivosAtencao.map(m => `· ${m}`).join('\n')}`}
+                          >
+                            ⚠
+                          </span>
+                        )}
                       </div>
                       <div className="text-[11px] text-slate-500 mt-0.5 space-x-3">
                         {resumo?.docsPendentesCount ? (
@@ -1038,14 +1055,18 @@ export const TurmaDetalheView: React.FC<{
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {alunosTurma.map(({ matricula, aluno }) => {
-                  const studentAvals = avaliacoes.filter(a => a.matricula_id === matricula.matricula_id);
-                  const total = studentAvals.reduce((acc, a) => acc + a.nota, 0);
+                  const studentAvals = avaliacoes.filter(a => a.matricula_id === matricula.matricula_id && a.nota !== null && a.nota !== undefined && String(a.nota).trim() !== '');
+                  const total = studentAvals.reduce((acc, a) => {
+                    const n = Number(String(a.nota).replace(',', '.'));
+                    return acc + (isNaN(n) ? 0 : n);
+                  }, 0);
+                  const totalNum = typeof total === 'number' && !isNaN(total) ? total : 0;
 
                   return (
                     <tr key={matricula.matricula_id}>
                       <td className="py-3 font-semibold text-slate-800">{aluno.nome}</td>
                       <td className="py-3 text-right font-mono font-bold text-slate-900">
-                        {total > 0 ? `${total.toFixed(1)} / 10.0` : '—'}
+                        {studentAvals.length > 0 ? `${totalNum.toFixed(1)} / 10.0` : '—'}
                       </td>
                       <td className="py-3 text-center">
                         <button

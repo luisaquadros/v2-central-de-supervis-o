@@ -39,6 +39,8 @@ export interface Matricula {
   turma_id: string;
   periodo_id: string;
   status: 'MATRICULADO' | 'TRANCADO' | 'CANCELADO';
+  origem_id?: string; // FK -> TurmaOrigem (Docente Online individual do aluno)
+  codigo_origem?: string;
 }
 
 export interface Orientacao {
@@ -93,9 +95,9 @@ export interface CriterioAvaliacao {
   instrumento_avaliacao?: string; // Varia por instrumento de avaliação
   instrumento?: string;
   nome: string;
-  nota_maxima: number;
-  peso?: number;
-  ordem?: number;
+  nota_maxima?: number | string;
+  peso?: number | string;
+  ordem?: number | string;
   ativo?: boolean;
   [key: string]: any;
 }
@@ -108,14 +110,25 @@ export interface RegraRss {
   regra_id?: string;
   disciplina_id?: string;
   turma_id?: string;
-  total_esperado?: number;
+  total_esperado?: number | string;
   [key: string]: any;
 }
 
 export interface CalendarioRss {
-  calendario_id?: string;
+  rss_previsto_id?: string;
+  periodo_id?: string;
   turma_id?: string;
-  semana?: number;
+  codigo_origem?: string;
+  sequencia?: number | string;
+  semana_inicio?: string;
+  semana_fim?: string;
+  status_calendario?: 'CONCLUIDA' | 'ATUAL' | 'FUTURA' | string;
+  obrigatorio_sem_atendimento?: boolean | string;
+  fonte?: string;
+  observacao?: string;
+  // Campos legados para compatibilidade defensiva
+  calendario_id?: string;
+  semana?: number | string;
   data_prevista?: string;
   data_limite?: string;
   [key: string]: any;
@@ -126,9 +139,9 @@ export interface StatusRssUnidade {
   unidade_id: string;
   unidade_tipo: 'INDIVIDUAL' | 'GRUPO' | string;
   unidade_nome?: string;
-  rss_esperados_ate_hoje?: number;
-  rss_recebidos_validos?: number;
-  saldo_rss?: number;
+  rss_esperados_ate_hoje?: number | string;
+  rss_recebidos_validos?: number | string;
+  saldo_rss?: number | string;
   status_rss?: string;
   atualizado_em?: string;
   [key: string]: any;
@@ -136,9 +149,28 @@ export interface StatusRssUnidade {
 
 export interface SituacaoAtualTurma {
   turma_id: string;
+  turma_nome?: string;
+  codigo_origem?: string;
+  dia_horario?: string;
+  aula_cronograma_atual?: string | number;
+  rss_esperados_ate_hoje?: number | string;
+  rss_total_previsto?: number | string;
+  inicio_atendimentos?: string;
+  fim_atendimentos?: string;
+  data_proximo_marco?: string;
+  proximo_marco?: string;
+  unidade_rss?: string;
+  total_unidades_rss?: number | string;
+  observacao_operacional?: string;
+  atualizado_em?: string;
+  status_base?: string;
+  unidades_em_dia?: number | string;
+  unidades_atrasadas?: number | string;
+  unidades_sem_exigencia?: number | string;
+  // Campos relacionais/derivados
   periodo_id?: string;
   disciplina_id?: string;
-  situacao?: string; // Materializado na planilha oficial
+  situacao?: string;
   total_alunos?: number;
   total_pendencias?: number;
   [key: string]: any;
@@ -149,9 +181,16 @@ export interface LeituraResponsavel {
   turma_id?: string;
   data?: string;
   tema?: string;
+  artigo_leitura?: string;
+  referencia_link?: string;
   responsavel_id?: string;
   responsavel_nome?: string;
   aluno_id?: string;
+  responsaveis_previstos?: string[]; // IDs de matrícula previstos
+  status_realizacao?: 'PLANEJADO' | 'REALIZADO' | 'PARCIAL' | 'NAO_REALIZADO' | 'SUBSTITUICAO';
+  responsaveis_efetivos?: string[]; // IDs de matrícula que apresentaram
+  motivo_substituicao?: string;
+  observacao?: string;
   [key: string]: any;
 }
 
@@ -293,6 +332,9 @@ export interface Frequencia {
   status: 'PRESENTE' | 'FALTA_SEM_JUSTIFICATIVA' | 'FALTA_JUSTIFICADA' | 'JUSTIFICATIVA_PENDENTE';
   justificativa: string;
   origem_id: string; // FK -> TurmaOrigem
+  atraso?: boolean;
+  celular?: boolean;
+  observacao?: string;
   criado_em: string;
   atualizado_em: string;
 }
@@ -306,6 +348,9 @@ export interface HorarioTurma {
   data_inicio: string;
   data_fim: string;
   ativo: boolean;
+  status_encontro?: 'NORMAL' | 'CANCELADO' | 'REAGENDADO';
+  data_reagendada?: string;
+  motivo_cancelamento?: string;
 }
 
 export interface PontoAcompanhamento {
@@ -331,6 +376,20 @@ export interface MarcoAcademico {
   observacao?: string;
 }
 
+// Situação canônica de RSS do estudante (resolvida ponta a ponta)
+export interface SituacaoRssEstudante {
+  matriculaId: string;
+  turmaId: string;
+  registrosRealizados: number;
+  registrosEsperadosAteHoje: number;
+  totalPrevistoNoPeriodo: number;
+  saldoRss: number;
+  statusSemanal: string;
+  estaAtrasado: boolean;
+  registrosEstudante: RegistroSemanal[];
+  textoExibicao: string; // Ex: "3 de 5 esperados até hoje (12 no semestre)"
+}
+
 // Helpers / View models
 export interface AlunoResumoSupervisao {
   matricula: Matricula;
@@ -339,6 +398,8 @@ export interface AlunoResumoSupervisao {
   disciplina: Disciplina;
   totalRegistrosEntregues: number;
   totalRegistrosEsperados: number;
+  totalPrevistoNoPeriodo?: number;
+  situacaoRss?: SituacaoRssEstudante;
   docsPendentesCount: number;
   faltasInjustificadasCount: number;
   orientacoesAbertasCount: number;
@@ -454,6 +515,85 @@ export interface ItemFilaSupervisao {
   status: 'AGUARDANDO' | 'EM_DISCUSSAO' | 'ORIENTACAO_REGISTRADA' | 'CONCLUIDO';
   ordem: number;
   criado_em: string;
+}
+
+// -----------------------------------------------------------------------------
+// GESTÃO OPERACIONAL DE ENCONTROS, AULAS NÃO REALIZADAS E REAGENDAMENTOS
+// -----------------------------------------------------------------------------
+export type StatusEncontro = 'PREVISTO' | 'REALIZADO' | 'NAO_REALIZADO' | 'REAGENDADO';
+export type MotivoNaoRealizado =
+  | 'Feriado'
+  | 'Recesso acadêmico'
+  | 'Cancelamento institucional'
+  | 'Cancelamento da professora'
+  | 'Outro';
+
+export interface EncontroTurma {
+  encontro_id: string;
+  turma_id: string;
+  periodo_id?: string;
+  data: string; // YYYY-MM-DD
+  hora_inicio?: string;
+  hora_fim?: string;
+  status: StatusEncontro;
+  motivo_nao_realizado?: MotivoNaoRealizado | string;
+  observacao?: string;
+  data_original?: string;
+  data_reagendada?: string;
+  hora_reagendada?: string;
+  chamada_salva?: boolean;
+  total_presentes?: number;
+  total_faltas?: number;
+  leitura_id?: string;
+  criado_em?: string;
+  atualizado_em?: string;
+}
+
+export interface NotificacaoDerivada {
+  id: string;
+  titulo: string;
+  mensagem: string;
+  categoria: 'REQUER_ACAO' | 'INFORMATIVO';
+  tipo:
+    | 'CHAMADA_PENDENTE'
+    | 'PRAZO_HOJE'
+    | 'PRAZO_VENCIDO'
+    | 'JUSTIFICATIVA_PENDENTE'
+    | 'ESTUDO_DIRIGIDO_PENDENTE'
+    | 'DOCUMENTO_PENDENTE'
+    | 'SUPERVISAO_HOJE'
+    | 'FERIADO'
+    | 'MARCO_PROXIMO';
+  turma_id?: string;
+  turma_nome?: string;
+  matricula_id?: string;
+  targetTab?: NavTab;
+  targetParam?: string;
+  criado_em?: string;
+}
+
+export interface ItemPendenciaOperacional {
+  id: string;
+  tipo:
+    | 'CHAMADA'
+    | 'JUSTIFICATIVA'
+    | 'REGISTRO_SEMANAL'
+    | 'DOCUMENTO'
+    | 'ORIENTACAO'
+    | 'PRAZO'
+    | 'ESTUDO_DIRIGIDO'
+    | 'RSS_ATRASADO'
+    | 'FALTA_INJUSTIFICADA';
+  titulo: string;
+  descricao: string;
+  turma_id?: string;
+  turma_nome?: string;
+  matricula_id?: string;
+  aluno_nome?: string;
+  prazo?: string;
+  urgencia: 'CRITICA' | 'ALTA' | 'MEDIA';
+  targetTab: NavTab;
+  targetParam?: string;
 }
 
 // Notificações Agregadas

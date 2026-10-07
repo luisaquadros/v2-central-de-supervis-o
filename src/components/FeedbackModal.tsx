@@ -23,13 +23,13 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({
   const [editando, setEditando] = useState(false);
   const [textoFeedback, setTextoFeedback] = useState(
     avaliacao.feedback_gerado ||
-      `DEVOLUTIVA DE SUPERVISÃO\n\nEstudante: ${aluno.nome} (${aluno.identificador_academico})\nTurma: ${turma.nome}\nInstrumento: ${avaliacao.tipo_instrumento}\nNota Final: ${avaliacao.nota_final.toFixed(1)} / ${avaliacao.nota_maxima.toFixed(1)}\n\n${
+      `DEVOLUTIVA DE SUPERVISÃO\n\nEstudante: ${aluno.nome} (${aluno.identificador_academico})\nTurma: ${turma.nome}\nInstrumento: ${avaliacao.tipo_instrumento}\nNota Final: ${(Number(avaliacao.nota_final) || 0).toFixed(1)} / ${(Number(avaliacao.nota_maxima) || 10).toFixed(1)}\n\n${
         avaliacao.notas_criterios && avaliacao.notas_criterios.length > 0
           ? 'DESEMPENHO POR CRITÉRIO:\n' +
             avaliacao.notas_criterios
               .map(
                 c =>
-                  `• ${c.criterio_nome}: ${c.nota.toFixed(1)}/${c.nota_maxima.toFixed(1)}${
+                  `• ${c.criterio_nome}: ${(Number(c.nota) || 0).toFixed(1)}/${(Number(c.nota_maxima) || 10).toFixed(1)}${
                     c.comentario ? ` — ${c.comentario}` : ''
                   }`
               )
