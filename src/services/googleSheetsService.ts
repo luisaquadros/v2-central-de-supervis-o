@@ -50,6 +50,7 @@ export const TABELAS_NORMALIZADAS = [
   'feedbacks',
   'registros_supervisao',
   'encontros_turma',
+  'preparacoes_aula',
   'sincronizacao',
   // Documentação e Contrato da Base Oficial
   'dicionario_dados',
@@ -292,6 +293,8 @@ export function normalizarLinhasDaAba(tabela: string, rows: Record<string, any>[
       r.semana = r.semana ?? r.semana_rss ?? '';
       r.observacao = r.observacao ?? r.limitacoes ?? '';
       r.data_entrega = normalizarDataAcademica(r.data_entrega);
+    } else if (tabela === 'preparacoes_aula') {
+      r.data_aula = normalizarDataAcademica(r.data_aula);
     } else if (tabela === 'encontros_turma') {
       r.data = normalizarDataAcademica(r.data);
       if (typeof r.chamada_salva === 'string') r.chamada_salva = r.chamada_salva.toUpperCase() === 'TRUE';
@@ -490,6 +493,7 @@ export async function carregarDadosDaPlanilhaOficial(): Promise<ResultadoLeitura
     feedbacksOficiais: tableDataMap['feedbacks'] || [],
     registrosSupervisao: tableDataMap['registros_supervisao'] || [],
     encontrosTurma: tableDataMap['encontros_turma'] || [],
+    preparacoesAula: tableDataMap['preparacoes_aula'] || [],
     sincronizacao: tableDataMap['sincronizacao'] || [],
     dicionarioDados: tableDataMap['dicionario_dados'] || [],
     contratoApp: tableDataMap['contrato_app'] || [],
