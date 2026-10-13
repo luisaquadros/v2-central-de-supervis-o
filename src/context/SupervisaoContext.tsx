@@ -54,6 +54,7 @@ import {
   derivarNotificacoesOperacionais,
   derivarPendenciasOperacionais,
   obterSituacaoRssEstudante,
+  classificarRssOperacional,
   gerarPendenciasCanonicas,
   ResultadoSupervisaoAtual,
   ResultadoProximaSupervisao,
@@ -2056,8 +2057,9 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       .slice(0, 3);
 
     const motivosAtencao: string[] = [];
-    if (situacaoRss?.estaAtrasado) {
-      motivosAtencao.push(`1 RSS atrasado`);
+    const rssOperacional = classificarRssOperacional(situacaoRss, calendarioRss, getHojeDataIso());
+    if (rssOperacional.categoria === 'RECENTE_PENDENTE') {
+      motivosAtencao.push('RSS da última semana encerrada ainda não validado');
     }
     if (docsPendentesCount > 0) {
       motivosAtencao.push(`${docsPendentesCount} documento(s) pendente(s)`);
@@ -2073,7 +2075,7 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     }
 
     let statusAtencao: 'NORMAL' | 'ATENCAO' | 'PRIORIDADE' = 'NORMAL';
-    if (motivosAtencao.length >= 2 || faltasInjustificadasCount >= 2 || (situacaoRss?.estaAtrasado && saldoRss < -1)) {
+    if (motivosAtencao.length >= 2 || faltasInjustificadasCount >= 2 || (rssOperacional.categoria === 'RECENTE_PENDENTE' && saldoRss < -1)) {
       statusAtencao = 'PRIORIDADE';
     } else if (motivosAtencao.length === 1) {
       statusAtencao = 'ATENCAO';
