@@ -1,3 +1,4 @@
+import { LeituraRss } from '../components/LeituraRss';
 import React, { useState } from 'react';
 import {
   ArrowLeft,
@@ -662,6 +663,11 @@ export const AlunoFichaView: React.FC<AlunoFichaViewProps> = ({
               {totalRegistrosEntregues} de {totalRegistrosEsperados} esp. ({totalPrevistoNoPeriodo} previstos)
             </div>
           </div>
+
+          <section className="rounded-xl border border-slate-200 bg-slate-50/60 p-3 sm:p-4 space-y-3">
+            <h4 className="text-sm font-bold text-slate-900">Ler registros e observações</h4>
+            <LeituraRss registros={studentRegistros} />
+          </section>
 
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2.5">
             {Array.from({ length: 12 }, (_, i) => i + 1).map(semana => {

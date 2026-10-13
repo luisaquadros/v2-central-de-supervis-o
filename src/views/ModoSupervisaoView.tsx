@@ -881,6 +881,15 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
                 </button>
               </div>
 
+              <div className="flex justify-end">
+                <button
+                  onClick={() => onOpenFichaAluno(resumoAluno.matricula.matricula_id, 'registros')}
+                  className="min-h-[44px] px-4 py-2 rounded-lg bg-slate-900 text-white text-xs font-bold hover:bg-slate-700 transition-colors"
+                >
+                  Ler todos os RSS deste estudante
+                </button>
+              </div>
+
               {/* RESUMO COMPACTO DE INDICADORES */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
                 <div className="p-3 bg-white border border-slate-200 rounded-xl shadow-xs">
