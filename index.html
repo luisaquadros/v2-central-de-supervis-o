@@ -2,8 +2,20 @@
 <html lang="pt-BR">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <title>Central de Supervisão</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>Central de Supervisão Acadêmica</title>
+    <meta name="theme-color" content="#15233b" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="Supervisão" />
+    <link rel="icon" href="/central-supervisao.svg" type="image/svg+xml" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <script>
+      try {
+        const saved = localStorage.getItem('cs_visual_theme') || 'system';
+        const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+        document.documentElement.dataset.theme = saved === 'dark' || (saved === 'system' && prefersDark) ? 'dark' : 'light';
+      } catch {}
+    </script>
     <meta name="description" content="Aplicação web acadêmica para gestão e supervisão de estágios de Psicologia, com modo supervisão tablet-first, controle multi-semestre, frequência e pendências." />
     <meta property="og:title" content="Central de Supervisão" />
     <meta property="og:description" content="Aplicação web acadêmica para gestão e supervisão de estágios de Psicologia, com modo supervisão tablet-first, controle multi-semestre, frequência e pendências." />
