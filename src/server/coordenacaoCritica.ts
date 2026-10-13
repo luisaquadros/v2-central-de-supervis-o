@@ -4,6 +4,9 @@ import { PRIMARY_KEYS } from '../services/recordIdentity';
 export const TABELAS_CRITICAS = new Set([
   'frequencias','encontros_turma','avaliacoes','avaliacoes_completas',
   'documentos','entregas','leituras_responsaveis',
+  // E1: registros de acompanhamento editáveis de dois aparelhos; antes iam direto, sem comparação de versão.
+  'ocorrencias','orientacoes','feedback_alunos','feedbacks','pontos_acompanhamento',
+  'registros_supervisao','preparacoes_aula',
 ]);
 
 export type OperacaoCritica = 'INSERT' | 'UPDATE' | 'DELETE';
@@ -21,13 +24,24 @@ export class ConflitoDeVersao extends Error {
     this.name = 'ConflitoDeVersao';
   }
 }
+/**
+ * Datas chegam da planilha como DD/MM/AAAA, número de série ou ISO, e o aplicativo guarda ISO.
+ * Na comparação de versão as duas pontas são levadas ao mesmo formato, para que a diferença de
+ * formato não vire "conflito" falso. Só a comparação é afetada; o valor gravado não muda.
+ */
+function dataCanonica(texto: string): string {
+  if (/^\d{4}-\d{2}-\d{2}/.test(texto)) return texto.slice(0, 10);
+  const br = /^(\d{2})\/(\d{2})\/(\d{4})/.exec(texto);
+  if (br) return `${br[3]}-${br[2]}-${br[1]}`;
+  if (/^\d{5}$/.test(texto)) return new Date(Date.UTC(1899, 11, 30) + Number(texto) * 86400000).toISOString().slice(0, 10);
+  return texto;
+}
 export function valorComparavel(valor: unknown): string {
   if (valor == null) return '';
   if (typeof valor === 'boolean') return valor ? 'TRUE' : 'FALSE';
   if (typeof valor === 'object') return JSON.stringify(valor);
-  return String(valor).trim();
+  return dataCanonica(String(valor).trim());
 }
-
 export function adaptarRegistroCritico(tabela: string, registro: Record<string, unknown>): Record<string, unknown> {
   const result={...registro};
   if(tabela==='frequencias' && result.status==='PRESENTE' && (result.atraso===true || result.status_original==='ATRASO'))result.status='ATRASO';
@@ -37,6 +51,10 @@ export function adaptarRegistroCritico(tabela: string, registro: Record<string, 
   }
   if(tabela==='avaliacoes_completas' && result.notas_criterios!==undefined)
     result.notas_criterios_json=JSON.stringify(result.notas_criterios);
+  if(tabela==='registros_supervisao'){
+    result.data = result.data ?? result.data_hora;
+    result.descricao = result.descricao ?? result.texto;
+  }
   if(tabela==='entregas'){
     result.tipo_entrega = result.tipo_entrega ?? result.tipo_documento;
     result.status = result.status ?? result.status_entrega;
@@ -70,4 +88,49 @@ export function compararVersaoDeCampos(
     if(original!==atual)divergencias.push(key);
   }
   return divergencias;
+}
+
+/** Colunas de texto livre: o log registra que mudaram, nunca o conteúdo (pode haver narrativa identificável). */
+const CAMPO_TEXTO_LIVRE=/(observa|justific|descri|texto|narrativ|relato|comentari|conteudo|resumo|mensagem|duvida|limita|prioridade|proximo_passo|anotac|nota_texto|feedback|devolutiva|pauta|diario)/i;
+const LIMITE_VALOR_LOG=80;
+const CAMPOS_TECNICOS=new Set(['atualizado_em','criado_em','sincronizado_em']);
+
+export interface AlteracaoParaLog {
+  registro_id:string;
+  campos:string[];
+  antes:Record<string,string>;
+  depois:Record<string,string>;
+}
+const valorSeguro=(campo:string,valor:unknown)=>CAMPO_TEXTO_LIVRE.test(campo)?'(texto)':valorComparavel(valor).slice(0,LIMITE_VALOR_LOG);
+
+/**
+ * Resumo auditável da operação: campos realmente alterados, com antes/depois só de valores curtos
+ * e não textuais. Função pura, compartilhada pelo Worker e pelos testes.
+ */
+export function resumirAlteracaoParaLog(
+  tabela:string, tipo:OperacaoCritica, registro:Record<string,unknown>,
+  remotoAntes:Record<string,unknown>|null, cabecalhos:string[],
+):AlteracaoParaLog{
+  const novo=adaptarRegistroCritico(tabela,registro);
+  const permitido=new Set(cabecalhos);
+  const candidatos=(tipo==='DELETE'?cabecalhos:Object.keys(novo)).filter(k=>permitido.has(k)&&!CAMPOS_TECNICOS.has(k));
+  const campos:string[]=[],antes:Record<string,string>={},depois:Record<string,string>={};
+  for(const k of candidatos){
+    const a=remotoAntes?valorComparavel(remotoAntes[k]):'';
+    const d=tipo==='DELETE'?'':valorComparavel(novo[k]);
+    if(tipo==='UPDATE'&&a===d)continue;
+    if(tipo!=='INSERT'&&a!=='')antes[k]=valorSeguro(k,remotoAntes?.[k]);
+    if(tipo!=='DELETE'&&d!=='')depois[k]=valorSeguro(k,novo[k]);
+    campos.push(k);
+  }
+  return {registro_id:idCritico(tabela,registro),campos,antes,depois};
+}
+export const COLUNAS_LOG_ALTERACOES=[
+  'log_id','ocorrido_em','usuario_declarado','tabela','registro_id','acao','campos','antes','depois','origem',
+] as const;
+export function linhaDeLog(
+  operacaoId:string,agora:string,usuario:string,tabela:string,tipo:OperacaoCritica,a:AlteracaoParaLog,
+):string[]{
+  return [operacaoId,agora,usuario.slice(0,120),tabela,a.registro_id,tipo,a.campos.join(', '),
+    JSON.stringify(a.antes),JSON.stringify(a.depois),'CENTRAL_WORKER'];
 }

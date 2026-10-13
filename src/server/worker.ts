@@ -1,4 +1,4 @@
-import { compararVersaoDeCampos, adaptarRegistroCritico, idCritico, TABELAS_CRITICAS, type EscritaCritica } from './coordenacaoCritica';
+import { compararVersaoDeCampos, adaptarRegistroCritico, idCritico, TABELAS_CRITICAS, resumirAlteracaoParaLog, linhaDeLog, COLUNAS_LOG_ALTERACOES, type EscritaCritica } from './coordenacaoCritica';
 
 const SPREADSHEET_ID='1DwhmASMStNtT_L2YinG-jkP9vYVv5ETdc-azYqSSIc4';
 interface DurableStorage {get<T>(key:string):Promise<T|undefined>;put(key:string,value:unknown):Promise<void>}
@@ -40,6 +40,23 @@ async function googleFetch(url:string,token:string,init:RequestInit={}):Promise<
   return response.json();
 }
 
+const ABA_LOG='log_alteracoes';
+const URL_BASE='https://sheets.googleapis.com/v4/spreadsheets/'+SPREADSHEET_ID;
+
+/** Garante a aba do log (criada só na primeira gravação) e acrescenta uma linha. Nunca altera outras abas. */
+async function anexarLog(token:string,linha:string[]):Promise<void>{
+  const meta=await googleFetch(URL_BASE+'?fields='+encodeURIComponent('sheets(properties(title))'),token);
+  const existe=(meta.sheets||[]).some((x:any)=>x.properties.title===ABA_LOG);
+  if(!existe){
+    await googleFetch(URL_BASE+':batchUpdate',token,{method:'POST',body:JSON.stringify({requests:[
+      {addSheet:{properties:{title:ABA_LOG,gridProperties:{rowCount:1000,columnCount:COLUNAS_LOG_ALTERACOES.length}}}}]})});
+    await googleFetch(URL_BASE+'/values/'+encodeURIComponent(quoted(ABA_LOG)+'!A1')+'?valueInputOption=RAW',token,
+      {method:'PUT',body:JSON.stringify({values:[[...COLUNAS_LOG_ALTERACOES]]})});
+  }
+  await googleFetch(URL_BASE+'/values/'+encodeURIComponent(quoted(ABA_LOG)+'!A1')+':append?valueInputOption=RAW',token,
+    {method:'POST',body:JSON.stringify({values:[linha]})});
+}
+
 export class WriteCoordinator {
   private tail:Promise<unknown>=Promise.resolve();
   constructor(private state:DurableState,_env:Env){}
@@ -48,6 +65,20 @@ export class WriteCoordinator {
     const response=this.tail.then(task,task);
     this.tail=response.then(()=>undefined,()=>undefined);
     return response;
+  }
+  private async guardarLogPendente(linha:string[]):Promise<void>{
+    const atuais=(await this.state.storage.get<string[][]>('logs-pendentes'))||[];
+    await this.state.storage.put('logs-pendentes',[...atuais,linha].slice(-500));
+  }
+  private async reenviarLogsPendentes(token:string):Promise<void>{
+    const pendentes=(await this.state.storage.get<string[][]>('logs-pendentes'))||[];
+    if(!pendentes.length)return;
+    const restantes:string[][]=[];
+    for(const linha of pendentes){
+      try{if(!restantes.length)await anexarLog(token,linha);else restantes.push(linha)}
+      catch{restantes.push(linha)}
+    }
+    await this.state.storage.put('logs-pendentes',restantes);
   }
   private async perform(request:Request):Promise<Response>{
     try {
@@ -58,6 +89,7 @@ export class WriteCoordinator {
       if(!payload||!TABELAS_CRITICAS.has(payload.tabela)||!['INSERT','UPDATE','DELETE'].includes(payload.tipo)||
          !payload.operacaoId||!/^[-a-zA-Z0-9_:]{8,100}$/.test(payload.operacaoId)||!payload.registro||typeof payload.registro!=='object')
         return fail('Operação crítica inválida.',400);
+      await this.reenviarLogsPendentes(token);
       const receipt='op:'+payload.operacaoId;
       // A mesma operação só pode ser aplicada uma vez, mesmo após reenvio da fila offline.
       if(await this.state.storage.get(receipt)) return json({ok:true,replayed:true});
@@ -114,7 +146,14 @@ export class WriteCoordinator {
       }
       // O recibo contém somente o identificador da operação, sem dados dos estudantes.
       await this.state.storage.put(receipt,{ok:true,at:Date.now()});
-      return json({ok:true,replayed:false});
+      // A gravação já está confirmada. Se o log falhar, a linha fica guardada e é reenviada na próxima operação.
+      const usuario=typeof (payload as any).usuario==='string'?(payload as any).usuario:'';
+      const linhaLog=linhaDeLog(payload.operacaoId,new Date().toISOString(),usuario,table,payload.tipo,
+        resumirAlteracaoParaLog(table,payload.tipo,payload.registro,remote,headers));
+      let auditoria=true;
+      try{await anexarLog(token,linhaLog)}
+      catch{auditoria=false;await this.guardarLogPendente(linhaLog)}
+      return json({ok:true,replayed:false,auditoria});
     }catch(error:any){
       return fail(error?.http===401?'Sessão Google expirada.':error?.message||'Falha no servidor.',
         error?.http===401?401:error?.http===403?403:502);

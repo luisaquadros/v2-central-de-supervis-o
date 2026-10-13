@@ -7,6 +7,9 @@ const ok=(data:unknown)=>new Response(JSON.stringify(data),{status:200,headers:{
 globalThis.fetch=async (input:any,init?:RequestInit):Promise<Response>=>{
   const url=String(input);
   if(!url.includes('sheets.googleapis.com'))throw Error('Unexpected request '+url);
+  // Trilha de auditoria (log_alteracoes): coberta em testAuditoriaLog.ts; aqui só aceita as chamadas.
+  if(url.includes('fields=sheets'))return ok({sheets:[{properties:{title:'log_alteracoes',sheetId:99}}]});
+  if(url.includes('log_alteracoes'))return ok({});
   if(url.includes('/values:batchUpdate') && init?.method==='POST'){
     const body=JSON.parse(String(init.body));
     for(const p of body.data){

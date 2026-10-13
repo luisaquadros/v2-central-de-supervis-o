@@ -1,6 +1,6 @@
 import { TABELAS_CRITICAS } from '../server/coordenacaoCritica';
 import type { SyncQueueItem } from './indexedDbService';
-import { getAccessToken } from './googleSheetsService';
+import { getAccessToken, auth } from './googleSheetsService';
 
 /** Nenhuma escrita crítica pode contornar o coordenador do servidor. */
 export async function gravarCriticoCoordenado(item: SyncQueueItem): Promise<void> {
@@ -15,7 +15,7 @@ export async function gravarCriticoCoordenado(item: SyncQueueItem): Promise<void
     headers:{'Authorization': 'Bearer '+token,'Content-Type':'application/json'},
     body:JSON.stringify({
       tabela:item.tabela,tipo:tipoEfetivo,registro:item.payload,
-      esperado:item.versao_base??null,operacaoId:item.id
+      esperado:item.versao_base??null,operacaoId:item.id,usuario:auth.currentUser?.email??''
     }),
     signal:AbortSignal.timeout(30000)
   });

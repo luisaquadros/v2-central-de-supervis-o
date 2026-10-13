@@ -142,3 +142,18 @@ Ordem recomendada: **E1 → E2 → E3 → E4 → E5 → E6**. E1 e E2 vêm prime
 
 ## 7. O que NÃO farei sem aprovação
 Alterar regras de nota, pesos, faltas ou prazos; gravar na planilha oficial; apagar abas ou colunas; migrar dados históricos.
+
+---
+
+## 8. Estado da E1 — Integridade (13/10/2026)
+
+| Item | Situação | Evidência |
+|---|---|---|
+| T2 — Trilha de auditoria persistida | ✅ feito | O Worker grava uma linha em `log_alteracoes` por alteração confirmada (quem declarou, tabela, id, ação, campos, antes/depois). **Texto livre nunca vai para o log** (só "(texto)"). Aba criada na primeira gravação. Reenvio idempotente não duplica; se o log falhar, a gravação vale e o log é reenviado na operação seguinte. Teste: `testAuditoriaLog.ts` |
+| T1 — Controle de versão em mais tabelas | 🟡 parcial | Passam a usar o coordenador: `ocorrencias`, `orientacoes`, `feedback_alunos`, `feedbacks`, `pontos_acompanhamento`, `registros_supervisao`, `preparacoes_aula` (somam-se às 7 anteriores). Ficam no caminho direto, de propósito: `alunos`, `matriculas`, `turmas`, `horarios_turma`, `periodos`, `disciplinas`, `configuracoes`, `marcos_academicos`, `criterios_avaliacao`, `grupos_pratica`, `grupo_integrantes`, `registros_semanais` (cadastro e abas com adaptação própria; migrar uma a uma em etapa seguinte) |
+| Conflito falso por formato de data | ✅ corrigido | A comparação de versão leva `13/10/2026`, número de série e ISO ao mesmo formato; sem isso as tabelas migradas travariam em "conflito" sempre que a planilha tivesse data em formato brasileiro |
+| Prova ponta a ponta | ✅ | `testE1Integracao.ts`: tela → fila local → coordenador → planilha simulada. Edição válida grava e deixa 1 linha de log; aparelho com versão antiga recebe `CONFLITO_VERSAO` e **não** mostra "salvo"; valor do outro aparelho é preservado |
+| T12 — Aposentar `gas/` | ⏸ aguardando você | Não removi: se o Apps Script estiver publicado e em uso, apagar quebra. Preciso que confirme que só o Cloudflare está em produção |
+| Backup com restauração testada | ❌ pendente | O botão "Restaurar" de Configurações só zera o estado local; não existe restauração a partir do JSON exportado. Precisa ser desenhado (E1.3), com teste em cópia isolada |
+
+**Nova aba criada automaticamente na planilha:** `log_alteracoes` (colunas `log_id, ocorrido_em, usuario_declarado, tabela, registro_id, acao, campos, antes, depois, origem`). Só é acrescentada; nenhuma aba existente é alterada. O usuário é o e-mail informado pelo aplicativo (não verificado pelo servidor); verificação real depende da decisão D4 (papéis).
