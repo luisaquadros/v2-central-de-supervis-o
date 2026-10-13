@@ -2881,7 +2881,10 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       gruposPratica,
       grupoIntegrantes
     );
-    return filtrarPendenciasResolvidas(pendencias, configuracoes, pId);
+    // RSS atrasado/não enviado NÃO é pendência nem notificação: aparece só na turma e na ficha.
+    // (A regra de cálculo permanece em gerarPendenciasCanonicas, coberta por testes, para uso nessas telas.)
+    const semRss = pendencias.filter(p => p.tipo !== 'RSS_ATRASADO');
+    return filtrarPendenciasResolvidas(semRss, configuracoes, pId);
   }, [
     selectedPeriodoId,
     turmas,

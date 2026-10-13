@@ -3,7 +3,7 @@ import { X, Play, BookOpen, AlertTriangle, Clock, Users, CheckCircle, FileText, 
 import { useSupervisao } from '../context/SupervisaoContext';
 import { Turma } from '../types';
 import { AulaPreparacaoPainel } from './AulaPreparacaoPainel';
-import { obterLeiturasAgendadas, getHojeDataIso } from '../services/supervisaoOperacionalService';
+import { obterLeiturasAgendadas, getHojeDataIso, proximoMarcoDaTurma } from '../services/supervisaoOperacionalService';
 import { gerarSugestoesRss } from '../services/sugestoesAulaService';
 
 interface PrepararAulaModalProps {
@@ -73,9 +73,7 @@ export const PrepararAulaModal: React.FC<PrepararAulaModalProps> = ({
   );
 
   // Próximos prazos
-  const proximosMarcos = marcosAcademicos.filter(
-    m => m.turma_id === turma.turma_id || !m.turma_id
-  );
+  const proximoMarco = proximoMarcoDaTurma(marcosAcademicos, turma.turma_id, hojeStr);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-150">
@@ -217,8 +215,13 @@ export const PrepararAulaModal: React.FC<PrepararAulaModalProps> = ({
             <div className="p-3 rounded-xl border border-slate-200 bg-white space-y-1">
               <span className="text-slate-400 text-[10px] uppercase font-bold block">Próximo Marco Acadêmico</span>
               <span className="text-sm font-bold text-slate-900">
-                {proximosMarcos[0] ? proximosMarcos[0].nome : 'Em dia'}
+                {proximoMarco ? proximoMarco.nome : 'Nenhum marco pendente'}
               </span>
+              {proximoMarco && (
+                <span className="text-[11px] text-slate-500 block">
+                  {fmtData(proximoMarco.data)} · {proximoMarco.diasRestantes === 0 ? 'hoje' : proximoMarco.diasRestantes === 1 ? 'amanhã' : `em ${proximoMarco.diasRestantes} dias`}
+                </span>
+              )}
             </div>
           </div>
           </details>
