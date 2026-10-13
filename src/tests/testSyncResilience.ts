@@ -1,7 +1,7 @@
 import { strict as assert } from 'node:assert';
 import { indexedDB } from 'fake-indexeddb';
 Object.assign(globalThis, { window: { indexedDB } });
-const { salvarRegistroResiliente, processarFilaSincronizacao } = await import('../services/syncService');
+const { salvarRegistroResiliente, processarFilaSincronizacao, subscribeSyncStatus } = await import('../services/syncService');
 const { carregarFilaSincronizacao, carregarTodasTabelasDoIndexedDb, atualizarItemFila } = await import('../services/indexedDbService');
 const { setMockToken, clearAccessToken } = await import('../services/googleSheetsService');
 let rows: any[][] = [['orientacao_id', 'matricula_id', 'texto', 'status']];
@@ -38,6 +38,24 @@ await salvarRegistroResiliente('orientacoes', 'UPDATE', {orientacao_id:'o1',text
 await processarFilaSincronizacao();
 assert.equal(rows[1][2], 'nova');
 assert.equal((await carregarTodasTabelasDoIndexedDb())?.orientacoes[0].texto, 'nova');
+// Um conflito persistente não pode sumir da UI nem ser eliminado por outra edição.
+clearAccessToken();
+await salvarRegistroResiliente('orientacoes', 'UPDATE', {orientacao_id:'o1',texto:'em conflito'});
+const conflito = (await carregarFilaSincronizacao())[0];
+await atualizarItemFila(conflito.id, {status:'CONFLITO'});
+let statusAtual: any = null;
+const unsubscribe = subscribeSyncStatus(next => { statusAtual = next; });
+const resultConflito = await processarFilaSincronizacao();
+assert.equal(resultConflito.conflitos,1);
+assert.equal(statusAtual.status,'PARCIAL');
+assert.equal(statusAtual.conflitosCount,1);
+await assert.rejects(() => salvarRegistroResiliente('orientacoes','UPDATE',
+  {orientacao_id:'o1',texto:'tentativa de sobrescrever conflito'}), /conflito de sincronização/);
+assert.equal((await carregarFilaSincronizacao()).length,1);
+assert.equal((await carregarFilaSincronizacao())[0].status,'CONFLITO');
+assert.equal((await carregarTodasTabelasDoIndexedDb())?.orientacoes[0].texto,'em conflito');
+unsubscribe();
+
 // Cache failure must reject: it must never report local save success.
 clearAccessToken();
 (globalThis as any).window.indexedDB = undefined;
