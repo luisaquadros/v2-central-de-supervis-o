@@ -4,6 +4,7 @@ import { useSupervisao } from '../context/SupervisaoContext';
 import { CalendarioRss, MotivoNaoRealizado } from '../types';
 import {
   calcularMetricasCronogramaRss,
+  obterLeiturasAgendadas,
   obterDatasCalendarioAcademico,
 } from '../services/supervisaoOperacionalService';
 
@@ -139,6 +140,7 @@ export const CalendarioView: React.FC = () => {
     return calendarioRss.filter(c => c.turma_id === selectedTurmaFiltro);
   }, [calendarioRss, selectedTurmaFiltro]);
 
+  const leiturasEfetivas = useMemo(() => obterLeiturasAgendadas(leiturasResponsaveis, encontrosTurma), [leiturasResponsaveis, encontrosTurma]);
   const currentPeriodo = periodos.find(p => p.periodo_id === selectedPeriodoId) || periodos[0];
   const infoAcademica = useMemo(() => obterDatasCalendarioAcademico(currentPeriodo), [currentPeriodo]);
 
@@ -984,16 +986,16 @@ export const CalendarioView: React.FC = () => {
                 Nenhuma leitura registrada na tabela oficial leituras_responsaveis.
               </div>
             ) : (
-              leiturasResponsaveis.map((l, idx) => (
+              leiturasEfetivas.map((l, idx) => (
                 <div key={idx} className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white">
                   <div>
                     <span className="font-bold text-xs text-slate-900 block">{l.tema || l.titulo || 'Texto de Supervisão'}</span>
                     <span className="text-[11px] text-slate-500">
-                      Responsável: <strong className="text-slate-800">{l.responsavel_nome || l.responsavel_id || 'Turma em geral'}</strong>
+                      Responsável: <strong className="text-slate-800">{l.tipo === 'LEITURA_RECOMENDADA' ? 'Leitura de apoio, sem apresentação individual' : (l.responsavel_nome || l.responsavel_id || 'A confirmar')}</strong>
                     </span>
                   </div>
                   <span className="font-mono text-xs font-bold text-slate-600 bg-slate-50 px-2.5 py-1 rounded border border-slate-200 self-start sm:self-auto">
-                    {formatarData(l.data)}
+                    {formatarData(l.data_apresentacao)}{l.reprogramada && <span className="block text-[10px] text-amber-700">Transferida de {formatarData(l.data_original)}</span>}
                   </span>
                 </div>
               ))
