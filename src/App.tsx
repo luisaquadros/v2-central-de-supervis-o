@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Menu, X, Play, ArrowLeft, RefreshCw, AlertTriangle } from 'lucide-react';
+import { Play, ArrowLeft, RefreshCw, AlertTriangle } from 'lucide-react';
 import { SupervisaoProvider, useSupervisao } from './context/SupervisaoContext';
 import { Sidebar } from './components/Sidebar';
 import { SyncIndicator } from './components/SyncIndicator';
@@ -168,14 +168,9 @@ const MainContent: React.FC = () => {
         {!isModoSupervisao && (
           <header className="bg-white border-b border-slate-200 px-2.5 sm:px-4 py-2.5 flex items-center justify-between shrink-0 shadow-2xs min-w-0 gap-1">
             <div className="flex items-center gap-3">
-              <div className="md:hidden flex items-center gap-2">
-                <button
-                  onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-                  className="p-1.5 rounded-lg border border-slate-200 text-slate-700"
-                >
-                  {isMobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
-                </button>
-                <span className="font-bold text-xs text-slate-900 sm:text-sm truncate">Supervisão</span>
+              <div className="md:hidden flex items-center gap-2 min-w-0">
+                <img src="/central-supervisao.svg" className="w-8 h-8 rounded-lg shrink-0" alt="" aria-hidden="true"/>
+                <span className="font-bold text-xs text-slate-900 truncate">Supervisão</span>
               </div>
               <div className="hidden md:flex items-center gap-2 text-xs text-slate-500">
                 <span className="font-semibold text-slate-700">Central de Supervisão</span>
