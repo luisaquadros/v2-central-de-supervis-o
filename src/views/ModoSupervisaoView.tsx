@@ -418,8 +418,19 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
                   </div>
                 )}
                 {leiturasDaAula.length > 1 && (
-                  <div className="mt-1.5 text-[11px] text-amber-900">
-                    Há {leiturasDaAula.length} leituras para esta aula: {leiturasDaAula.map(l => l.tema || l.titulo).join('; ')}.
+                  <div className="mt-2 space-y-2">
+                    <p className="font-bold text-xs text-amber-900">{leiturasDaAula.length} leituras programadas para hoje:</p>
+                    {leiturasDaAula.map((leitura, i) => {
+                      const responsaveis = resolverResponsaveis({
+                        leitura, matriculas, alunos, grupos: gruposPratica, integrantes: grupoIntegrantes,
+                      });
+                      return (
+                        <div key={leitura.leitura_id || String(i)} className="rounded-lg border border-amber-200 bg-white/80 p-2 text-xs">
+                          <p className="font-semibold text-slate-900">{i + 1}. {leitura.tema || leitura.titulo || leitura.artigo_leitura || 'Estudo dirigido'}</p>
+                          <p className="mt-1 text-slate-700"><strong>Responsáveis:</strong> {responsaveis.map(p => p.nome).join(', ') || 'Sem vínculo identificado na base'}</p>
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
                 {nomeGrupoEstudo && (
@@ -1188,6 +1199,7 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
                     obsNaoRealizada
                   );
                   setModalType(null);
+                  onEncerrar();
                 }}
                 className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg font-bold cursor-pointer"
               >
