@@ -1,4 +1,5 @@
 import { ResumoRssSemEnvio } from '../components/ResumoRssSemEnvio';
+import { ResumoDocumentosTurma } from '../components/ResumoDocumentosTurma';
 import { diagnosticarChamada } from '../services/aulaParticipants';
 import { resolverResponsaveis } from '../services/aulaParticipants';
 import React, { useState, useMemo, useEffect } from 'react';
@@ -402,6 +403,7 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
       )}
 
       <div className="px-4 pt-2 shrink-0"><ResumoRssSemEnvio turmaId={turmaId} compacto /></div>
+      <div className="px-4 pt-2 shrink-0"><ResumoDocumentosTurma turmaId={turmaId} compacto /></div>
 
       {/* 2. TOPO DO MODO SUPERVISÃO: ESTUDO DIRIGIDO / LEITURA DE HOJE */}
       {estudoDirigidoHoje && (

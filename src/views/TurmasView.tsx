@@ -1,4 +1,5 @@
 import { ResumoRssSemEnvio } from '../components/ResumoRssSemEnvio';
+import { ResumoDocumentosTurma } from '../components/ResumoDocumentosTurma';
 import { resumirDocumentacaoOficial } from '../services/documentacaoAcademicaService';
 import React, { useState } from 'react';
 import {
@@ -804,6 +805,7 @@ export const TurmaDetalheView: React.FC<{
       </div>
 
       <ResumoRssSemEnvio turmaId={turmaId} />
+      <ResumoDocumentosTurma turmaId={turmaId} comQuadro />
 
       {/* Tabs */}
       <div className="bg-white border border-slate-200 rounded-xl p-1 overflow-x-auto shadow-xs">

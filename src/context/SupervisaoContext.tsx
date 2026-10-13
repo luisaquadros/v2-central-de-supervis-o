@@ -303,6 +303,8 @@ interface SupervisaoContextType {
   getCriteriosDaTurma: (turmaId: string, instrumento?: string) => CriterioAvaliacao[];
   addRegistroSupervisao: (matriculaId: string, dataHora: string, categoria: string, texto: string, status?: string) => Promise<RegistroSupervisao>;
   addEntrega: (matriculaId: string, tipoDocumento: string, statusEntrega?: string, obs?: string) => Promise<Entrega>;
+  /** Marca/desmarca o check de um documento (entregue / não entregue). Cria a linha em `entregas` se não existir. */
+  marcarEntrega: (matriculaId: string, tipoDocumento: string, entregue: boolean) => Promise<void>;
 
   // Consultas
   getResumoAlunoSupervisao: (matriculaId: string) => AlunoResumoSupervisao | null;
@@ -2010,6 +2012,21 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     return novaEntrega;
   };
 
+  const marcarEntrega = async (matriculaId: string, tipoDocumento: string, entregue: boolean): Promise<void> => {
+    const tipo = tipoDocumento.toUpperCase();
+    const atual = entregas.find(e =>
+      String(e.matricula_id ?? '').trim() === matriculaId &&
+      String(e.tipo_documento ?? e.tipo_entrega ?? '').trim().toUpperCase() === tipo);
+    if (!atual) { await addEntrega(matriculaId, tipoDocumento, entregue ? 'ENTREGUE' : 'PENDENTE'); return; }
+    const hoje = getHojeDataIso();
+    const status = entregue ? 'ENTREGUE' : 'PENDENTE';
+    const data = entregue ? (String(atual.data_entrega ?? atual.data_envio ?? '').trim() || hoje) : '';
+    const atualizado: Entrega = { ...atual, status_entrega: status, status, data_entrega: data, data_envio: data };
+    const lista = entregas.map(e => e.entrega_id === atual.entrega_id ? atualizado : e);
+    await persistirMudancaWeb('entregas', 'UPDATE', atualizado, lista);
+    setEntregas(prev => prev.map(e => e.entrega_id === atual.entrega_id ? atualizado : e));
+  };
+
   const gravarItemOperacional = async <T extends {id: string}>(
     tipo: TipoOperacional, item: T, excluido = false,
   ): Promise<void> => {
@@ -3093,6 +3110,7 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         getCriteriosDaTurma,
         addRegistroSupervisao,
         addEntrega,
+        marcarEntrega,
         getResumoAlunoSupervisao,
         getSituacaoRssEstudante,
         getTurmasDoPeriodo,
