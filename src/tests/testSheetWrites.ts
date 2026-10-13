@@ -8,6 +8,7 @@ import {
   clearAccessToken,
   gravarRegistroNaPlanilhaOficial,
   removerRegistroDaPlanilhaOficial,
+  normalizarLinhasDaAba,
 } from '../services/googleSheetsService';
 
 const originalFetch = globalThis.fetch;
@@ -109,7 +110,23 @@ try {
   await assert.rejects(() => gravarRegistroNaPlanilhaOficial('entregas', { codigo_inexistente: 'x' }), /incompatível/);
   assert(!calls.some(c => c.init.method === 'POST'), 'Incompatible record must not be appended');
 
-  console.log('[PASS] 6 grupos de testes da API do Google Sheets.');
+  // 7. Cabeçalhos reais das fontes acadêmicas devem ser normalizados.
+  const entregas = normalizarLinhasDaAba('entregas', [
+    { entrega_id: 'e1', tipo_entrega: 'RELATORIO', status: 'ENTREGUE', data_envio: '2026-10-13' },
+  ]);
+  assert.equal(entregas[0].tipo_documento, 'RELATORIO');
+  assert.equal(entregas[0].status_entrega, 'ENTREGUE');
+  const leituras = normalizarLinhasDaAba('leituras_responsaveis', [
+    { leitura_agenda_id: 'l1', data_discussao: '2026-10-13', titulo: 'Exemplo' },
+  ]);
+  assert.equal(leituras[0].data, '2026-10-13');
+  assert.equal(leituras[0].leitura_id, 'l1');
+  const rss = normalizarLinhasDaAba('registros_semanais', [
+    { semana_rss: '7', registro_id: 'r1' },
+  ]);
+  assert.equal(rss[0].semana, '7');
+
+  console.log('[PASS] 7 grupos de testes da API do Google Sheets.');
 } finally {
   globalThis.fetch = originalFetch;
   clearAccessToken();
