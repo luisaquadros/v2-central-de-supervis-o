@@ -40,7 +40,7 @@ import {
   TABELAS_NORMALIZADAS,
 } from './googleSheetsService';
 import { validarEscritaTabela } from './safeWriteService';
-import { DadosIniciaisGas } from './gasService';
+import { DadosIniciais } from './dadosIniciais';
 
 export interface SyncStatusState {
   status: 'SINCRONIZADO' | 'LOCAL' | 'SINCRONIZANDO' | 'ERRO' | 'PARCIAL';
@@ -92,7 +92,7 @@ function notifySyncStatusChange(updates: Partial<SyncStatusState>) {
  * 1. Inicializa o estado com o cache persistente do IndexedDB
  */
 export async function inicializarCacheLocal(): Promise<{
-  dados: DadosIniciaisGas | null;
+  dados: DadosIniciais | null;
   meta: SyncMeta | null;
   fila: SyncQueueItem[];
 }> {
@@ -132,7 +132,7 @@ export async function inicializarCacheLocal(): Promise<{
       return { dados: null, meta, fila };
     }
 
-    const dadosTipados: DadosIniciaisGas = {
+    const dadosTipados: DadosIniciais = {
       periodos: tabelasMap['periodos'] || [],
       disciplinas: tabelasMap['disciplinas'] || [],
       turmas: tabelasMap['turmas'] || [],
@@ -189,7 +189,7 @@ function tableDataOrEmpty(map: Record<string, any[]>, key: string): any[] {
  */
 async function sincronizarDaBaseOficialInterna(): Promise<{
   sucesso: boolean;
-  dados?: DadosIniciaisGas;
+  dados?: DadosIniciais;
   erro?: string;
 }> {
   notifySyncStatusChange({ status: 'SINCRONIZANDO' });
@@ -301,7 +301,7 @@ async function sincronizarDaBaseOficialInterna(): Promise<{
 
 
     // Monta o retorno garantindo que dados anteriores preservados constem na resposta
-    const dadosConsolidados: DadosIniciaisGas = {
+    const dadosConsolidados: DadosIniciais = {
       periodos: mapParaSalvar['periodos'] || [],
       disciplinas: mapParaSalvar['disciplinas'] || [],
       turmas: mapParaSalvar['turmas'] || [],

@@ -11,7 +11,6 @@ import { PrepararAulaModal } from './components/PrepararAulaModal';
 import { ErrorNotifier } from './components/ErrorNotifier';
 import { ViewErrorBoundary } from './components/ViewErrorBoundary';
 import { PrimeiraConexaoView } from './views/PrimeiraConexaoView';
-import { isRunningInAppsScript } from './services/gasService';
 import { NavTab } from './types';
 import { DashboardView } from './views/DashboardView';
 import { HojeView } from './views/HojeView';
@@ -142,7 +141,7 @@ const MainContent: React.FC = () => {
 
   // 2. Proteção de dados acadêmicos: cache de dispositivo nunca libera telas sem login.
   // Firebase preserva o login legítimo ao atualizar a página; Sheets mantém permissão por conta.
-  if (((!currentUser || !acessoGoogleValidado) && !isRunningInAppsScript()) || (!hasLocalCache && periodos.length === 0)) {
+  if ((!currentUser || !acessoGoogleValidado) || (!hasLocalCache && periodos.length === 0)) {
     return <PrimeiraConexaoView />;
   }
 

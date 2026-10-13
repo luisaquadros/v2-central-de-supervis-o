@@ -12,7 +12,7 @@ import {
   signOut,
 } from 'firebase/auth';
 import firebaseConfig from '../../firebase-applet-config.json';
-import { DadosIniciaisGas } from './gasService';
+import { DadosIniciais } from './dadosIniciais';
 
 function fetchWithTimeout(input: string, init?: RequestInit) {
   return fetch(input, { ...init, signal: AbortSignal.timeout(20000) });
@@ -402,7 +402,7 @@ export function formatarRangeSheet(nomeRealAba: string, range?: string): string 
   return range ? `${quoted}!${range}` : quoted;
 }
 
-export interface ResultadoLeituraPlanilha extends DadosIniciaisGas {
+export interface ResultadoLeituraPlanilha extends DadosIniciais {
   _rawMap: Record<string, any[]>;
   _missingSheets: string[];
 }
