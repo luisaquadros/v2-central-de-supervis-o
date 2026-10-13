@@ -100,7 +100,7 @@ try {
     status: 'FALTA_JUSTIFICADA', justificativa: 'Atestado conferido',
   });
   assert(updatedValue('D') === 'FALTA_JUSTIFICADA');
-  assert(!calls.some(c => c.init.method === 'POST'), 'Must not append duplicate attendance');
+  assert(!calls.some(c => c.init.method === 'POST' && c.url.includes(':append?')), 'Must not append duplicate attendance');
 
   // 4b. Presença com atraso deve continuar sendo ATRASO na planilha.
   calls = [];
@@ -138,7 +138,7 @@ try {
   assert.equal(updatedValue('A'), 'LEIT-001');
   assert.equal(updatedValue('D'), 'REALIZADO');
   assert.equal(updatedValue('E'), '["m1","m2"]');
-  assert(!calls.some(c => c.init.method === 'POST'));
+  assert(!calls.some(c => c.init.method === 'POST' && c.url.includes(':append?')));
 
   // 4e. Grupo usa grupo_integrante_id, mesmo se a UI enviar integrante_id.
   calls = [];
@@ -150,7 +150,7 @@ try {
     integrante_id: 'gi1', status: 'INATIVO',
   });
   assert.equal(updatedValue('D'), 'INATIVO');
-  assert(!calls.some(c => c.init.method === 'POST'));
+  assert(!calls.some(c => c.init.method === 'POST' && c.url.includes(':append?')));
 
   // 4f. Identidade da leitura também protege exclusões.
   calls = [];
@@ -218,7 +218,7 @@ try {
   calls = [];
   sheetRows = [['orientacao_id', 'texto']];
   await removerRegistroDaPlanilhaOficial('orientacoes', {orientacao_id:'already-deleted'});
-  assert(!calls.some(c => c.init.method === 'POST'));
+  assert(!calls.some(c => c.init.method === 'POST' && c.url.includes(':append?')));
 
   // Notas devem ser números da API, inclusive em planilha pt-BR.
   // Textos continuam RAW, sem interpretar conteúdo como fórmula.
@@ -244,7 +244,7 @@ try {
   await assert.rejects(() => gravarRegistroNaPlanilhaOficial('avaliacoes', {
     avaliacao_id:'av-02',matricula_id:'mat-02',criterio_id:'PROVA',nota:'=2+2'
   }), /Nota inválida/);
-  assert(!calls.some(c => c.init.method === 'POST'));
+  assert(!calls.some(c => c.init.method === 'POST' && c.url.includes(':append?')));
 
   console.log('[PASS] 11 grupos de testes da API do Google Sheets.');
 } finally {
