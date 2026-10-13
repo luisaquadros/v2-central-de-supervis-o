@@ -1,6 +1,7 @@
 import { ResumoRssSemEnvio } from '../components/ResumoRssSemEnvio';
 import { ResumoDocumentosTurma } from '../components/ResumoDocumentosTurma';
 import { diagnosticarChamada } from '../services/aulaParticipants';
+import { temSupervisaoHorarioAlternativo, geraRegistroAutomatico, ROTULO_HORARIO_ALTERNATIVO } from '../services/condicoesMatricula';
 import { resolverResponsaveis } from '../services/aulaParticipants';
 import React, { useState, useMemo, useEffect } from 'react';
 import {
@@ -268,7 +269,8 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
       setChamadaSalvaMsg({ texto: 'Chamada não salva: lista de alunos incompleta. Confira a sincronização da turma.', tipo: 'local' });
       return;
     }
-    const excecoesArray = alunosLista.map(item => {
+    // Matrícula em horário alternativo só entra na chamada se a professora marcou algo explicitamente.
+    const excecoesArray = alunosLista.filter(item => geraRegistroAutomatico(item.matricula, !!excecoes[item.matricula.matricula_id])).map(item => {
       const exc = excecoes[item.matricula.matricula_id];
       const faltou = exc?.faltou ?? false;
       let status: Frequencia['status'] = 'PRESENTE';
@@ -286,8 +288,8 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
     });
 
     const res = await salvarChamadaPorExcecao(turmaId, hojeIso, excecoesArray);
-    const faltasCount = alunosLista.filter(item => excecoes[item.matricula.matricula_id]?.faltou).length;
-    const presentesCount = alunosLista.length - faltasCount;
+    const faltasCount = excecoesArray.filter(e => e.status !== 'PRESENTE').length;
+    const presentesCount = excecoesArray.length - faltasCount;
     setChamadaSalvaMsg({
       texto: `${res.statusTexto} — ${presentesCount} presentes, ${faltasCount} falta(s).`,
       tipo: res.sincronizadoRemoto ? 'remoto' : 'local',
@@ -299,7 +301,9 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
   // Contagem instantânea em memória
   const excecoesDaTurma = alunosLista.map(item => excecoes[item.matricula.matricula_id]).filter((e): e is ExcecaoAluno => !!e);
   const faltasCount = excecoesDaTurma.filter(e => e.faltou).length;
-  const presentesCount = alunosLista.length - faltasCount;
+  const coletivos = alunosLista.filter(item => !temSupervisaoHorarioAlternativo(item.matricula));
+  const alternativos = alunosLista.length - coletivos.length;
+  const presentesCount = coletivos.length - coletivos.filter(item => excecoes[item.matricula.matricula_id]?.faltou).length;
   const atrasosCount = excecoesDaTurma.filter(e => e.atraso).length;
   const celularCount = excecoesDaTurma.filter(e => e.celular).length;
 
@@ -690,6 +694,7 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
                 <span className={faltasCount > 0 ? 'text-red-700 font-semibold' : 'text-slate-400'}>
                   {faltasCount} falta(s)
                 </span>
+                {alternativos > 0 && ` · ${alternativos} em horário alternativo (sem presença automática)`}
                 {atrasosCount > 0 && ` · ${atrasosCount} atraso`}
                 {celularCount > 0 && ` · ${celularCount} celular`}
               </p>
@@ -788,6 +793,11 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
                         >
                           {item.aluno.nome}
                         </span>
+                        {temSupervisaoHorarioAlternativo(item.matricula) && (
+                          <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-800 border border-indigo-200 shrink-0" title="Os encontros coletivos desta turma não geram presença nem falta automática para esta matrícula.">
+                            {ROTULO_HORARIO_ALTERNATIVO}
+                          </span>
+                        )}
                         {hasAlert && (
                           <span
                             className="text-amber-500 font-bold text-xs shrink-0 cursor-help"

@@ -115,6 +115,7 @@ import {
   initialMapeamentoFontes,
   initialAuditoriaBase,
 } from '../data/initialData';
+import { geraRegistroAutomatico } from '../services/condicoesMatricula';
 import { verificarAcessoEscrita, limparCachePerfil, type PerfilServidor } from '../services/escritaCoordenadaService';
 import { gerarBackup, validarBackup, compararComBackup, operacaoDeRestauracao, type TabelasBackup, type ArquivoBackup, type RelatorioBackup, type DiferencaRegistro } from '../services/backupService';
 import { OFFICIAL_SPREADSHEET_ID, OFFICIAL_SPREADSHEET_NAME, OFFICIAL_SPREADSHEET_URL } from '../services/googleSheetsService';
@@ -2314,6 +2315,9 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
     matriculasDaTurma.forEach(mat => {
       const exc = excecoes.find(e => e.matriculaId === mat.matricula_id);
+      // Supervisão em horário alternativo: o encontro coletivo não gera presença nem falta automática.
+      // Só há registro se a professora marcar explicitamente.
+      if (!geraRegistroAutomatico(mat, !!exc)) return;
       const statusFinal: Frequencia['status'] = exc ? exc.status : 'PRESENTE';
       const justFinal = exc?.justificativa || '';
       const origemFinal = mat.origem_id || turmasOrigem.find(o => o.turma_id === turmaId && o.codigo_externo === mat.codigo_origem)?.origem_id || fallbackOrigem;

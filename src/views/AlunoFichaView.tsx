@@ -1,6 +1,8 @@
 import { entregasDoEstudante } from '../services/documentacaoAcademicaService';
 import { selecionarRssDoEstudante } from '../services/rssVinculos';
 import { LeituraRss } from '../components/LeituraRss';
+import { DocumentosDriveFicha } from '../components/DocumentosDrive';
+import { temSupervisaoHorarioAlternativo, ROTULO_HORARIO_ALTERNATIVO } from '../services/condicoesMatricula';
 import React, { useState } from 'react';
 import {
   ArrowLeft,
@@ -296,6 +298,9 @@ export const AlunoFichaView: React.FC<AlunoFichaViewProps> = ({
         <div>
           <div className="flex items-center gap-2 flex-wrap">
             <h2 className="text-xl font-bold tracking-tight text-slate-900">{aluno.nome}</h2>
+            {temSupervisaoHorarioAlternativo(matricula) && (
+              <span className="text-[11px] font-semibold px-2 py-0.5 rounded bg-indigo-50 text-indigo-800 border border-indigo-200" title="Registro da condição na matrícula desta turma; os encontros coletivos não geram presença nem falta automática.">{ROTULO_HORARIO_ALTERNATIVO}</span>
+            )}
             <span className="font-mono text-xs bg-slate-100 text-slate-700 px-2 py-0.5 rounded font-medium">
               {aluno.identificador_academico}
             </span>
@@ -763,6 +768,8 @@ export const AlunoFichaView: React.FC<AlunoFichaViewProps> = ({
               <span>Novo Documento</span>
             </button>
           </div>
+
+          <DocumentosDriveFicha matriculaId={matriculaId} />
 
           {entregasOficiais.length > 0 && (
             <div className="space-y-2">

@@ -1,5 +1,7 @@
 import { ResumoRssSemEnvio } from '../components/ResumoRssSemEnvio';
 import { ResumoDocumentosTurma } from '../components/ResumoDocumentosTurma';
+import { DocumentosDriveTurma } from '../components/DocumentosDrive';
+import { temSupervisaoHorarioAlternativo, ROTULO_HORARIO_ALTERNATIVO } from '../services/condicoesMatricula';
 import { resumirDocumentacaoOficial } from '../services/documentacaoAcademicaService';
 import React, { useState } from 'react';
 import {
@@ -806,6 +808,7 @@ export const TurmaDetalheView: React.FC<{
 
       <ResumoRssSemEnvio turmaId={turmaId} />
       <ResumoDocumentosTurma turmaId={turmaId} comQuadro />
+      <DocumentosDriveTurma turmaId={turmaId} />
 
       {/* Tabs */}
       <div className="bg-white border border-slate-200 rounded-xl p-1 overflow-x-auto shadow-xs">
@@ -935,6 +938,9 @@ export const TurmaDetalheView: React.FC<{
                     <div>
                       <div className="flex items-center gap-2">
                         <span className="font-bold text-slate-900 text-sm">{aluno.nome}</span>
+                        {temSupervisaoHorarioAlternativo(matricula) && (
+                          <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-800 border border-indigo-200" title="Encontros coletivos desta turma não geram presença nem falta automática para esta matrícula.">{ROTULO_HORARIO_ALTERNATIVO}</span>
+                        )}
                         {resumo?.temAtencao && (
                           <span
                             className="text-amber-500 font-bold cursor-help"
