@@ -43,6 +43,7 @@ import {
   AuditoriaBase,
   EncontroTurma,
   PreparacaoAula,
+  AvaliacaoCompleta,
 } from '../types';
 
 export const OFFICIAL_SPREADSHEET_ID = '1DwhmASMStNtT_L2YinG-jkP9vYVv5ETdc-azYqSSIc4';
@@ -82,6 +83,7 @@ export interface DadosIniciaisGas {
   registrosSupervisao?: RegistroSupervisao[];
   encontrosTurma?: EncontroTurma[];
   preparacoesAula?: PreparacaoAula[];
+  avaliacoesCompletas?: AvaliacaoCompleta[];
   sincronizacao?: Sincronizacao[];
   // Documentação e Contrato da Base Oficial
   dicionarioDados?: DicionarioDado[];
