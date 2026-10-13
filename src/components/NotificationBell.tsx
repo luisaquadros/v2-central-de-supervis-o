@@ -23,13 +23,30 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
   onNavigate,
   onOpenSupervisao,
 }) => {
-  const { getNotificacoesDerivadas } = useSupervisao();
+  const { getNotificacoesDerivadas, getPendenciasCanonicas } = useSupervisao();
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  const notificacoes = getNotificacoesDerivadas();
-  const requerAcao = notificacoes.filter(n => n.categoria === 'REQUER_ACAO');
-  const informativas = notificacoes.filter(n => n.categoria === 'INFORMATIVO');
+  // A página de Pendências e o sino usam a mesma fonte canônica.
+  const canonical = getPendenciasCanonicas();
+  const requerAcao: NotificacaoDerivada[] = canonical.map(p => ({
+    id: p.id,
+    titulo: p.titulo,
+    mensagem: p.descricao,
+    categoria: 'REQUER_ACAO' as const,
+    tipo: (p.tipo === 'CHAMADA' ? 'CHAMADA_PENDENTE'
+      : p.tipo === 'JUSTIFICATIVA' || p.tipo === 'FALTA_INJUSTIFICADA' ? 'JUSTIFICATIVA_PENDENTE'
+      : p.tipo === 'ESTUDO_DIRIGIDO' ? 'ESTUDO_DIRIGIDO_PENDENTE'
+      : p.tipo === 'PRAZO' ? 'PRAZO_VENCIDO'
+      : 'DOCUMENTO_PENDENTE') as NotificacaoDerivada['tipo'],
+    turma_id: p.turma_id,
+    turma_nome: p.turma_nome,
+    matricula_id: p.matricula_id,
+    targetTab: p.tipo === 'CHAMADA' ? 'frequencia' : 'pendencias',
+    targetParam: p.turma_id,
+  }));
+  const informativas = getNotificacoesDerivadas().filter(n => n.categoria === 'INFORMATIVO');
+  const notificacoes = [...requerAcao, ...informativas];
 
   // Fecha dropdown ao clicar fora
   useEffect(() => {
