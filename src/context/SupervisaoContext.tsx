@@ -1,3 +1,4 @@
+import { listarAlunosChamada } from '../services/aulaParticipants';
 import { useDurableLocalState } from '../hooks/useDurableLocalState';
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import {
@@ -2056,15 +2057,9 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   };
 
   const getAlunosDaTurma = (turmaId: string): { matricula: Matricula; aluno: Aluno }[] => {
-    const mats = matriculas.filter(m => m.turma_id === turmaId && m.status === 'MATRICULADO');
-    return mats
-      .map(m => {
-        const al = alunos.find(a => a.aluno_id === m.aluno_id);
-        return al ? { matricula: m, aluno: al } : null;
-      })
-      .filter((item): item is { matricula: Matricula; aluno: Aluno } => item !== null)
-      .sort((a, b) => a.aluno.nome.localeCompare(b.aluno.nome));
+    return listarAlunosChamada(turmaId, matriculas, alunos);
   };
+
 
   const getSituacaoRssEstudante = useCallback((matriculaId: string): SituacaoRssEstudante | null => {
     const matricula = matriculas.find(m => m.matricula_id === matriculaId);
