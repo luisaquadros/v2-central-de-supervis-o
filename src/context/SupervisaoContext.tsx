@@ -59,6 +59,7 @@ import {
   ResultadoProximaSupervisao,
   ItemChamadaPendente,
 } from '../services/supervisaoOperacionalService';
+import { getHojeDataIso } from '../services/supervisaoOperacionalService';
 import { validarEscritaTabela, gerarIdEstavel } from '../services/safeWriteService';
 import {
   inicializarCacheLocal,
@@ -1277,7 +1278,7 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     prioridade: 'ALTA' | 'MEDIA' | 'BAIXA' | '' = 'ALTA'
   ): Promise<void> => {
     setSaveStatus('SALVANDO');
-    const today = new Date().toISOString().split('T')[0];
+    const today = getHojeDataIso();
 
     if (isRunningInAppsScript()) {
       try {
@@ -1305,7 +1306,7 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
   const togglePontoStatus = async (pontoId: string): Promise<void> => {
     setSaveStatus('SALVANDO');
-    const today = new Date().toISOString().split('T')[0];
+    const today = getHojeDataIso();
     const ponto = pontosAcompanhamento.find(p => p.ponto_id === pontoId);
     const novoStatus = ponto?.status === 'ATIVO' ? 'CONCLUIDO' : 'ATIVO';
     const dataConclusao = novoStatus === 'CONCLUIDO' ? today : undefined;
@@ -1360,7 +1361,7 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     obs: string = ''
   ): Promise<void> => {
     setSaveStatus('SALVANDO');
-    const today = new Date().toISOString().split('T')[0];
+    const today = getHojeDataIso();
 
     if (isRunningInAppsScript()) {
       try {
@@ -1405,7 +1406,7 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   ): Promise<void> => {
     setSaveStatus('SALVANDO');
     const anterior = documentos.find(d => d.documento_id === documentoId);
-    const today = new Date().toISOString().split('T')[0];
+    const today = getHojeDataIso();
 
     if (isRunningInAppsScript()) {
       try {
@@ -1440,7 +1441,7 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     obs: string = ''
   ): Promise<void> => {
     setSaveStatus('SALVANDO');
-    const today = new Date().toISOString().split('T')[0];
+    const today = getHojeDataIso();
 
     if (isRunningInAppsScript()) {
       try {
@@ -1848,13 +1849,13 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       matricula_id: matriculaId,
       tipo_documento: tipoDocumento,
       status_entrega: statusEntrega,
-      data_entrega: statusEntrega === 'ENTREGUE' ? new Date().toISOString().split('T')[0] : '',
+      data_entrega: statusEntrega === 'ENTREGUE' ? getHojeDataIso() : '',
       observacao: obs,
       periodo_id: selectedPeriodoId,
       turma_id: matriculas.find(m => m.matricula_id === matriculaId)?.turma_id || '',
       tipo_entrega: tipoDocumento,
       status: statusEntrega,
-      data_envio: statusEntrega === 'ENTREGUE' ? new Date().toISOString().split('T')[0] : '',
+      data_envio: statusEntrega === 'ENTREGUE' ? getHojeDataIso() : '',
       escopo: 'INDIVIDUAL',
     };
     await persistirMudancaWeb('entregas', 'INSERT', novaEntrega, [novaEntrega, ...entregas]);
