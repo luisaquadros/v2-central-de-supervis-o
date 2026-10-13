@@ -29,6 +29,7 @@ import {
   ModalRegistrarOcorrencia,
   ModalNovoPontoAcompanhamento,
 } from '../components/Modals';
+import { getHojeDataIso } from '../services/supervisaoOperacionalService';
 import { Frequencia, MotivoNaoRealizado } from '../types';
 
 interface ModoSupervisaoViewProps {
@@ -78,7 +79,7 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
   const disciplina = disciplinas.find(d => d.disciplina_id === turma?.disciplina_id);
   const alunosLista = getAlunosDaTurma(turmaId);
 
-  const hojeIso = useMemo(() => new Date().toISOString().split('T')[0], []);
+  const hojeIso = useMemo(() => getHojeDataIso(), []);
 
   // 1. Verificação de Encontro de Hoje (Cancelado / Reagendado / Realizado)
   const encontroHoje = encontrosTurma.find(
