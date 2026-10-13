@@ -139,7 +139,7 @@ export const CaixaEntradaGlobalModal: React.FC<CaixaEntradaGlobalModalProps> = (
       } else if (formTipo === 'ORIENTACAO' && targetMatriculaId) {
         await addOrientacao(targetMatriculaId, 'Geral', formObservacao, 'ABERTA');
       } else if (formTipo === 'TAREFA_PROFESSORA') {
-        addItemFilaProfessora({
+        await addItemFilaProfessora({
           titulo: formObservacao,
           categoria: 'Geral',
           duracao_minutos: 15,
@@ -150,7 +150,7 @@ export const CaixaEntradaGlobalModal: React.FC<CaixaEntradaGlobalModalProps> = (
           prazo: formData,
         });
       } else {
-        addCaixaEntradaItem({
+        await addCaixaEntradaItem({
           texto_original: formObservacao,
           status: 'CONFIRMADO',
           tipo_sugerido: formTipo,
