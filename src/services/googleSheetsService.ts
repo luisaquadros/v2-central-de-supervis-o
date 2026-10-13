@@ -281,6 +281,19 @@ export function normalizarLinhasDaAba(tabela: string, rows: Record<string, any>[
       r.data_prazo = normalizarDataAcademica(r.data_prazo);
     } else if (tabela === 'turmas_origem') {
       r.ativo = String(r.ativo ?? '').trim().toUpperCase() === 'TRUE' || r.ativo === true || r.ativo === 1;
+    } else if (tabela === 'avaliacoes') {
+      // A planilha acadêmica usa vírgula decimal, não ponto.
+      const raw = String(r.nota ?? '').trim().replace(/\s/g, '').replace(',', '.');
+      r.nota = raw === '' ? null : Number(raw);
+    } else if (tabela === 'criterios_avaliacao') {
+      const rawMax = String(r.nota_maxima ?? '').trim().replace(',', '.');
+      const rawPeso = String(r.peso ?? '').trim().replace(',', '.');
+      r.nota_maxima = rawMax === '' ? 0 : Number(rawMax);
+      r.peso = rawPeso === '' ? 1 : Number(rawPeso);
+      r.ativo = !['FALSE', 'FALSO', '0', 'NÃO', 'NAO'].includes(String(r.ativo ?? 'TRUE').trim().toUpperCase());
+      // Os instrumentos não estão preenchidos no banco 2026.2:
+      // manter cada critério na rubrica da própria turma, sem inventar IDs.
+      r.instrumento_avaliacao = r.instrumento_avaliacao || '';
     } else if (tabela === 'leituras_responsaveis') {
       r.leitura_id = r.leitura_id ?? r.leitura_agenda_id ?? '';
       r.data = normalizarDataAcademica(r.data ?? r.data_discussao ?? '');
