@@ -21,6 +21,7 @@ const SHEETS: Record<string, number> = {
   entregas: 12,
   frequencias: 13,
   avaliacoes: 14,
+  encontros_turma: 15,
 };
 
 globalThis.fetch = (async (url: string | URL | Request, init?: RequestInit) => {
@@ -94,6 +95,29 @@ try {
   });
   assert(requiredWrite('PUT').body.values[0][3] === 'FALTA_JUSTIFICADA');
   assert(!calls.some(c => c.init.method === 'POST'), 'Must not append duplicate attendance');
+
+  // 4b. Presença com atraso deve continuar sendo ATRASO na planilha.
+  calls = [];
+  sheetRows = [
+    ['frequencia_id', 'matricula_id', 'data_aula', 'status', 'justificativa'],
+    ['f-1', 'm-1', '2026-10-13', 'ATRASO', ''],
+  ];
+  await gravarRegistroNaPlanilhaOficial('frequencias', {
+    frequencia_id: 'f-1', matricula_id: 'm-1',
+    data_aula: '2026-10-13', status: 'PRESENTE', atraso: true,
+  });
+  assert.equal(requiredWrite('PUT').body.values[0][3], 'ATRASO', 'Não perder atraso na persistência');
+
+  // 4c. Encerramento da aula deve possuir caminho de gravação real.
+  calls = [];
+  sheetRows = [['encontro_id','turma_id','periodo_id','data','status','chamada_salva','total_presentes','total_faltas']];
+  await gravarRegistroNaPlanilhaOficial('encontros_turma', {
+    encontro_id:'enc-1',turma_id:'tur-1',periodo_id:'sem-1',data:'2026-10-13',
+    status:'REALIZADO',chamada_salva:true,total_presentes:12,total_faltas:2,
+  });
+  const encerramento = requiredWrite('POST');
+  assert.equal(encerramento.body.values[0][4], 'REALIZADO');
+  assert.equal(encerramento.body.values[0][5], 'TRUE');
 
   // 5. DELETE deve excluir apenas uma linha identificada inequivocamente.
   calls = [];
