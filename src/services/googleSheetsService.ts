@@ -575,6 +575,15 @@ export async function gravarRegistroNaPlanilhaOficial(
   if (tabela === 'avaliacoes_completas') {
     adaptado.notas_criterios_json = JSON.stringify(registro.notas_criterios || []);
   }
+  if (tabela === 'leituras_responsaveis') {
+    adaptado.leitura_agenda_id = registro.leitura_agenda_id ?? registro.leitura_id;
+    if (Array.isArray(registro.responsaveis_efetivos)) {
+      adaptado.responsaveis_efetivos = JSON.stringify(registro.responsaveis_efetivos);
+    }
+  }
+  if (tabela === 'grupo_integrantes') {
+    adaptado.grupo_integrante_id = registro.grupo_integrante_id ?? registro.integrante_id;
+  }
   if (tabela === 'registros_supervisao') {
     adaptado.data = registro.data ?? registro.data_hora;
     adaptado.descricao = registro.descricao ?? registro.texto;
@@ -717,10 +726,16 @@ export async function removerRegistroDaPlanilhaOficial(
   const headers = (rows[0] || []).map((h: any) => String(h).trim());
   const pk = PRIMARY_KEYS[tabela];
   const keyIndex = headers.indexOf(pk);
-  if (!pk || keyIndex < 0 || !registro[pk]) {
+  // DELETE precisa usar a chave física da linha, não a identidade composta
+  // das frequências (matrícula + data), que é exclusiva do upsert.
+  const rawId = pk && (registro[pk] ??
+    (tabela === 'leituras_responsaveis' ? registro.leitura_id :
+     tabela === 'grupo_integrantes' ? registro.integrante_id : undefined));
+  if (!pk || keyIndex < 0 || rawId === undefined || rawId === null || !String(rawId).trim()) {
     throw new Error(`Chave primária inválida para excluir em ${tabela}.`);
   }
-  const rowIndexes = rows.map((row, i) => i > 0 && String(row[keyIndex] || '') === String(registro[pk]) ? i : -1).filter(i => i > 0);
+  const identidade = String(rawId).trim();
+  const rowIndexes = rows.map((row, i) => i > 0 && String(row[keyIndex] || '').trim() === identidade ? i : -1).filter(i => i > 0);
   if (rowIndexes.length === 0) return true; // Retry after a lost response: already deleted.
   if (rowIndexes.length !== 1) throw new Error('Exclusão bloqueada: chave ausente ou duplicada.');
   const rowIndex = rowIndexes[0];
