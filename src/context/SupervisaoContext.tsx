@@ -1,3 +1,4 @@
+import { chaveItemOperacional, prepararRegistroOperacional, combinarOperacionais, contarLegadosLocais, type TipoOperacional } from '../services/operacionaisSheetsService';
 import { resumirDocumentacaoOficial, documentosPendentesOficiais } from '../services/documentacaoAcademicaService';
 import { interpretarStatusEntrega } from '../services/normalizacaoAcademica';
 import { filtrarPendenciasResolvidas } from '../services/pendenciaResolutionService';
@@ -313,6 +314,8 @@ interface SupervisaoContextType {
 
   // Componentes de Apoio / Fila / Avaliação
   caixaEntrada: CaixaEntradaItem[];
+  itensOperacionaisLocaisPendentes: number;
+  importarItensOperacionaisLocais: () => Promise<number>;
   addCaixaEntradaItem: (item: any) => Promise<void>;
   confirmarCaixaEntradaItem: (id: string, updates?: any) => Promise<void>;
   descartarCaixaEntradaItem: (id: string) => Promise<void>;
@@ -631,7 +634,12 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     if (Array.isArray(data.matriculas)) setMatriculas(data.matriculas);
     if (Array.isArray(data.orientacoes)) setOrientacoes(data.orientacoes);
     if (Array.isArray(data.criterios)) setCriterios(data.criterios);
-    if (Array.isArray(data.configuracoes)) setConfiguracoes(data.configuracoes);
+    if (Array.isArray(data.configuracoes)) {
+      setConfiguracoes(data.configuracoes);
+      setCaixaEntrada(prev => combinarOperacionais(prev, data.configuracoes, 'CAIXA_ENTRADA'));
+      setFilaProfessora(prev => combinarOperacionais(prev, data.configuracoes, 'FILA_PROFESSORA'));
+      setFilaSupervisao(prev => combinarOperacionais(prev, data.configuracoes, 'FILA_SUPERVISAO'));
+    }
     if (Array.isArray(data.marcos)) setMarcosAcademicos(data.marcos);
     if (Array.isArray(data.pontosAcompanhamento)) setPontosAcompanhamento(data.pontosAcompanhamento);
     if (Array.isArray(data.frequencias)) setFrequencias(data.frequencias);
@@ -2971,6 +2979,8 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         getAlunosDaTurma,
         // Componentes de apoio / filas / avaliação
         caixaEntrada,
+        itensOperacionaisLocaisPendentes,
+        importarItensOperacionaisLocais,
         addCaixaEntradaItem,
         confirmarCaixaEntradaItem,
         descartarCaixaEntradaItem,
