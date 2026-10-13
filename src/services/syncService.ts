@@ -106,7 +106,9 @@ export async function inicializarCacheLocal(): Promise<{
 
     if (meta) {
       currentSyncState = {
-        status: meta.status === 'SINCRONIZANDO' ? 'LOCAL' : meta.status,
+        status: conflitos.length > 0 ? 'PARCIAL' :
+          pendentes.length > 0 ? 'LOCAL' :
+          meta.status === 'SINCRONIZANDO' ? 'LOCAL' : meta.status,
         ultimaSincronizacao: meta.ultimaSincronizacao,
         ultimaLeituraSucesso: meta.ultimaLeituraSucesso,
         ultimaEscritaSucesso: meta.ultimaEscritaSucesso,
@@ -390,14 +392,24 @@ async function processarFilaInterna(): Promise<{
   const pendentes = fila.filter(i => i.status === 'PENDENTE' || i.status === 'ERRO' || i.status === 'SINCRONIZANDO');
 
   if (pendentes.length === 0) {
-    notifySyncStatusChange({ pendentesCount: 0 });
-    return { processados: 0, erros: 0, conflitos: 0 };
+    const conflitosNaFila = fila.filter(i => i.status === 'CONFLITO').length;
+    notifySyncStatusChange({
+      pendentesCount: 0, conflitosCount: conflitosNaFila,
+      status: conflitosNaFila > 0 || currentSyncState.erros.length > 0
+        ? 'PARCIAL'
+        : currentSyncState.status === 'SINCRONIZANDO' ? 'LOCAL' : currentSyncState.status,
+    });
+    return { processados: 0, erros: 0, conflitos: conflitosNaFila };
   }
 
   const token = await getAccessToken();
   if (!token) {
-    notifySyncStatusChange({ status: 'LOCAL', pendentesCount: pendentes.length });
-    return { processados: 0, erros: 0, conflitos: 0 };
+    const conflitosNaFila = fila.filter(i => i.status === 'CONFLITO').length;
+    notifySyncStatusChange({
+      status: conflitosNaFila > 0 ? 'PARCIAL' : 'LOCAL',
+      pendentesCount: pendentes.length, conflitosCount: conflitosNaFila,
+    });
+    return { processados: 0, erros: 0, conflitos: conflitosNaFila };
   }
 
   let processados = 0;
