@@ -155,11 +155,11 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
     const ids = new Set(alunosLista.map(item => item.matricula.matricula_id));
     const initialMap: Record<string, ExcecaoAluno> = {};
     frequencias.filter(f => f.data_aula === hojeIso && ids.has(f.matricula_id)).forEach(f => {
-      const faltou = f.status !== 'PRESENTE';
+      const faltou = !['PRESENTE', 'ATRASO'].includes(String(f.status));
       if (faltou || f.atraso || f.celular || f.justificativa || f.observacao) {
         initialMap[f.matricula_id] = {
           faltou,
-          atraso: !!f.atraso,
+          atraso: !!f.atraso || String(f.status) === 'ATRASO',
           celular: !!f.celular,
           justificativa: f.justificativa || '',
           observacao: f.observacao || '',
