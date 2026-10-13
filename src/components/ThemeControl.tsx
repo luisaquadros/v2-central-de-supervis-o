@@ -23,7 +23,15 @@ export function ThemeControl() {
     setTema(next);
     try { localStorage.setItem(KEY, next); } catch {}
   };
-  return <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-600">
+  const proximo = tema === 'system' ? 'light' : tema === 'light' ? 'dark' : 'system';
+  return <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-600">
+    <button type="button" aria-label={`Aparência atual: ${tema}. Alterar para ${proximo}`}
+      title={`Aparência: ${tema}`}
+      onClick={()=>mudar(proximo)}
+      className="flex sm:hidden items-center justify-center w-10 h-10 rounded-xl border border-slate-200 bg-slate-50">
+      {tema === 'dark' ? <Moon className="w-4 h-4"/> : tema === 'light' ? <Sun className="w-4 h-4"/> : <Monitor className="w-4 h-4"/>}
+    </button>
+    <label className="hidden sm:flex items-center gap-1.5">
     {tema === 'dark' ? <Moon className="w-4 h-4" aria-hidden /> :
       tema === 'light' ? <Sun className="w-4 h-4" aria-hidden /> : <Monitor className="w-4 h-4" aria-hidden />}
     <span className="sr-only">Aparência</span>
@@ -34,5 +42,6 @@ export function ThemeControl() {
       <option value="light">Claro</option>
       <option value="dark">Escuro</option>
     </select>
-  </label>;
+    </label>
+  </div>;
 }
