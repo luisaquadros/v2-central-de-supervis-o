@@ -1,3 +1,4 @@
+import { interpretarFrequenciaOficial, statusFrequenciaParaPlanilha } from './normalizacaoAcademica';
 import { PRIMARY_KEYS, recordIdentity } from './recordIdentity';
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import {
@@ -264,6 +265,13 @@ export function normalizarLinhasDaAba(tabela: string, rows: Record<string, any>[
       r.tipo_documento = r.tipo_documento ?? r.tipo_entrega ?? '';
       r.status_entrega = r.status_entrega ?? r.status ?? '';
       r.data_entrega = r.data_entrega ?? r.data_envio ?? '';
+    } else if (tabela === 'frequencias') {
+      const situacao = interpretarFrequenciaOficial(r.status, r.atraso);
+      // Nunca classificar ATRASO da planilha como ausência.
+      r.status = situacao.status;
+      r.atraso = situacao.atraso;
+      r.status_original = situacao.statusOriginal;
+      r.data_aula = normalizarDataAcademica(r.data_aula);
     } else if (tabela === 'registros_supervisao') {
       r.data_hora = r.data_hora ?? r.data ?? '';
       r.texto = r.texto ?? r.descricao ?? '';
@@ -570,6 +578,9 @@ export async function gravarRegistroNaPlanilhaOficial(
   if (tabela === 'registros_supervisao') {
     adaptado.data = registro.data ?? registro.data_hora;
     adaptado.descricao = registro.descricao ?? registro.texto;
+  }
+  if (tabela === 'frequencias') {
+    adaptado.status = statusFrequenciaParaPlanilha(String(registro.status ?? ''), registro.atraso === true);
   }
   if (tabela === 'entregas') {
     adaptado.tipo_entrega = registro.tipo_entrega ?? registro.tipo_documento;

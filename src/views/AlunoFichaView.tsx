@@ -728,21 +728,9 @@ export const AlunoFichaView: React.FC<AlunoFichaViewProps> = ({
                   </div>
 
                   <div className="flex gap-1 border-t border-slate-200/60 pt-1.5">
-                    {isGrupoRss || (reg && (reg as any).origem === 'REGISTRO_SEMANAL') ? (
-                      <span className="text-[10px] text-slate-500">
-                        {grupoId ? 'Situação compartilhada pelo grupo' : 'Conferência automática pela planilha'}
-                      </span>
-                    ) : (
-                      <button
-                        onClick={() => updateRegistroSemanal(
-                          matriculaId, semana,
-                          isEntregue ? 'PENDENTE_REVISAO' : 'ENTREGUE', reg?.observacao || ''
-                        )}
-                        className="w-full py-1 text-[10px] font-semibold rounded bg-white border border-slate-200 hover:bg-slate-100 transition-colors cursor-pointer text-center"
-                      >
-                        {isEntregue ? 'Desfazer' : 'Marcar Entregue'}
-                      </button>
-                    )}
+                    <span className="text-[10px] text-slate-600">
+                      {grupoId ? 'Registro coletivo consultado na base' : 'Somente leitura: use Orientações para registrar a devolutiva'}
+                    </span>
                   </div>
                 </div>
               );

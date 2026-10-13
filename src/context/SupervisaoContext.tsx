@@ -1,3 +1,4 @@
+import { interpretarStatusEntrega } from '../services/normalizacaoAcademica';
 import { filtrarPendenciasResolvidas } from '../services/pendenciaResolutionService';
 import { selecionarRssDoEstudante } from '../services/rssVinculos';
 import { listarAlunosChamada } from '../services/aulaParticipants';
@@ -75,7 +76,7 @@ import {
   subscribeSyncStatus,
   SyncStatusState,
 } from '../services/syncService';
-import { salvarTabelaUnicaNoIndexedDb } from '../services/indexedDbService';
+import { salvarTabelaUnicaNoIndexedDb, carregarFilaSincronizacao } from '../services/indexedDbService';
 import {
   initialPeriodos,
   initialDisciplinas,
@@ -797,7 +798,7 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       } catch (e: any) {
         console.error('Falha ao autenticar:', e);
         setConnectionErrorMessage('Autenticação necessária para sincronizar com Google Sheets.');
-        setConnectionStatus(hasLocalCache ? 'CONECTADO' : 'ERRO_CONEXAO');
+        setConnectionStatus('ERRO_CONEXAO'); // cache disponível não equivale a conexão
         return;
       } finally {
         setIsLoggingIn(false);
@@ -823,11 +824,7 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       setTokenExpiredAviso(null);
     } else {
       setConnectionErrorMessage(res.erro || 'Falha ao sincronizar com Google Sheets');
-      if (hasLocalCache) {
-        setConnectionStatus('CONECTADO');
-      } else {
-        setConnectionStatus('ERRO_CONEXAO');
-      }
+      setConnectionStatus('ERRO_CONEXAO'); // mantém cache, mas informa falha real
     }
   }, [aplicarDados, hasLocalCache]);
 
@@ -911,8 +908,8 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     listaAtualizada: any[]
   ): Promise<void> => {
     if (isRunningInAppsScript()) {
-      notifySaveSuccess(true);
-      return;
+      // Não confirmar gravação: GAS legado não implementa estas mutações.
+      throw new Error('Esta operação ainda não possui backend de gravação no Apps Script. Utilize a versão web da Central.');
     }
     try {
       const resultado = await salvarRegistroResiliente(tabela, tipo, registro, listaAtualizada);
@@ -978,11 +975,14 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       setSaveStatus('SALVANDO');
       setSaveStatusMessage('Reconectando ao Google Workspace...');
       await loginGoogle();
+      if (!await getAccessToken()) throw new Error('Autenticação do Google Sheets não confirmada.');
       setIsTokenExpired(false);
       setTokenExpiredAviso(null);
       setSaveStatusMessage('Reenviando alterações da fila segura...');
       const resFila = await processarFilaSincronizacao();
-      if (resFila.erros === 0) {
+      const filaRestante = await carregarFilaSincronizacao();
+      const pendentes = filaRestante; // fila contém apenas alterações ainda não confirmadas
+      if (resFila.erros === 0 && pendentes.length === 0) {
         setSaveStatus('SINCRONIZADO_SHEETS');
         setSaveStatusMessage('✓ Sincronizado no Google Sheets');
         setTimeout(() => {
@@ -1458,49 +1458,15 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   // REGISTROS SEMANAIS & DOCUMENTOS
   // ==========================================
 
+  // RSS originais são respostas importadas: não permitir alterar o histórico
+  // por uma ação que modificava apenas o React, sem gravar no Sheets.
   const updateRegistroSemanal = async (
-    matriculaId: string,
-    semana: number,
-    status: 'ENTREGUE' | 'FALTANTE' | 'PENDENTE_REVISAO',
-    obs: string = ''
+    _matriculaId: string,
+    _semana: number,
+    _status: 'ENTREGUE' | 'FALTANTE' | 'PENDENTE_REVISAO',
+    _obs: string = ''
   ): Promise<void> => {
-    setSaveStatus('SALVANDO');
-    const today = getHojeDataIso();
-
-    if (isRunningInAppsScript()) {
-      try {
-        await salvarRegistroSemanalNoSheets({ matricula_id: matriculaId, semana, status, observacao: obs });
-      } catch (err) {
-        handleSaveError(err);
-      }
-    }
-
-    setRegistrosSemanais(prev => {
-      const existingIdx = prev.findIndex(r => r.matricula_id === matriculaId && r.semana === semana);
-      if (existingIdx >= 0) {
-        const updated = [...prev];
-        updated[existingIdx] = {
-          ...updated[existingIdx],
-          status,
-          data_entrega: status === 'ENTREGUE' ? today : '',
-          observacao: obs,
-        };
-        return updated;
-      } else {
-        return [
-          ...prev,
-          {
-            registro_id: generateUuid(),
-            matricula_id: matriculaId,
-            semana,
-            status,
-            data_entrega: status === 'ENTREGUE' ? today : '',
-            observacao: obs,
-          },
-        ];
-      }
-    });
-    notifySaveSuccess();
+    throw new Error('RSS da planilha oficial são somente leitura. Registre sua orientação na ficha; não é possível alterar uma entrega sem trilha de auditoria.');
   };
 
   const updateDocumento = async (
@@ -1896,7 +1862,8 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     if (materializado?.total_pendencias === undefined || materializado?.total_pendencias === null) {
       const mats = matriculas.filter(m => m.turma_id === turmaId).map(m => m.matricula_id);
       const docs = entregas.length > 0
-        ? entregas.filter(e => mats.includes(e.matricula_id || '') && e.status_entrega !== 'ENTREGUE').length
+        ? entregas.filter(e => mats.includes(e.matricula_id || '') &&
+          ['PENDENTE', 'A_CONFERIR'].includes(interpretarStatusEntrega(e.status_entrega ?? e.status))).length
         : documentos.filter(d => mats.includes(d.matricula_id) && d.status === 'PENDENTE').length;
       const freqs = frequencias.filter(f => mats.includes(f.matricula_id) && f.status === 'FALTA_SEM_JUSTIFICATIVA').length;
       totalPendencias = docs + freqs;
@@ -2493,25 +2460,25 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       setOcorrencias(prev => [...novasOcorrencias, ...prev]);
     }
 
+    const encontroAnterior = encontrosTurma.find(e => e.turma_id === turmaId && e.data === dataAula);
+    const encontroAtualizado: EncontroTurma = {
+      ...encontroAnterior,
+      encontro_id: encontroAnterior?.encontro_id || generateUuid(),
+      turma_id: turmaId,
+      periodo_id: selectedPeriodoId,
+      data: dataAula,
+      status: 'REALIZADO',
+      chamada_salva: true,
+      total_presentes: Object.values(mapNovasFreqs).filter(f => f.status === 'PRESENTE').length,
+      total_faltas: Object.values(mapNovasFreqs).filter(f => f.status !== 'PRESENTE').length,
+      atualizado_em: now,
+    };
     setEncontrosTurma(prev => {
       const idx = prev.findIndex(e => e.turma_id === turmaId && e.data === dataAula);
-      const encAtualizado: EncontroTurma = {
-        encontro_id: idx >= 0 ? prev[idx].encontro_id : generateUuid(),
-        turma_id: turmaId,
-        periodo_id: selectedPeriodoId,
-        data: dataAula,
-        status: 'REALIZADO',
-        chamada_salva: true,
-        total_presentes: Object.values(mapNovasFreqs).filter(f => f.status === 'PRESENTE').length,
-        total_faltas: Object.values(mapNovasFreqs).filter(f => f.status !== 'PRESENTE').length,
-        atualizado_em: now,
-      };
-      if (idx >= 0) {
-        const copy = [...prev];
-        copy[idx] = encAtualizado;
-        return copy;
-      }
-      return [...prev, encAtualizado];
+      if (idx < 0) return [...prev, encontroAtualizado];
+      const copy = [...prev];
+      copy[idx] = encontroAtualizado;
+      return copy;
     });
 
     // 1. Persistência local imediata e segura em cache persistente (IndexedDB)
@@ -2575,6 +2542,19 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           }
         }
       }
+    }
+
+    // Encerramento do encontro é uma escrita real e independente.
+    // Se a rede não estiver disponível, fica na fila após as frequências;
+    // não anunciar chamada sincronizada enquanto este marcador estiver pendente.
+    try {
+      const resEncontro = await salvarRegistroResiliente(
+        'encontros_turma', encontroAnterior ? 'UPDATE' : 'INSERT', encontroAtualizado
+      );
+      if (!resEncontro.gravadoOnline) todasGravadasRemotamente = false;
+    } catch (erro) {
+      handleSaveError(erro);
+      throw new Error('Frequências processadas, mas não foi possível garantir o fechamento do encontro. Verifique a fila de sincronização antes de tentar novamente.');
     }
 
     if (houveTokenExpirado) {
