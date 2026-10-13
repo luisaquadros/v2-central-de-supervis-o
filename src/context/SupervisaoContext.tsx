@@ -638,6 +638,7 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     if (data.entregas && data.entregas.length > 0) setEntregas(data.entregas);
     if (data.feedbacksOficiais && data.feedbacksOficiais.length > 0) setFeedbacksOficiais(data.feedbacksOficiais);
     if (data.registrosSupervisao && data.registrosSupervisao.length > 0) setRegistrosSupervisao(data.registrosSupervisao);
+    if (data.encontrosTurma && data.encontrosTurma.length > 0) setEncontrosTurma(data.encontrosTurma);
     if (data.sincronizacao && data.sincronizacao.length > 0) setSincronizacao(data.sincronizacao);
     if (data.dicionarioDados && data.dicionarioDados.length > 0) setDicionarioDados(data.dicionarioDados);
     if (data.contratoApp && data.contratoApp.length > 0) setContratoApp(data.contratoApp);
