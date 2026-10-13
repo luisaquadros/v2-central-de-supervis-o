@@ -76,7 +76,7 @@ import {
   subscribeSyncStatus,
   SyncStatusState,
 } from '../services/syncService';
-import { salvarTabelaUnicaNoIndexedDb } from '../services/indexedDbService';
+import { salvarTabelaUnicaNoIndexedDb, carregarFilaSincronizacao } from '../services/indexedDbService';
 import {
   initialPeriodos,
   initialDisciplinas,
@@ -798,7 +798,7 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       } catch (e: any) {
         console.error('Falha ao autenticar:', e);
         setConnectionErrorMessage('Autenticação necessária para sincronizar com Google Sheets.');
-        setConnectionStatus(hasLocalCache ? 'CONECTADO' : 'ERRO_CONEXAO');
+        setConnectionStatus('ERRO_CONEXAO'); // cache disponível não equivale a conexão
         return;
       } finally {
         setIsLoggingIn(false);
@@ -824,11 +824,7 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       setTokenExpiredAviso(null);
     } else {
       setConnectionErrorMessage(res.erro || 'Falha ao sincronizar com Google Sheets');
-      if (hasLocalCache) {
-        setConnectionStatus('CONECTADO');
-      } else {
-        setConnectionStatus('ERRO_CONEXAO');
-      }
+      setConnectionStatus('ERRO_CONEXAO'); // mantém cache, mas informa falha real
     }
   }, [aplicarDados, hasLocalCache]);
 
@@ -912,8 +908,8 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     listaAtualizada: any[]
   ): Promise<void> => {
     if (isRunningInAppsScript()) {
-      notifySaveSuccess(true);
-      return;
+      // Não confirmar gravação: GAS legado não implementa estas mutações.
+      throw new Error('Esta operação ainda não possui backend de gravação no Apps Script. Utilize a versão web da Central.');
     }
     try {
       const resultado = await salvarRegistroResiliente(tabela, tipo, registro, listaAtualizada);
@@ -979,11 +975,14 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       setSaveStatus('SALVANDO');
       setSaveStatusMessage('Reconectando ao Google Workspace...');
       await loginGoogle();
+      if (!await getAccessToken()) throw new Error('Autenticação do Google Sheets não confirmada.');
       setIsTokenExpired(false);
       setTokenExpiredAviso(null);
       setSaveStatusMessage('Reenviando alterações da fila segura...');
       const resFila = await processarFilaSincronizacao();
-      if (resFila.erros === 0) {
+      const filaRestante = await carregarFilaSincronizacao();
+      const pendentes = filaRestante.filter(item => item.status !== 'CONCLUIDO');
+      if (resFila.erros === 0 && pendentes.length === 0) {
         setSaveStatus('SINCRONIZADO_SHEETS');
         setSaveStatusMessage('✓ Sincronizado no Google Sheets');
         setTimeout(() => {
