@@ -38,6 +38,7 @@ import {
   EncontroTurma,
   PreparacaoAula,
   AvaliacaoCompleta,
+  MonitoramentoDocumento,
 } from '../types';
 
 export interface DadosIniciais {
@@ -73,6 +74,7 @@ export interface DadosIniciais {
   registrosSupervisao?: RegistroSupervisao[];
   encontrosTurma?: EncontroTurma[];
   preparacoesAula?: PreparacaoAula[];
+  monitoramentoDocumentos?: MonitoramentoDocumento[];
   avaliacoesCompletas?: AvaliacaoCompleta[];
   sincronizacao?: Sincronizacao[];
   // Documentação e Contrato da Base Oficial

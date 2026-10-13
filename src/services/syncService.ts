@@ -1,5 +1,6 @@
 import { TABELAS_CRITICAS } from '../server/coordenacaoCritica';
-import { gravarCriticoCoordenado } from './escritaCoordenadaService';
+import { gravarCriticoCoordenado, obterPerfilServidor } from './escritaCoordenadaService';
+import { carregarViaServidor } from './leituraServidor';
 /**
  * CENTRAL DE SUPERVISÃO - CAMADA DE SINCRONIZAÇÃO E CONTROLE DE FILA (syncService)
  *
@@ -164,6 +165,7 @@ export async function inicializarCacheLocal(): Promise<{
       registrosSupervisao: tabelasMap['registros_supervisao'] || [],
       encontrosTurma: tabelasMap['encontros_turma'] || [],
       preparacoesAula: tabelasMap['preparacoes_aula'] || [],
+      monitoramentoDocumentos: tabelasMap['monitoramento_documentos'] || [],
       avaliacoesCompletas: tabelasMap['avaliacoes_completas'] || [],
       sincronizacao: tabelasMap['sincronizacao'] || [],
       dicionarioDados: tabelasMap['dicionario_dados'] || [],
@@ -215,7 +217,12 @@ async function sincronizarDaBaseOficialInterna(): Promise<{
     const cacheAnterior = (await carregarTodasTabelasDoIndexedDb()) || {};
 
     // Executa a busca resiliente na planilha oficial
-    const resultado = await carregarDadosDaPlanilhaOficial();
+    // Monitoras não leem a planilha diretamente: o servidor entrega só o que foi delegado a elas.
+    const perfilServidor = await obterPerfilServidor().catch(() => null);
+    const resultado = perfilServidor?.papel === 'MONITORA'
+      ? await carregarViaServidor(perfilServidor)
+      : await carregarDadosDaPlanilhaOficial();
+    const restritas: string[] = (resultado as any)._restritas || [];
     const rawMap = (resultado as any)._rawMap || {};
     const missingSheets = (resultado as any)._missingSheets || [];
 
@@ -236,6 +243,12 @@ async function sincronizarDaBaseOficialInterna(): Promise<{
     const mapParaSalvar: Record<string, any[]> = { ...cacheAnterior };
 
     TABELAS_NORMALIZADAS.forEach(tab => {
+      if (restritas.includes(tab)) {
+        // Não delegada a este perfil: nunca fica no aparelho (apaga cópia deixada por outra conta neste navegador).
+        mapParaSalvar[tab] = [];
+        tabelasStatus[tab] = { ok: true, count: 0 };
+        return;
+      }
       if (tabelasComEscritaPendente.has(tab)) {
         tabelasStatus[tab] = {
           ok: false,
@@ -333,6 +346,7 @@ async function sincronizarDaBaseOficialInterna(): Promise<{
       registrosSupervisao: mapParaSalvar['registros_supervisao'] || [],
       encontrosTurma: mapParaSalvar['encontros_turma'] || [],
       preparacoesAula: mapParaSalvar['preparacoes_aula'] || [],
+      monitoramentoDocumentos: mapParaSalvar['monitoramento_documentos'] || [],
       avaliacoesCompletas: mapParaSalvar['avaliacoes_completas'] || [],
       sincronizacao: mapParaSalvar['sincronizacao'] || [],
       dicionarioDados: mapParaSalvar['dicionario_dados'] || [],

@@ -57,6 +57,7 @@ export const TABELAS_NORMALIZADAS = [
   'registros_supervisao',
   'encontros_turma',
   'preparacoes_aula',
+  'monitoramento_documentos',
   'avaliacoes_completas',
   'sincronizacao',
   // Documentação e Contrato da Base Oficial
@@ -208,7 +209,7 @@ export const googleLogout = async () => {
 /**
  * Converte matriz de linhas de uma aba em lista de objetos, usando cabeçalhos reais da planilha
  */
-function parseSheetRowsToObjects<T>(rows: any[][]): T[] {
+export function parseSheetRowsToObjects<T>(rows: any[][]): T[] {
   if (!rows || rows.length < 2) return [];
   const headers = rows[0].map(h => String(h || '').trim());
   const dataRows = rows.slice(1);
@@ -405,6 +406,8 @@ export function formatarRangeSheet(nomeRealAba: string, range?: string): string 
 export interface ResultadoLeituraPlanilha extends DadosIniciais {
   _rawMap: Record<string, any[]>;
   _missingSheets: string[];
+  /** Tabelas que o servidor deliberadamente não entregou a este perfil (não são falha de leitura). */
+  _restritas?: string[];
 }
 
 /**
@@ -490,6 +493,11 @@ export async function carregarDadosDaPlanilhaOficial(): Promise<ResultadoLeitura
     }
   }
 
+  return montarResultadoLeitura(tableDataMap, missingSheets);
+}
+
+/** Monta o resultado a partir das tabelas já normalizadas (leitura direta e leitura via servidor). */
+export function montarResultadoLeitura(tableDataMap: Record<string, any[]>, missingSheets: string[], restritas: string[] = []): ResultadoLeituraPlanilha {
   return {
     periodos: tableDataMap['periodos'] || [],
     disciplinas: tableDataMap['disciplinas'] || [],
@@ -522,6 +530,7 @@ export async function carregarDadosDaPlanilhaOficial(): Promise<ResultadoLeitura
     registrosSupervisao: tableDataMap['registros_supervisao'] || [],
     encontrosTurma: tableDataMap['encontros_turma'] || [],
     preparacoesAula: tableDataMap['preparacoes_aula'] || [],
+    monitoramentoDocumentos: tableDataMap['monitoramento_documentos'] || [],
     avaliacoesCompletas: tableDataMap['avaliacoes_completas'] || [],
     sincronizacao: tableDataMap['sincronizacao'] || [],
     dicionarioDados: tableDataMap['dicionario_dados'] || [],
@@ -530,6 +539,7 @@ export async function carregarDadosDaPlanilhaOficial(): Promise<ResultadoLeitura
     auditoriaBase: tableDataMap['auditoria_base'] || [],
     _rawMap: tableDataMap,
     _missingSheets: missingSheets,
+    _restritas: restritas,
   };
 }
 

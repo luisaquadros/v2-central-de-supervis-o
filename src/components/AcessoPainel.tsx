@@ -13,7 +13,12 @@ export const AcessoPainel: React.FC = () => {
       <div>
         <div className="font-bold text-slate-900">Acesso de gravação</div>
         {!acesso && <p className="text-slate-500">Verificando no servidor…</p>}
-        {acesso && ok && <p className="text-emerald-900">Autorizada como professora administradora ({(acesso as { email: string }).email}). Alterações são gravadas com a sua identidade verificada.</p>}
+        {acesso && ok && (() => { const a = acesso as Extract<EstadoAcesso, { estado: 'AUTORIZADO' }>; return (
+          <div className="text-emerald-900 space-y-1">
+            <p>{a.perfil.papel === 'PROFESSORA_ADMIN' ? 'Professora administradora' : 'Monitora'}: {a.email}. Alterações são gravadas com a sua identidade verificada pelo servidor.</p>
+            {a.perfil.papel === 'MONITORA' && <p>Turmas delegadas: {a.perfil.turmas.join(', ')} · Operações: {a.perfil.operacoes.join(', ')}. Notas, ocorrências e devolutivas não ficam disponíveis a este perfil.</p>}
+            {a.perfil.avisos.length > 0 && <p className="text-amber-800">Avisos de configuração: {a.perfil.avisos.join('; ')}.</p>}
+          </div>); })()}
         {acesso && !ok && <p className="text-amber-900">{(acesso as { mensagem: string }).mensagem} As alterações ficam pendentes neste aparelho e não são dadas como salvas.</p>}
       </div>
     </div>

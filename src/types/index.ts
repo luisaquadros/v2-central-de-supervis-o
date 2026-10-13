@@ -39,6 +39,8 @@ export interface Matricula {
   turma_id: string;
   periodo_id: string;
   status: 'MATRICULADO' | 'TRANCADO' | 'CANCELADO';
+  /** Condição na turma (ex.: REPRESENTANTE, SUPERVISAO_HORARIO_ALTERNATIVO). Pode combinar valores separados por ; , ou |. */
+  papel_na_turma?: string;
   origem_id?: string; // FK -> TurmaOrigem (Docente Online individual do aluno)
   codigo_origem?: string;
 }
@@ -263,6 +265,16 @@ export interface RegistroSupervisao {
   categoria?: string;
   texto?: string;
   status?: string;
+  [key: string]: any;
+}
+
+/** Metadados de um documento digital monitorado no Drive. Nunca guarda nome, conteúdo ou link do arquivo. */
+export interface MonitoramentoDocumento {
+  monitoramento_id?: string; periodo_id?: string; turma_id?: string;
+  titular_tipo?: string; titular_id?: string; tipo_documento_id?: string;
+  arquivo_id?: string; pasta_id?: string;
+  data_modificacao_drive?: string; consultado_em?: string; status?: string;
+  origem_metadado?: string; validacao_manual?: string; erro_codigo?: string;
   [key: string]: any;
 }
 

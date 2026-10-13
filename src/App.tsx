@@ -44,7 +44,9 @@ const MainContent: React.FC = () => {
     connectionStatus,
     syncStatusState,
     sincronizarAgora,
+    perfilServidor,
   } = useSupervisao();
+  const ehMonitora = perfilServidor?.papel === 'MONITORA';
 
   const [currentView, setCurrentView] = useState<AppView>({ type: 'tab', tab: 'hoje' });
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -264,7 +266,7 @@ const MainContent: React.FC = () => {
               />
             )}
 
-            {currentView.type === 'tab' && currentView.tab === 'avaliacao' && (
+            {currentView.type === 'tab' && currentView.tab === 'avaliacao' && !ehMonitora && (
               <AvaliacaoView />
             )}
 
@@ -301,9 +303,9 @@ const MainContent: React.FC = () => {
               />
             )}
 
-            {currentView.type === 'tab' && currentView.tab === 'semestres' && <SemestresView />}
+            {currentView.type === 'tab' && currentView.tab === 'semestres' && !ehMonitora && <SemestresView />}
 
-            {currentView.type === 'tab' && currentView.tab === 'configuracoes' && (
+            {currentView.type === 'tab' && currentView.tab === 'configuracoes' && !ehMonitora && (
               <ConfiguracoesView />
             )}
 

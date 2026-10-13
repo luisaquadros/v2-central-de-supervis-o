@@ -115,10 +115,12 @@ import {
   initialMapeamentoFontes,
   initialAuditoriaBase,
 } from '../data/initialData';
+import { verificarAcessoEscrita, limparCachePerfil, type PerfilServidor } from '../services/escritaCoordenadaService';
 import { gerarBackup, validarBackup, compararComBackup, operacaoDeRestauracao, type TabelasBackup, type ArquivoBackup, type RelatorioBackup, type DiferencaRegistro } from '../services/backupService';
 import { OFFICIAL_SPREADSHEET_ID, OFFICIAL_SPREADSHEET_NAME, OFFICIAL_SPREADSHEET_URL } from '../services/googleSheetsService';
 import type { DadosIniciais } from '../services/dadosIniciais';
 import type { User } from 'firebase/auth';
+import type { MonitoramentoDocumento } from '../types';
 import {
   initAuth,
   googleSignIn,
@@ -197,6 +199,9 @@ interface SupervisaoContextType {
 
   // Autenticação Google Workspace (para acesso à planilha privada)
   currentUser: User | null;
+  /** Perfil verificado no servidor (PROFESSORA_ADMIN ou MONITORA); null enquanto indisponível. */
+  perfilServidor: PerfilServidor | null;
+  monitoramentoDocumentos: MonitoramentoDocumento[];
   acessoGoogleValidado: boolean;
   isLoggingIn: boolean;
   loginGoogle: () => Promise<void>;
@@ -457,6 +462,14 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
   // Autenticação Google
   const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [perfilServidor, setPerfilServidor] = useState<PerfilServidor | null>(null);
+  const [monitoramentoDocumentos, setMonitoramentoDocumentos] = useState<MonitoramentoDocumento[]>([]);
+  useEffect(() => {
+    if (!currentUser) { limparCachePerfil(); setPerfilServidor(null); return; }
+    let ativo = true;
+    void verificarAcessoEscrita(true).then(e => { if (ativo) setPerfilServidor(e.estado === 'AUTORIZADO' ? e.perfil : null); });
+    return () => { ativo = false; };
+  }, [currentUser?.uid]);
   const [acessoGoogleValidado, setAcessoGoogleValidado] = useState(false);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
 
@@ -632,6 +645,7 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     if (Array.isArray(data.registrosSupervisao)) setRegistrosSupervisao(data.registrosSupervisao);
     if (Array.isArray(data.encontrosTurma)) setEncontrosTurma(data.encontrosTurma);
     if (Array.isArray(data.preparacoesAula)) setPreparacoesAula(data.preparacoesAula);
+    if (Array.isArray(data.monitoramentoDocumentos)) setMonitoramentoDocumentos(data.monitoramentoDocumentos);
     if (Array.isArray(data.avaliacoesCompletas)) setAvaliacoesCompletas(data.avaliacoesCompletas);
     if (Array.isArray(data.sincronizacao)) setSincronizacao(data.sincronizacao);
     if (Array.isArray(data.dicionarioDados)) setDicionarioDados(data.dicionarioDados);
@@ -2786,6 +2800,8 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         spreadsheetName: OFFICIAL_SPREADSHEET_NAME,
         spreadsheetUrl: OFFICIAL_SPREADSHEET_URL,
         currentUser,
+        perfilServidor,
+        monitoramentoDocumentos,
         acessoGoogleValidado,
         isLoggingIn,
         loginGoogle,

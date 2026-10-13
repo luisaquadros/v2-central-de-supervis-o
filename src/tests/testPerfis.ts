@@ -185,6 +185,17 @@ const ctx = (d = dados) => ({
   assert.equal(r.status, 200);
   assert(amb.chamadas.slice(a0).filter(c => c.url.includes('/v4/spreadsheets')).every(c => c.auth === 'Bearer token-google-do-usuario'), 'administradora usa o próprio acesso');
 
+  // cliente: leitura via servidor monta o resultado do app e marca o que foi retido
+  const { carregarViaServidor } = await import('../services/leituraServidor');
+  const { limparCachePerfil, obterPerfilServidor } = await import('../services/escritaCoordenadaService');
+  limparCachePerfil(); amb.entrar(M);
+  const perfilM = await obterPerfilServidor(); assert.equal(perfilM?.papel, 'MONITORA');
+  const lido = await carregarViaServidor(perfilM!);
+  assert.deepEqual(lido.matriculas.map((m: any) => m.matricula_id), ['mA', 'mD']);
+  assert(lido._restritas!.includes('avaliacoes') && lido._restritas!.includes('ocorrencias') && lido._restritas!.includes('entregas'), 'confidenciais ficam retidas');
+  assert.equal(lido.avaliacoes!.length, 0); assert.equal(lido.ocorrencias!.length, 0);
+  limparCachePerfil(); amb.entrar(A);
+
   // sem conta de serviço, monitora não grava nem lê (e a administradora segue)
   const amb2 = await criarAmbiente({ abas: { turmas: dados.turmas, matriculas: dados.matriculas, frequencias: dados.frequencias.map(l => [...l]), grupos_pratica: dados.grupos_pratica },
     env: { ACESSOS_JSON: JSON.stringify({ administradoras: [A], monitoras: [{ email: M, turmas: ['t2b'], operacoes: ['CHAMADA'] }] }) } });
