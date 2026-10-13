@@ -1082,10 +1082,22 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         throw err;
       }
     } else {
+      // Não anunciar sucesso antes de a escrita ser entregue ao Sheets ou à fila segura.
+      // Sub-registros possuem chaves próprias e precisam ser gravados separadamente.
+      await persistirMudancaWeb('turmas', 'INSERT', novaTurma, [...turmas, novaTurma]);
+      let horariosSnapshot = [...horariosTurma];
+      for (const horario of novosHorarios) {
+        horariosSnapshot = [...horariosSnapshot, horario];
+        await persistirMudancaWeb('horarios_turma', 'INSERT', horario, horariosSnapshot);
+      }
+      let origensSnapshot = [...turmasOrigem];
+      for (const origem of novasOrigens) {
+        origensSnapshot = [...origensSnapshot, origem];
+        await persistirMudancaWeb('turmas_origem', 'INSERT', origem, origensSnapshot);
+      }
       setTurmas(prev => [...prev, novaTurma]);
       if (novosHorarios.length > 0) setHorariosTurma(prev => [...prev, ...novosHorarios]);
       if (novasOrigens.length > 0) setTurmasOrigem(prev => [...prev, ...novasOrigens]);
-      notifySaveSuccess();
       return novaTurma;
     }
   };
@@ -1102,7 +1114,13 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     }
   ): Promise<void> => {
     setSaveStatus('SALVANDO');
-    const statusTurma = dados.status || 'ATIVO';
+    const anterior = turmas.find(t => t.turma_id === turmaId);
+    if (!anterior) throw new Error('Turma não encontrada.');
+    const statusTurma = dados.status || anterior.status || 'ATIVO';
+    const turmaAtualizada = {
+      ...anterior, disciplina_id: dados.disciplina_id,
+      nome: dados.nome, turno: dados.turno, status: statusTurma,
+    };
 
     if (isRunningInAppsScript()) {
       try {
@@ -1120,6 +1138,10 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       }
     }
 
+    if (!isRunningInAppsScript()) {
+      await persistirMudancaWeb('turmas', 'UPDATE', turmaAtualizada,
+        turmas.map(t => t.turma_id === turmaId ? turmaAtualizada : t));
+    }
     setTurmas(prev =>
       prev.map(t =>
         t.turma_id === turmaId
@@ -1145,6 +1167,14 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         data_fim: '2026-12-20',
         ativo: true,
       }));
+      if (!isRunningInAppsScript()) {
+        const anteriores = horariosTurma.filter(h => h.turma_id === turmaId);
+        const proximaLista = [...horariosTurma.filter(h => h.turma_id !== turmaId), ...novosHorarios];
+        // Gravar primeiro os substitutos: se a conexão falhar, os horários antigos
+        // continuam disponíveis na planilha oficial.
+        for (const h of novosHorarios) await persistirMudancaWeb('horarios_turma', 'INSERT', h, [...horariosTurma, ...novosHorarios]);
+        for (const h of anteriores) await persistirMudancaWeb('horarios_turma', 'DELETE', h, proximaLista);
+      }
       setHorariosTurma(prev => [...prev.filter(h => h.turma_id !== turmaId), ...novosHorarios]);
     }
 
@@ -1157,10 +1187,17 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         nome_externo: o.nome_externo || dados.nome,
         ativo: true,
       }));
+      if (!isRunningInAppsScript()) {
+        const anteriores = turmasOrigem.filter(o => o.turma_id === turmaId);
+        const proximaLista = [...turmasOrigem.filter(o => o.turma_id !== turmaId), ...novasOrigens];
+        // Preservar origens existentes até confirmar as novas.
+        for (const o of novasOrigens) await persistirMudancaWeb('turmas_origem', 'INSERT', o, [...turmasOrigem, ...novasOrigens]);
+        for (const o of anteriores) await persistirMudancaWeb('turmas_origem', 'DELETE', o, proximaLista);
+      }
       setTurmasOrigem(prev => [...prev.filter(o => o.turma_id !== turmaId), ...novasOrigens]);
     }
 
-    notifySaveSuccess();
+    if (isRunningInAppsScript()) notifySaveSuccess();
   };
 
   const toggleArchiveTurma = async (turmaId: string): Promise<void> => {
@@ -1178,10 +1215,15 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       }
     }
 
+    if (!isRunningInAppsScript()) {
+      const atualizado = { ...turma, status: novoStatus };
+      await persistirMudancaWeb('turmas', 'UPDATE', atualizado,
+        turmas.map(t => t.turma_id === turmaId ? atualizado : t));
+    }
     setTurmas(prev =>
       prev.map(t => (t.turma_id === turmaId ? { ...t, status: novoStatus } : t))
     );
-    notifySaveSuccess();
+    if (isRunningInAppsScript()) notifySaveSuccess();
   };
 
   // ==========================================
