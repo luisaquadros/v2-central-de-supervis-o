@@ -1,0 +1,17 @@
+{
+  "name": "Central de Supervisão Acadêmica",
+  "short_name": "Supervisão",
+  "description": "Gestão acadêmica de estágios em Psicologia",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#101c2f",
+  "theme_color": "#15233b",
+  "icons": [
+    {
+      "src": "/central-supervisao.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
