@@ -2124,9 +2124,7 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
     const motivosAtencao: string[] = [];
     const rssOperacional = classificarRssOperacional(situacaoRss, calendarioRss, getHojeDataIso());
-    if (rssOperacional.categoria === 'RECENTE_PENDENTE') {
-      motivosAtencao.push('RSS da última semana encerrada ainda não validado');
-    }
+    // RSS é informação contextual da aula; não ativa alerta geral de estudante.
     if (docsPendentesCount > 0) {
       motivosAtencao.push(`${docsPendentesCount} documento(s) pendente(s)`);
     }
@@ -2141,7 +2139,7 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     }
 
     let statusAtencao: 'NORMAL' | 'ATENCAO' | 'PRIORIDADE' = 'NORMAL';
-    if (motivosAtencao.length >= 2 || faltasInjustificadasCount >= 2 || (rssOperacional.categoria === 'RECENTE_PENDENTE' && saldoRss < -1)) {
+    if (motivosAtencao.length >= 2 || faltasInjustificadasCount >= 2) {
       statusAtencao = 'PRIORIDADE';
     } else if (motivosAtencao.length === 1) {
       statusAtencao = 'ATENCAO';
@@ -2701,7 +2699,7 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       new Date(),
       gruposPratica,
       grupoIntegrantes
-    );
+    ).filter(item => item.tipo !== 'RSS_ATRASADO');
   }, [
     selectedPeriodoId,
     turmas,
