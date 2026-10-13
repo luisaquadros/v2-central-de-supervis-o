@@ -42,6 +42,7 @@ import {
   AvaliacaoCompleta,
   HistoricoAuditoria,
   EncontroTurma,
+  PreparacaoAula,
   StatusEncontro,
   MotivoNaoRealizado,
   NotificacaoDerivada,
@@ -327,6 +328,10 @@ interface SupervisaoContextType {
   
   // Gestão de Encontros, Aulas Não Realizadas e Reagendamentos
   encontrosTurma: EncontroTurma[];
+  preparacoesAula: PreparacaoAula[];
+  adicionarPreparacaoAula: (dados: Pick<PreparacaoAula, 'turma_id' | 'data_aula' | 'tipo' | 'texto'>) => Promise<void>;
+  alterarPreparacaoAula: (id: string, mudancas: Partial<Pick<PreparacaoAula, 'status' | 'data_aula' | 'texto' | 'tipo'>>) => Promise<void>;
+  excluirPreparacaoAula: (id: string) => Promise<void>;
   marcarEncontroNaoRealizado: (
     turmaId: string,
     data: string,
@@ -576,6 +581,7 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   }, [itemExcluidoRecente]);
 
   // Gestão Operacional de Encontros (Feriados, Cancelamentos e Reagendamentos)
+  const [preparacoesAula, setPreparacoesAula] = useState<PreparacaoAula[]>([]);
   const [encontrosTurma, setEncontrosTurma] = useState<EncontroTurma[]>(() => {
     try {
       if (typeof window !== 'undefined') {
@@ -640,6 +646,7 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     if (data.feedbacksOficiais && data.feedbacksOficiais.length > 0) setFeedbacksOficiais(data.feedbacksOficiais);
     if (data.registrosSupervisao && data.registrosSupervisao.length > 0) setRegistrosSupervisao(data.registrosSupervisao);
     if (data.encontrosTurma && data.encontrosTurma.length > 0) setEncontrosTurma(data.encontrosTurma);
+    if (Array.isArray(data.preparacoesAula)) setPreparacoesAula(data.preparacoesAula);
     if (data.sincronizacao && data.sincronizacao.length > 0) setSincronizacao(data.sincronizacao);
     if (data.dicionarioDados && data.dicionarioDados.length > 0) setDicionarioDados(data.dicionarioDados);
     if (data.contratoApp && data.contratoApp.length > 0) setContratoApp(data.contratoApp);
@@ -885,6 +892,56 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       handleSaveError(erro);
       throw erro;
     }
+  };
+
+  // Preparação de aula é registrada uma única vez na planilha oficial, por turma.
+  // A interface mostra itens pendentes nas próximas aulas sem duplicar linhas.
+  const adicionarPreparacaoAula = async (
+    dados: Pick<PreparacaoAula, 'turma_id' | 'data_aula' | 'tipo' | 'texto'>
+  ): Promise<void> => {
+    const texto = dados.texto.trim();
+    if (!texto || texto.length > 4000 || !/^\d{4}-\d{2}-\d{2}$/.test(dados.data_aula) ||
+        !turmas.some(t => t.turma_id === dados.turma_id)) {
+      throw new Error('Confira turma, data e observação (até 4.000 caracteres).');
+    }
+    const agora = new Date().toISOString();
+    const registro: PreparacaoAula = {
+      preparacao_id: gerarIdEstavel('prep'),
+      turma_id: dados.turma_id,
+      periodo_id: selectedPeriodoId,
+      data_aula: dados.data_aula,
+      tipo: dados.tipo,
+      texto,
+      status: 'PENDENTE',
+      criado_em: agora,
+      atualizado_em: agora,
+    };
+    const lista = [...preparacoesAula, registro];
+    await persistirMudancaWeb('preparacoes_aula', 'INSERT', registro, lista);
+    setPreparacoesAula(lista);
+  };
+
+  const alterarPreparacaoAula = async (
+    id: string,
+    mudancas: Partial<Pick<PreparacaoAula, 'status' | 'data_aula' | 'texto' | 'tipo'>>
+  ): Promise<void> => {
+    const anterior = preparacoesAula.find(p => p.preparacao_id === id);
+    if (!anterior) throw new Error('Preparação de aula não encontrada.');
+    if (mudancas.texto !== undefined && (!mudancas.texto.trim() || mudancas.texto.length > 4000)) {
+      throw new Error('A observação deve ter entre 1 e 4.000 caracteres.');
+    }
+    const registro = { ...anterior, ...mudancas, atualizado_em: new Date().toISOString() };
+    const lista = preparacoesAula.map(p => p.preparacao_id === id ? registro : p);
+    await persistirMudancaWeb('preparacoes_aula', 'UPDATE', registro, lista);
+    setPreparacoesAula(lista);
+  };
+
+  const excluirPreparacaoAula = async (id: string): Promise<void> => {
+    const registro = preparacoesAula.find(p => p.preparacao_id === id);
+    if (!registro) return;
+    const lista = preparacoesAula.filter(p => p.preparacao_id !== id);
+    await persistirMudancaWeb('preparacoes_aula', 'DELETE', registro, lista);
+    setPreparacoesAula(lista);
   };
 
   const reconectarESincronizar = async (): Promise<void> => {
@@ -2875,6 +2932,10 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         registrarAuditoria,
         // Operação: Encontros, Aulas Não Realizadas e Reagendamentos
         encontrosTurma,
+        preparacoesAula,
+        adicionarPreparacaoAula,
+        alterarPreparacaoAula,
+        excluirPreparacaoAula,
         marcarEncontroNaoRealizado,
         reagendarEncontro,
         reverterNaoRealizadoOuReagendado,
