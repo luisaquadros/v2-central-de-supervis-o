@@ -23,6 +23,17 @@ const casos: Caso[] = [
     linha: ['h1', 't1', 2, '08:00', '10:00', '03/08/2026', '20/12/2026', 'TRUE', 16, '', 'Terça'],
     excluir: { linha: ['h2', 't1', 4, '08:00', '10:00', '03/08/2026', '20/12/2026', 'TRUE', 16, '', 'Quinta'], local: { horario_id: 'h2', turma_id: 't1', dia_semana: 4, hora_inicio: '08:00', hora_fim: '10:00', data_inicio: '2026-08-03', data_fim: '2026-12-20', ativo: true, total_aulas_previstas: 16, codigo_origem: '', dia_semana_rotulo: 'Quinta' } },
     chave: 'horario_id', campo: 'hora_fim', novo: '10:30', local: { horario_id: 'h1', turma_id: 't1', dia_semana: 2, hora_inicio: '08:00', hora_fim: '10:00', data_inicio: '2026-08-03', data_fim: '2026-12-20', ativo: true, total_aulas_previstas: 16, codigo_origem: '', dia_semana_rotulo: 'Terça' } },
+  { tabela: 'periodos', cab: ['periodo_id', 'nome', 'data_inicio', 'data_fim', 'status'], linha: ['p1', '2026.2', 46235, 46376, 'ATIVO'],
+    chave: 'periodo_id', campo: 'status', novo: 'ENCERRADO', local: { periodo_id: 'p1', nome: '2026.2', data_inicio: '2026-08-03', data_fim: '2026-12-22', status: 'ATIVO' } },
+  { tabela: 'disciplinas', cab: ['disciplina_id', 'codigo', 'nome', 'tipo'], linha: ['d1', 'E1A-AD', 'Clínica Adulto', 'ESTÁGIO'],
+    chave: 'disciplina_id', campo: 'nome', novo: 'Clínica Adulto I', local: { disciplina_id: 'd1', codigo: 'E1A-AD', nome: 'Clínica Adulto', tipo: 'ESTÁGIO' } },
+  { tabela: 'turmas_origem', cab: ['origem_id', 'turma_id', 'sistema', 'codigo_externo', 'nome_externo', 'ativo'], linha: ['o1', 't1', 'Docente Online', 'TER-M-1A', 'Clínica Adulto', 'TRUE'],
+    chave: 'origem_id', campo: 'codigo_externo', novo: 'TER-M-1B', local: { origem_id: 'o1', turma_id: 't1', sistema: 'Docente Online', codigo_externo: 'TER-M-1A', nome_externo: 'Clínica Adulto', ativo: true } },
+  { tabela: 'grupos_pratica', cab: ['grupo_id', 'periodo_id', 'disciplina_id', 'turma_id', 'nome_grupo', 'status', 'origem', 'origem_chave', 'criado_em', 'atualizado_em', 'campo_pratica'], linha: ['g1', 'p1', 'd1', 't1', 'Grupo A', 'ATIVO', 'CENTRAL_CONTROLE', '', '', '', ''],
+    chave: 'grupo_id', campo: 'nome_grupo', novo: 'Grupo A1', local: { grupo_id: 'g1', periodo_id: 'p1', disciplina_id: 'd1', turma_id: 't1', nome_grupo: 'Grupo A', status: 'ATIVO', origem: 'CENTRAL_CONTROLE', origem_chave: '', criado_em: '', atualizado_em: '', campo_pratica: '' } },
+  // O app guarda o alias `integrante_id`; a planilha tem `grupo_integrante_id` (a mesma chave).
+  { tabela: 'grupo_integrantes', cab: ['grupo_integrante_id', 'grupo_id', 'matricula_id', 'data_inicio', 'data_fim', 'status', 'origem', 'origem_chave', 'atualizado_em'], linha: ['i1', 'g1', 'm1', '', '', 'ATIVO', 'CENTRAL_CONTROLE', '', ''],
+    chave: 'integrante_id', campo: 'status', novo: 'INATIVO', local: { grupo_integrante_id: 'i1', integrante_id: 'i1', grupo_id: 'g1', matricula_id: 'm1', data_inicio: '', data_fim: '', status: 'ATIVO', origem: 'CENTRAL_CONTROLE', origem_chave: '', atualizado_em: '' } },
 ];
 const alvo = process.argv[2]; // permite validar uma tabela de cada vez
 // Roda para as tabelas JÁ migradas (as demais ainda usam o caminho direto até o seu passo).

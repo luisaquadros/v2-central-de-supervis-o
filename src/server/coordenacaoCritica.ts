@@ -9,6 +9,7 @@ export const TABELAS_CRITICAS = new Set([
   'registros_supervisao','preparacoes_aula',
   // Cadastro: migrado uma tabela por vez (cada linha abaixo é um passo reversível, ver docs/DOCUMENTO_MESTRE.md)
   'alunos','matriculas','turmas','horarios_turma',
+  'periodos',
 ]);
 
 export type OperacaoCritica = 'INSERT' | 'UPDATE' | 'DELETE';
@@ -62,6 +63,7 @@ export function adaptarRegistroCritico(tabela: string, registro: Record<string, 
   }
   if(tabela==='avaliacoes_completas' && result.notas_criterios!==undefined)
     result.notas_criterios_json=JSON.stringify(result.notas_criterios);
+  if(tabela==='grupo_integrantes')result.grupo_integrante_id = result.grupo_integrante_id ?? result.integrante_id;
   if(tabela==='registros_supervisao'){
     result.data = result.data ?? result.data_hora;
     result.descricao = result.descricao ?? result.texto;
@@ -77,7 +79,7 @@ export function idCritico(tabela:string, registro:Record<string,unknown>):string
   if(tabela==='frequencias' && registro.matricula_id && registro.data_aula)
     return JSON.stringify([String(registro.matricula_id),String(registro.data_aula)]);
   const key=PRIMARY_KEYS[tabela];
-  const value=key && (registro[key] ?? (tabela==='leituras_responsaveis' ? registro.leitura_id : undefined));
+  const value=key && (registro[key] ?? (tabela==='leituras_responsaveis' ? registro.leitura_id : tabela==='grupo_integrantes' ? registro.integrante_id : undefined));
   if(!key || value==null || !String(value).trim()) throw new Error('Identificador do registro inválido');
   return String(value).trim();
 }
