@@ -201,6 +201,16 @@ export async function sincronizarDaBaseOficial(): Promise<{
     const rawMap = (resultado as any)._rawMap || {};
     const missingSheets = (resultado as any)._missingSheets || [];
 
+    // Falha segura: tabelas fundamentais devem vir de uma leitura autenticada,
+    // nunca apenas do cache, antes de liberar acesso à base acadêmica.
+    const essenciais = ['periodos', 'disciplinas', 'turmas', 'alunos', 'matriculas'];
+    const indisponiveis = essenciais.filter(tab => !Array.isArray(rawMap[tab]) || rawMap[tab].length === 0);
+    if (indisponiveis.length > 0) {
+      const erro = `Falha ao validar tabelas essenciais da planilha: ${indisponiveis.join(', ')}.`;
+      notifySyncStatusChange({ status: 'ERRO', erros: [erro] });
+      return { sucesso: false, erro };
+    }
+
     const tabelasStatus: Record<string, { ok: boolean; count: number; error?: string }> = {};
     const erros: string[] = [];
 
