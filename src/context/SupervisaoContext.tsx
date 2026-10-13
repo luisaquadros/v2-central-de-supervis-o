@@ -1,3 +1,4 @@
+import { useDurableLocalState } from '../hooks/useDurableLocalState';
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import {
   Periodo,
@@ -495,10 +496,10 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   });
 
   // Estados de apoio, filas e avaliações completas
-  const [caixaEntrada, setCaixaEntrada] = useState<CaixaEntradaItem[]>([]);
-  const [filaProfessora, setFilaProfessora] = useState<ItemFilaProfessora[]>([]);
-  const [filaSupervisao, setFilaSupervisao] = useState<ItemFilaSupervisao[]>([]);
-  const [avaliacoesCompletas, setAvaliacoesCompletas] = useState<AvaliacaoCompleta[]>([]);
+  const [caixaEntrada, setCaixaEntrada] = useDurableLocalState<CaixaEntradaItem[]>('cs_caixa_entrada_v1', []);
+  const [filaProfessora, setFilaProfessora] = useDurableLocalState<ItemFilaProfessora[]>('cs_fila_professora_v1', []);
+  const [filaSupervisao, setFilaSupervisao] = useDurableLocalState<ItemFilaSupervisao[]>('cs_fila_supervisao_v1', []);
+  const [avaliacoesCompletas, setAvaliacoesCompletas] = useDurableLocalState<AvaliacaoCompleta[]>('cs_avaliacoes_completas_v1', []);
 
   // Política Global de Exclusão & Desfazer
   const [confirmacaoExclusaoModal, setConfirmacaoExclusaoModal] = useState<{
@@ -616,43 +617,43 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         return periodoAtivo ? periodoAtivo.periodo_id : '';
       });
     }
-    if (data.disciplinas && data.disciplinas.length > 0) setDisciplinas(data.disciplinas);
-    if (data.turmas && data.turmas.length > 0) setTurmas(data.turmas);
-    if (data.horarios && data.horarios.length > 0) setHorariosTurma(data.horarios);
-    if (data.turmasOrigem && data.turmasOrigem.length > 0) setTurmasOrigem(data.turmasOrigem);
-    if (data.alunos && data.alunos.length > 0) setAlunos(data.alunos);
-    if (data.matriculas && data.matriculas.length > 0) setMatriculas(data.matriculas);
-    if (data.orientacoes && data.orientacoes.length > 0) setOrientacoes(data.orientacoes);
-    if (data.criterios && data.criterios.length > 0) setCriterios(data.criterios);
-    if (data.configuracoes && data.configuracoes.length > 0) setConfiguracoes(data.configuracoes);
-    if (data.marcos && data.marcos.length > 0) setMarcosAcademicos(data.marcos);
-    if (data.pontosAcompanhamento && data.pontosAcompanhamento.length > 0) setPontosAcompanhamento(data.pontosAcompanhamento);
-    if (data.frequencias && data.frequencias.length > 0) setFrequencias(data.frequencias);
-    if (data.documentos && data.documentos.length > 0) setDocumentos(data.documentos);
-    if (data.registrosSemanais && data.registrosSemanais.length > 0) setRegistrosSemanais(data.registrosSemanais);
-    if (data.avaliacoes && data.avaliacoes.length > 0) setAvaliacoes(data.avaliacoes);
-    if (data.feedbacks && data.feedbacks.length > 0) setFeedbacks(data.feedbacks);
-    if (data.ocorrencias && data.ocorrencias.length > 0) setOcorrencias(data.ocorrencias);
+    if (Array.isArray(data.disciplinas)) setDisciplinas(data.disciplinas);
+    if (Array.isArray(data.turmas)) setTurmas(data.turmas);
+    if (Array.isArray(data.horarios)) setHorariosTurma(data.horarios);
+    if (Array.isArray(data.turmasOrigem)) setTurmasOrigem(data.turmasOrigem);
+    if (Array.isArray(data.alunos)) setAlunos(data.alunos);
+    if (Array.isArray(data.matriculas)) setMatriculas(data.matriculas);
+    if (Array.isArray(data.orientacoes)) setOrientacoes(data.orientacoes);
+    if (Array.isArray(data.criterios)) setCriterios(data.criterios);
+    if (Array.isArray(data.configuracoes)) setConfiguracoes(data.configuracoes);
+    if (Array.isArray(data.marcos)) setMarcosAcademicos(data.marcos);
+    if (Array.isArray(data.pontosAcompanhamento)) setPontosAcompanhamento(data.pontosAcompanhamento);
+    if (Array.isArray(data.frequencias)) setFrequencias(data.frequencias);
+    if (Array.isArray(data.documentos)) setDocumentos(data.documentos);
+    if (Array.isArray(data.registrosSemanais)) setRegistrosSemanais(data.registrosSemanais);
+    if (Array.isArray(data.avaliacoes)) setAvaliacoes(data.avaliacoes);
+    if (Array.isArray(data.feedbacks)) setFeedbacks(data.feedbacks);
+    if (Array.isArray(data.ocorrencias)) setOcorrencias(data.ocorrencias);
     // 12 Tabelas Adicionais
-    if (data.regrasRss && data.regrasRss.length > 0) setRegrasRss(data.regrasRss);
-    if (data.calendarioRss && data.calendarioRss.length > 0) setCalendarioRss(data.calendarioRss);
-    if (data.statusRssUnidades && data.statusRssUnidades.length > 0) setStatusRssUnidades(data.statusRssUnidades);
-    if (data.situacaoAtualTurmas && data.situacaoAtualTurmas.length > 0) setSituacaoAtualTurmas(data.situacaoAtualTurmas);
-    if (data.leiturasResponsaveis && data.leiturasResponsaveis.length > 0) setLeiturasResponsaveis(data.leiturasResponsaveis);
-    if (data.regrasPrazo && data.regrasPrazo.length > 0) setRegrasPrazo(data.regrasPrazo);
-    if (data.gruposPratica && data.gruposPratica.length > 0) setGruposPratica(data.gruposPratica);
-    if (data.grupoIntegrantes && data.grupoIntegrantes.length > 0) setGrupoIntegrantes(data.grupoIntegrantes);
-    if (data.entregas && data.entregas.length > 0) setEntregas(data.entregas);
-    if (data.feedbacksOficiais && data.feedbacksOficiais.length > 0) setFeedbacksOficiais(data.feedbacksOficiais);
-    if (data.registrosSupervisao && data.registrosSupervisao.length > 0) setRegistrosSupervisao(data.registrosSupervisao);
-    if (data.encontrosTurma && data.encontrosTurma.length > 0) setEncontrosTurma(data.encontrosTurma);
+    if (Array.isArray(data.regrasRss)) setRegrasRss(data.regrasRss);
+    if (Array.isArray(data.calendarioRss)) setCalendarioRss(data.calendarioRss);
+    if (Array.isArray(data.statusRssUnidades)) setStatusRssUnidades(data.statusRssUnidades);
+    if (Array.isArray(data.situacaoAtualTurmas)) setSituacaoAtualTurmas(data.situacaoAtualTurmas);
+    if (Array.isArray(data.leiturasResponsaveis)) setLeiturasResponsaveis(data.leiturasResponsaveis);
+    if (Array.isArray(data.regrasPrazo)) setRegrasPrazo(data.regrasPrazo);
+    if (Array.isArray(data.gruposPratica)) setGruposPratica(data.gruposPratica);
+    if (Array.isArray(data.grupoIntegrantes)) setGrupoIntegrantes(data.grupoIntegrantes);
+    if (Array.isArray(data.entregas)) setEntregas(data.entregas);
+    if (Array.isArray(data.feedbacksOficiais)) setFeedbacksOficiais(data.feedbacksOficiais);
+    if (Array.isArray(data.registrosSupervisao)) setRegistrosSupervisao(data.registrosSupervisao);
+    if (Array.isArray(data.encontrosTurma)) setEncontrosTurma(data.encontrosTurma);
     if (Array.isArray(data.preparacoesAula)) setPreparacoesAula(data.preparacoesAula);
     if (Array.isArray(data.avaliacoesCompletas)) setAvaliacoesCompletas(data.avaliacoesCompletas);
-    if (data.sincronizacao && data.sincronizacao.length > 0) setSincronizacao(data.sincronizacao);
-    if (data.dicionarioDados && data.dicionarioDados.length > 0) setDicionarioDados(data.dicionarioDados);
-    if (data.contratoApp && data.contratoApp.length > 0) setContratoApp(data.contratoApp);
-    if (data.mapeamentoFontes && data.mapeamentoFontes.length > 0) setMapeamentoFontes(data.mapeamentoFontes);
-    if (data.auditoriaBase && data.auditoriaBase.length > 0) setAuditoriaBase(data.auditoriaBase);
+    if (Array.isArray(data.sincronizacao)) setSincronizacao(data.sincronizacao);
+    if (Array.isArray(data.dicionarioDados)) setDicionarioDados(data.dicionarioDados);
+    if (Array.isArray(data.contratoApp)) setContratoApp(data.contratoApp);
+    if (Array.isArray(data.mapeamentoFontes)) setMapeamentoFontes(data.mapeamentoFontes);
+    if (Array.isArray(data.auditoriaBase)) setAuditoriaBase(data.auditoriaBase);
   }, []);
 
   // 1. ABERTURA DO APP: Carrega imediatamente o cache do IndexedDB
