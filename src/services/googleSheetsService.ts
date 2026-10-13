@@ -220,6 +220,39 @@ function parseSheetRowsToObjects<T>(rows: any[][]): T[] {
   });
 }
 
+/**
+ * Compatibilidade com os cabeçalhos REAIS da planilha 2026.2.
+ * As propriedades canônicas originais são mantidas; os aliases servem
+ * apenas para componentes legados até migração completa do front-end.
+ */
+export function normalizarLinhasDaAba(tabela: string, rows: Record<string, any>[]): Record<string, any>[] {
+  return rows.map(item => {
+    const r = { ...item };
+    if (tabela === 'entregas') {
+      r.tipo_documento = r.tipo_documento ?? r.tipo_entrega ?? '';
+      r.status_entrega = r.status_entrega ?? r.status ?? '';
+      r.data_entrega = r.data_entrega ?? r.data_envio ?? '';
+    } else if (tabela === 'registros_supervisao') {
+      r.data_hora = r.data_hora ?? r.data ?? '';
+      r.texto = r.texto ?? r.descricao ?? '';
+    } else if (tabela === 'feedbacks') {
+      r.data_hora = r.data_hora ?? r.data ?? '';
+    } else if (tabela === 'grupo_integrantes') {
+      r.integrante_id = r.integrante_id ?? r.grupo_integrante_id ?? '';
+    } else if (tabela === 'leituras_responsaveis') {
+      r.leitura_id = r.leitura_id ?? r.leitura_agenda_id ?? '';
+      r.data = r.data ?? r.data_discussao ?? '';
+    } else if (tabela === 'registros_semanais') {
+      r.semana = r.semana ?? r.semana_rss ?? r.encontro_numero ?? '';
+      r.observacao = r.observacao ?? r.limitacoes ?? '';
+    } else if (tabela === 'regras_rss') {
+      r.regra_id = r.regra_id ?? r.regra_rss_id ?? '';
+      r.total_esperado = r.total_esperado ?? r.total_previsto ?? '';
+    }
+    return r;
+  });
+}
+
 // Cache em memória dos títulos reais das abas existentes na planilha oficial
 let cachedRealSheetTitles: string[] | null = null;
 let lastTitlesFetchTime = 0;
@@ -349,7 +382,7 @@ export async function carregarDadosDaPlanilhaOficial(): Promise<ResultadoLeitura
       matchedTables.forEach((m, idx) => {
         const vr = valueRanges[idx];
         const rows = vr?.values || [];
-        tableDataMap[m.canonicalName] = parseSheetRowsToObjects(rows);
+        tableDataMap[m.canonicalName] = normalizarLinhasDaAba(m.canonicalName, parseSheetRowsToObjects(rows));
       });
     } else {
       // Fallback resiliente: lê individualmente cada aba que existe
@@ -363,7 +396,7 @@ export async function carregarDadosDaPlanilhaOficial(): Promise<ResultadoLeitura
             });
             if (singleRes.ok) {
               const singleData = await singleRes.json();
-              tableDataMap[m.canonicalName] = parseSheetRowsToObjects(singleData.values || []);
+              tableDataMap[m.canonicalName] = normalizarLinhasDaAba(m.canonicalName, parseSheetRowsToObjects(singleData.values || []));
             }
           } catch (e) {
             console.warn(`Erro ao ler aba ${m.realSheetName}:`, e);
