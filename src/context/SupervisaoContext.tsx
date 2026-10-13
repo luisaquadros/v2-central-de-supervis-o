@@ -647,6 +647,7 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     if (data.registrosSupervisao && data.registrosSupervisao.length > 0) setRegistrosSupervisao(data.registrosSupervisao);
     if (data.encontrosTurma && data.encontrosTurma.length > 0) setEncontrosTurma(data.encontrosTurma);
     if (Array.isArray(data.preparacoesAula)) setPreparacoesAula(data.preparacoesAula);
+    if (Array.isArray(data.avaliacoesCompletas)) setAvaliacoesCompletas(data.avaliacoesCompletas);
     if (data.sincronizacao && data.sincronizacao.length > 0) setSincronizacao(data.sincronizacao);
     if (data.dicionarioDados && data.dicionarioDados.length > 0) setDicionarioDados(data.dicionarioDados);
     if (data.contratoApp && data.contratoApp.length > 0) setContratoApp(data.contratoApp);
@@ -1973,19 +1974,16 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     setFilaSupervisao(prev => prev.filter(i => i.id !== id));
   };
 
-  const salvarAvaliacaoCompleta = async (avaliacao: any) => {
-    const id = avaliacao.avaliacao_id || gerarIdEstavel('av_c');
-    const item: AvaliacaoCompleta = { ...avaliacao, avaliacao_id: id, atualizado_em: new Date().toISOString() };
-    setAvaliacoesCompletas(prev => {
-      const idx = prev.findIndex(a => a.avaliacao_id === id);
-      if (idx >= 0) {
-        const copy = [...prev];
-        copy[idx] = item;
-        return copy;
-      }
-      return [item, ...prev];
-    });
-    notifySaveSuccess();
+  const salvarAvaliacaoCompleta = async (avaliacao: AvaliacaoCompleta) => {
+    const anterior = avaliacoesCompletas.find(a => a.matricula_id === avaliacao.matricula_id &&
+      a.instrumento_id === avaliacao.instrumento_id);
+    const id = anterior?.avaliacao_id || avaliacao.avaliacao_id || gerarIdEstavel('av_c');
+    const item: AvaliacaoCompleta = { ...anterior, ...avaliacao, avaliacao_id: id, atualizado_em: new Date().toISOString() };
+    const lista = [...avaliacoesCompletas.filter(a => a.avaliacao_id !== id), item];
+    await persistirMudancaWeb('avaliacoes_completas', anterior ? 'UPDATE' : 'INSERT', item, lista);
+    setAvaliacoesCompletas(lista);
+    // NOTA: notas por critério são persistidas na tabela oficial 'avaliacoes'
+    // pelo fluxo de correção. Este registro guarda o parecer e a devolutiva.
   };
   const aprovarDevolutiva = async (id: string) => {
     setAvaliacoesCompletas(prev => prev.map(a => a.avaliacao_id === id ? { ...a, status: 'APROVADO_ENVIO', data_aprovacao: new Date().toISOString() } : a));
