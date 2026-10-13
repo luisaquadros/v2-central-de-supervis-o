@@ -563,7 +563,7 @@ export async function gravarRegistroNaPlanilhaOficial(
   }
 
   // 5. Caso não exista, executa o APPEND seguro
-  const appendRange = formatarRangeSheet(realSheetName, 'A1:append');
+  const appendRange = formatarRangeSheet(realSheetName, 'A1:ZZ');
   const appendUrl = `https://sheets.googleapis.com/v4/spreadsheets/${OFFICIAL_SPREADSHEET_ID}/values/${encodeURIComponent(appendRange)}?valueInputOption=RAW`;
   const appendRes = await fetch(appendUrl, {
     method: 'POST',
