@@ -723,28 +723,8 @@ export function derivarPendenciasOperacionais(
       });
     });
 
-  // 6. Registros semanais faltantes
-  registrosSemanais
-    .filter(r => r.status === 'FALTANTE')
-    .slice(0, 8)
-    .forEach(r => {
-      const mat = matriculas.find(m => m.matricula_id === r.matricula_id);
-      const al = mat ? alunos.find(a => a.aluno_id === mat.aluno_id) : null;
-      const t = mat ? turmas.find(tur => tur.turma_id === mat.turma_id) : null;
-      pendencias.push({
-        id: `pend-reg-${r.registro_id}`,
-        tipo: 'REGISTRO_SEMANAL',
-        titulo: `Registro Semanal Semana ${r.semana}: ${al?.nome || 'Estudante'}`,
-        descricao: r.observacao || 'Registro faltante não entregue',
-        turma_id: mat?.turma_id,
-        turma_nome: t?.nome,
-        matricula_id: r.matricula_id,
-        aluno_nome: al?.nome,
-        urgencia: 'MEDIA',
-        targetTab: 'pendencias',
-        targetParam: 'registros',
-      });
-    });
+  // RSS não integra a fila de notificações ou alertas gerais.
+  // É exibido apenas no contexto da turma e do Modo Supervisão.
 
   return pendencias;
 }
