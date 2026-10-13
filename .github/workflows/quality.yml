@@ -1,0 +1,31 @@
+name: Verificacao de prontidao da supervisao
+
+on:
+  push:
+    branches:
+      - main
+      - fix/supervisao-2026-10-13
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Configurar Bun
+        uses: oven-sh/setup-bun@v2
+      - name: Instalar dependencias
+        run: bun install --frozen-lockfile
+      - name: Checagem TypeScript
+        run: bun run lint
+      - name: Testes operacionais
+        run: bun run test
+      - name: Gerar versao de producao
+        run: bun run build
