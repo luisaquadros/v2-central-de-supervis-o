@@ -32,6 +32,7 @@ import {
 import {
   carregarDadosDaPlanilhaOficial,
   gravarRegistroNaPlanilhaOficial,
+  removerRegistroDaPlanilhaOficial,
   getAccessToken,
   TABELAS_NORMALIZADAS,
 } from './googleSheetsService';
@@ -185,6 +186,13 @@ export async function sincronizarDaBaseOficial(): Promise<{
       return { sucesso: false, erro: 'Não autenticado no Google.' };
     }
 
+    // Alterações locais precisam ser confirmadas antes de aceitar o snapshot remoto.
+    // Caso permaneçam pendentes, a leitura não pode sobrescrever essas tabelas.
+    await processarFilaSincronizacao();
+    const pendentesAntesDaLeitura = (await carregarFilaSincronizacao())
+      .filter(i => ['PENDENTE', 'ERRO', 'SINCRONIZANDO', 'CONFLITO'].includes(i.status));
+    const tabelasComEscritaPendente = new Set(pendentesAntesDaLeitura.map(i => i.tabela));
+
     // Carrega o cache anterior do IndexedDB antes de buscar dados novos
     const cacheAnterior = (await carregarTodasTabelasDoIndexedDb()) || {};
 
@@ -200,6 +208,15 @@ export async function sincronizarDaBaseOficial(): Promise<{
     const mapParaSalvar: Record<string, any[]> = { ...cacheAnterior };
 
     TABELAS_NORMALIZADAS.forEach(tab => {
+      if (tabelasComEscritaPendente.has(tab)) {
+        tabelasStatus[tab] = {
+          ok: false,
+          count: (cacheAnterior[tab] || []).length,
+          error: 'Alterações locais aguardando confirmação; snapshot remoto não aplicado.',
+        };
+        erros.push(`Tabela ${tab} possui alterações locais pendentes de sincronização.`);
+        return;
+      }
       const rows = rawMap[tab];
       if (Array.isArray(rows) && rows.length > 0) {
         mapParaSalvar[tab] = rows;
@@ -262,8 +279,6 @@ export async function sincronizarDaBaseOficial(): Promise<{
       tabelasStatus,
     });
 
-    // Replay de escritas pendentes se houver
-    processarFilaSincronizacao().catch(e => console.warn('Aviso no processamento da fila:', e));
 
     // Monta o retorno garantindo que dados anteriores preservados constem na resposta
     const dadosConsolidados: DadosIniciaisGas = {
@@ -346,7 +361,9 @@ export async function salvarRegistroResiliente(
   // Se autenticado, tenta gravar imediatamente no Google Sheets
   if (token) {
     try {
-      if (tipo === 'INSERT') {
+      if (tipo === 'DELETE') {
+        await removerRegistroDaPlanilhaOficial(tabela, registro);
+      } else {
         await gravarRegistroNaPlanilhaOficial(tabela, registro);
       }
       const now = new Date().toISOString();
@@ -421,7 +438,9 @@ export async function processarFilaSincronizacao(): Promise<{
     try {
       await atualizarItemFila(item.id, { status: 'SINCRONIZANDO', tentativas: item.tentativas + 1 });
 
-      if (item.tipo === 'INSERT') {
+      if (item.tipo === 'DELETE') {
+        await removerRegistroDaPlanilhaOficial(item.tabela, item.payload);
+      } else {
         await gravarRegistroNaPlanilhaOficial(item.tabela, item.payload);
       }
 
