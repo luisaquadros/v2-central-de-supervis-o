@@ -1,3 +1,4 @@
+import { diagnosticarChamada } from '../services/aulaParticipants';
 import { resolverResponsaveis } from '../services/aulaParticipants';
 import React, { useState, useMemo, useEffect } from 'react';
 import {
@@ -84,6 +85,8 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
   const turma = turmas.find(t => t.turma_id === turmaId);
   const disciplina = disciplinas.find(d => d.disciplina_id === turma?.disciplina_id);
   const alunosLista = getAlunosDaTurma(turmaId);
+  const diagnosticoChamada = diagnosticarChamada(turmaId, matriculas, alunos);
+  const chamadaIncompleta = alunosLista.length === 0 || diagnosticoChamada.alunosLocalizados < diagnosticoChamada.matriculasElegiveis;
 
   const hojeIso = useMemo(() => getHojeDataIso(), []);
 
@@ -250,6 +253,10 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
 
   // Salvar chamada por exceção
   const handleSalvarChamada = async () => {
+    if (chamadaIncompleta) {
+      setChamadaSalvaMsg({ texto: 'Chamada não salva: lista de alunos incompleta. Confira a sincronização da turma.', tipo: 'local' });
+      return;
+    }
     const excecoesArray = alunosLista.map(item => {
       const exc = excecoes[item.matricula.matricula_id];
       const faltou = exc?.faltou ?? false;
@@ -664,7 +671,7 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
 
             <button
               onClick={handleSalvarChamada}
-              disabled={saveStatus === 'SALVANDO'}
+              disabled={saveStatus === 'SALVANDO' || chamadaIncompleta}
               className="min-h-[44px] px-4 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 active:scale-98 text-white font-bold text-xs flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer"
               title="Gravar chamada da aula com as exceções marcadas"
             >
@@ -673,6 +680,13 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
             </button>
           </div>
 
+          {chamadaIncompleta && (
+            <div role="alert" className="p-3 border-b border-amber-300 bg-amber-50 text-amber-950 text-xs space-y-2">
+              <p className="font-bold">A lista desta turma está incompleta. O salvamento da chamada foi bloqueado para evitar presença incorreta.</p>
+              <p>{diagnosticoChamada.alunosLocalizados} estudantes identificados de {diagnosticoChamada.matriculasElegiveis} matrículas elegíveis na turma.</p>
+              <button type="button" onClick={() => void reconectarESincronizar()} className="underline font-semibold">Atualizar dados da planilha</button>
+            </div>
+          )}
           {/* O RSS fica acessível na aula, sem acionar o sino de notificações. */}
           {pendenciasRssTurma.size > 0 && (
             <details className="px-3 py-2 border-b border-slate-200 bg-amber-50/90 text-xs">
