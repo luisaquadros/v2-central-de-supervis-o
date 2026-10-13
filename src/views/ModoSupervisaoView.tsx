@@ -30,7 +30,7 @@ import {
   ModalNovoPontoAcompanhamento,
 } from '../components/Modals';
 import { getHojeDataIso } from '../services/supervisaoOperacionalService';
-import { obterLeiturasAgendadas } from '../services/supervisaoOperacionalService';
+import { obterLeiturasAgendadas, obterLacunasRssDaAula } from '../services/supervisaoOperacionalService';
 import { Frequencia, MotivoNaoRealizado } from '../types';
 
 interface ModoSupervisaoViewProps {
@@ -63,6 +63,8 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
     grupoIntegrantes,
     getAlunosDaTurma,
     getResumoAlunoSupervisao,
+    getSituacaoRssEstudante,
+    calendarioRss,
     toggleOrientacaoStatus,
     togglePontoStatus,
     leiturasResponsaveis,
@@ -362,6 +364,26 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
     item.aluno.nome.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
+  // RSS: diagnóstico somente na aula. Um grupo corresponde a uma unidade
+  // de envio, embora todas as integrantes possam ver as mesmas semanas.
+  const rssPorAluno = new Map(alunosLista.map(item => [
+    item.matricula.matricula_id,
+    obterLacunasRssDaAula(getSituacaoRssEstudante(item.matricula.matricula_id), calendarioRss, hojeIso),
+  ]));
+  const pendenciasRssTurma = new Map<string, { nome: string; faltantes: number[]; revisao: number[] }>();
+  alunosLista.forEach(item => {
+    const vinculo = grupoIntegrantes.find(gi => gi.matricula_id === item.matricula.matricula_id &&
+      gruposPratica.some(g => g.grupo_id === gi.grupo_id && g.turma_id === turmaId));
+    const grupo = vinculo ? gruposPratica.find(g => g.grupo_id === vinculo.grupo_id) : undefined;
+    const chave = grupo ? grupo.grupo_id : item.matricula.matricula_id;
+    const lacunas = rssPorAluno.get(item.matricula.matricula_id);
+    if (lacunas && (lacunas.faltantes.length || lacunas.emRevisao.length) && !pendenciasRssTurma.has(chave)) {
+      pendenciasRssTurma.set(chave, {
+        nome: grupo ? (grupo.nome_grupo || 'Grupo de prática') : item.aluno.nome,
+        faltantes: lacunas.faltantes, revisao: lacunas.emRevisao,
+      });
+    }
+  });
   const resumoAluno = selectedMatriculaId ? getResumoAlunoSupervisao(selectedMatriculaId) : null;
 
   return (
@@ -726,6 +748,21 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
             </button>
           </div>
 
+          {/* O RSS fica acessível na aula, sem acionar o sino de notificações. */}
+          {pendenciasRssTurma.size > 0 && (
+            <details className="px-3 py-2 border-b border-slate-200 bg-amber-50/90 text-xs">
+              <summary className="cursor-pointer text-amber-800 font-semibold">
+                RSS a conferir nesta turma ({pendenciasRssTurma.size} {pendenciasRssTurma.size === 1 ? 'unidade' : 'unidades'})
+              </summary>
+              <div className="mt-2 max-h-36 overflow-y-auto space-y-1.5">
+                {[...pendenciasRssTurma.entries()].map(([id,info]) => <div key={id} className="text-slate-800">
+                  <span className="font-semibold">{info.nome}:</span>
+                  {info.faltantes.length > 0 && ` sem registro validado nas semanas ${info.faltantes.join(', ')}.`}
+                  {info.revisao.length > 0 && ` Em revisão: ${info.revisao.join(', ')}.`}
+                </div>)}
+              </div>
+            </details>
+          )}
           {/* BUSCA RÁPIDA DE ALUNO */}
           <div className="p-2.5 border-b border-slate-100 shrink-0">
             <div className="relative">
@@ -761,6 +798,7 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
                 const exc = excecoes[matId] || { faltou: false, atraso: false, celular: false };
                 const resumo = getResumoAlunoSupervisao(matId);
                 const hasAlert = resumo?.temAtencao;
+                const rss = rssPorAluno.get(matId);
 
                 return (
                   <div
@@ -794,6 +832,12 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
                           </span>
                         )}
                       </div>
+                      {rss && (rss.faltantes.length > 0 || rss.emRevisao.length > 0) && (
+                        <div className="text-[10px] text-amber-700 font-semibold mt-0.5">
+                          {rss.faltantes.length > 0 && `RSS sem validação: ${rss.faltantes.join(', ')}`}
+                          {rss.emRevisao.length > 0 && ` · Em revisão: ${rss.emRevisao.join(', ')}`}
+                        </div>
+                      )}
                       <div className="text-[10px] text-slate-400 font-mono truncate">
                         {item.aluno.identificador_academico}
                         {exc.justificativa && (
