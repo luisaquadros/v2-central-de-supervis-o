@@ -213,6 +213,7 @@ interface SupervisaoContextType {
 
   // Autenticação Google Workspace (para acesso à planilha privada)
   currentUser: User | null;
+  acessoGoogleValidado: boolean;
   isLoggingIn: boolean;
   loginGoogle: () => Promise<void>;
   logoutGoogle: () => Promise<void>;
@@ -462,6 +463,7 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
   // Autenticação Google
   const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [acessoGoogleValidado, setAcessoGoogleValidado] = useState(false);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
 
   // Status de conexão e gravação
@@ -682,6 +684,7 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           .then(res => {
             if (!isMounted) return;
             if (res.sucesso && res.dados) {
+              setAcessoGoogleValidado(true);
               aplicarDados(res.dados);
               setHasLocalCache(true);
               setConnectionStatus('CONECTADO');
@@ -690,6 +693,7 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       },
       () => {
         if (!isMounted) return;
+        setAcessoGoogleValidado(false);
         setCurrentUser(null);
       }
     );
@@ -712,6 +716,7 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           const res = await sincronizarDaBaseOficial();
           if (!isMounted) return;
           if (res.sucesso && res.dados) {
+            setAcessoGoogleValidado(true);
             aplicarDados(res.dados);
             setHasLocalCache(true);
             setConnectionStatus('CONECTADO');
@@ -787,6 +792,7 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     // 2. SEGUNDO: Lê a base oficial atualizada com as novas alterações gravadas!
     const res = await sincronizarDaBaseOficial();
     if (res.sucesso && res.dados) {
+      setAcessoGoogleValidado(true);
       aplicarDados(res.dados);
       setHasLocalCache(true);
       setConnectionStatus('CONECTADO');
@@ -823,6 +829,7 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
   const logoutGoogle = async () => {
     await googleLogout();
+    setAcessoGoogleValidado(false);
     setCurrentUser(null);
     setConnectionStatus('LOCAL_DEV');
   };
@@ -2795,6 +2802,7 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         spreadsheetName: OFFICIAL_SPREADSHEET_NAME,
         spreadsheetUrl: OFFICIAL_SPREADSHEET_URL,
         currentUser,
+        acessoGoogleValidado,
         isLoggingIn,
         loginGoogle,
         logoutGoogle,
