@@ -29,12 +29,15 @@ export const ConfiguracoesView: React.FC = () => {
     spreadsheetId,
     spreadsheetName,
     spreadsheetUrl,
+    itensOperacionaisLocaisPendentes,
+    importarItensOperacionaisLocais,
   } = useSupervisao();
 
   const [activeSubTab, setActiveSubTab] = useState<'geral' | 'guia_seguranca' | 'codigo_gas' | 'database_gas' | 'importar'>('geral');
   const [copiedDatabase, setCopiedDatabase] = useState(false);
   const [copiedCodigo, setCopiedCodigo] = useState(false);
   const [confirmReset, setConfirmReset] = useState(false);
+  const [importandoFila, setImportandoFila] = useState(false);
 
   // Import state
   const [selectedTurmaImport, setSelectedTurmaImport] = useState(
@@ -921,6 +924,25 @@ function importarAlunosLote(payload) {
               </div>
             )}
           </div>
+
+          <section className="bg-white border border-slate-200 rounded-xl p-5 space-y-3">
+            <h3 className="text-sm font-bold text-slate-900">Sincronização de tarefas antigas</h3>
+            <p className="text-xs text-slate-600">Novas tarefas, fila de supervisão e caixa de entrada são registradas na planilha. Itens criados antes desta versão podem existir apenas neste dispositivo. Nenhum registro local será apagado.</p>
+            <p className="text-sm font-semibold text-slate-800">{itensOperacionaisLocaisPendentes} item(ns) locais ainda sem cópia confirmada na base.</p>
+            <button type="button" disabled={importandoFila || itensOperacionaisLocaisPendentes === 0}
+              onClick={async () => {
+                if (!window.confirm('Enviar os itens locais antigos deste dispositivo para a planilha? Não apaga nenhum item.')) return;
+                setImportandoFila(true);
+                try {
+                  const quantos = await importarItensOperacionaisLocais();
+                  window.alert(quantos + ' item(ns) enviados. Sincronize novamente para conferir.');
+                } catch (e: any) { window.alert(e?.message || 'Não foi possível sincronizar os itens antigos.'); }
+                finally { setImportandoFila(false); }
+              }}
+              className="min-h-[44px] px-4 py-2.5 rounded-lg bg-slate-900 text-white text-xs font-bold disabled:opacity-50">
+              {importandoFila ? 'Enviando...' : 'Enviar itens antigos deste dispositivo'}
+            </button>
+          </section>
 
           {/* Backup e Reset */}
           <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs space-y-3">
