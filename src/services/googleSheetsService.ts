@@ -258,7 +258,11 @@ export function normalizarLinhasDaAba(tabela: string, rows: Record<string, any>[
       r.integrante_id = r.integrante_id ?? r.grupo_integrante_id ?? '';
     } else if (tabela === 'leituras_responsaveis') {
       r.leitura_id = r.leitura_id ?? r.leitura_agenda_id ?? '';
-      r.data = r.data ?? r.data_discussao ?? '';
+      r.data = normalizarDataAcademica(r.data ?? r.data_discussao ?? '');
+      r.responsavel_nome = r.responsavel_nome ?? r.responsaveis_texto ?? '';
+      r.tema = r.tema ?? r.titulo ?? '';
+      r.tipo = r.tipo ?? 'ESTUDO_DIRIGIDO';
+      r.responsavel_tipo = r.responsavel_tipo ?? (r.tipo === 'LEITURA_RECOMENDADA' ? 'SEM_RESPONSAVEL' : 'ALUNO');
     } else if (tabela === 'registros_semanais') {
       // semana_rss é a semana acadêmica, encontro_numero é a sessão clínica.
       r.semana = r.semana ?? r.semana_rss ?? '';
