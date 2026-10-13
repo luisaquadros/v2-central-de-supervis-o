@@ -33,7 +33,7 @@ globalThis.fetch = (async (url: string | URL | Request, init?: RequestInit) => {
     return jsonOk({ sheets: Object.entries(SHEETS).map(([title, sheetId]) => ({ properties: { title, sheetId } })) });
   }
   if (u.includes('/values/') && (!init?.method || init.method === 'GET')) return jsonOk({ values: sheetRows });
-  if (u.includes(':batchUpdate') || u.includes('/values/')) return jsonOk({ updatedRows: 1 });
+  if (u.includes(':batchUpdate') || (init?.method === 'POST' && u.includes(':append?')) || init?.method === 'PUT') return jsonOk({ updatedRows: 1 });
   throw new Error('Unexpected URL in test: ' + u);
 }) as typeof fetch;
 
@@ -54,6 +54,7 @@ try {
     categoria: 'Clínica', texto: '=2+2', status: 'ABERTA',
   });
   const create = requiredWrite('POST');
+  assert(create.url.includes(':append?'), 'append method suffix is mandatory');
   assert(create.url.includes('valueInputOption=RAW'), 'RAW must be used for untrusted text');
   assert.equal(create.body.values[0][4], '=2+2');
 
@@ -126,7 +127,21 @@ try {
   ]);
   assert.equal(rss[0].semana, '7');
 
-  console.log('[PASS] 7 grupos de testes da API do Google Sheets.');
+  // Primary key must not depend on column order or accidentally use matricula_id.
+  calls = [];
+  sheetRows = [['matricula_id', 'orientacao_id', 'texto'], ['m-1', 'ori-1', 'antigo']];
+  await gravarRegistroNaPlanilhaOficial('orientacoes', {matricula_id:'m-1', orientacao_id:'ori-2', texto:'novo'});
+  requiredWrite('POST');
+  calls = [];
+  sheetRows = [['orientacao_id', 'texto'], ['ori-1', 'a'], ['ori-1', 'b']];
+  await assert.rejects(() => gravarRegistroNaPlanilhaOficial('orientacoes', {orientacao_id:'ori-1', texto:'c'}), /duplicada/);
+  assert(!calls.some(c => c.init.method === 'PUT'));
+  calls = [];
+  sheetRows = [['orientacao_id', 'texto']];
+  await removerRegistroDaPlanilhaOficial('orientacoes', {orientacao_id:'already-deleted'});
+  assert(!calls.some(c => c.init.method === 'POST'));
+
+  console.log('[PASS] 10 grupos de testes da API do Google Sheets.');
 } finally {
   globalThis.fetch = originalFetch;
   clearAccessToken();

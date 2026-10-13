@@ -1,3 +1,4 @@
+import { recordIdentity } from './recordIdentity';
 /**
  * CENTRAL DE SUPERVISÃO - SERVIÇO DE CACHE LOCAL PERSISTENTE (IndexedDB)
  *
@@ -337,5 +338,45 @@ export async function removerItemFilaConfirmado(id: string): Promise<void> {
     store.delete(id);
     tx.oncomplete = () => resolve();
     tx.onerror = () => reject(tx.error);
+  });
+}
+
+/** Commit cache and outbox together: a reported local save must survive reload. */
+export async function salvarAlteracaoAtomica(
+  tabela: string, tipo: SyncQueueOpTipo, payload: Record<string, any>
+): Promise<SyncQueueItem> {
+  const db = await openDatabase();
+  const identity = recordIdentity(tabela, payload);
+  const item: SyncQueueItem = {
+    id: crypto.randomUUID(), tabela, tipo, payload,
+    criado_em: new Date().toISOString(), status: 'PENDENTE', tentativas: 0,
+  };
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction([STORE_TABELAS, STORE_QUEUE], 'readwrite');
+    const tables = tx.objectStore(STORE_TABELAS);
+    const queue = tx.objectStore(STORE_QUEUE);
+    const req = tables.get(tabela);
+    req.onsuccess = () => {
+      const rows: any[] = req.result || [];
+      const matches = (r: any) => {
+        try { return recordIdentity(tabela, r) === identity; } catch { return false; }
+      };
+      const old = rows.find(matches);
+      tables.put(tipo === 'DELETE' ? rows.filter(r => !matches(r)) :
+        [...rows.filter(r => !matches(r)), { ...old, ...payload }], tabela);
+      // Coalesce pending versions of this record while holding the sync lock.
+      const pending = queue.getAll();
+      pending.onsuccess = () => {
+        for (const prior of pending.result as SyncQueueItem[]) {
+          if (prior.tabela === tabela && matches(prior.payload)) {
+            if (tipo !== 'DELETE' && prior.tipo !== 'DELETE') item.payload = { ...prior.payload, ...item.payload };
+            queue.delete(prior.id);
+          }
+        }
+        queue.put(item);
+      };
+    };
+    tx.oncomplete = () => { db.close(); resolve(item); };
+    tx.onerror = tx.onabort = () => { db.close(); reject(tx.error || new Error('Falha ao salvar no dispositivo.')); };
   });
 }

@@ -14,25 +14,22 @@ permissions:
 
 jobs:
   validar:
-    strategy:
-      fail-fast: false
-      matrix:
-        bun: ['1.2.15', '1.4.3']
-    name: Validar Bun ${{ matrix.bun }}
+    name: Validar Node 24 e npm
     runs-on: ubuntu-latest
     timeout-minutes: 12
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-      - name: Configurar Bun
-        uses: oven-sh/setup-bun@v2
+      - name: Configurar Node
+        uses: actions/setup-node@v4
         with:
-          bun-version: ${{ matrix.bun }}
+          node-version: 24
+          cache: npm
       - name: Instalar dependencias
-        run: bun install --frozen-lockfile
+        run: npm ci
       - name: Checagem TypeScript
-        run: bun run lint
+        run: npm run lint
       - name: Testes operacionais
-        run: bun run test
+        run: npm test
       - name: Gerar versao de producao
-        run: bun run build
+        run: npm run build
