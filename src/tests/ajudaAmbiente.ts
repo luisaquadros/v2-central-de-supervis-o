@@ -13,6 +13,8 @@ export interface OpcoesAmbiente {
   env?: Record<string, unknown>;
   /** Respostas do Drive por arquivo_id: [status HTTP, corpo]. */
   drive?: Record<string, [number, Record<string, unknown>]>;
+  /** Atraso (ms) em cada consulta ao Drive, para provocar concorrência. */
+  atrasoDriveMs?: number;
   /** Falhas injetadas: nome da aba → status HTTP em leituras/gravações. */
   falhas?: Record<string, number>;
 }
@@ -47,6 +49,8 @@ export async function criarAmbiente(op: OpcoesAmbiente) {
     if (url.includes('/drive/v3/files/')) {
       const id = decodeURIComponent(url.split('/drive/v3/files/')[1].split('?')[0]);
       driveConsultas.push(url);
+      if (op.atrasoDriveMs) await new Promise(r => setTimeout(r, op.atrasoDriveMs));
+      if (op.drive?.[id]?.[0] === 0) throw new TypeError('rede');
       const r = op.drive?.[id];
       if (!r) return ok({ error: { code: 404 } }, 404);
       return ok(r[1], r[0]);
