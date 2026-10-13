@@ -41,6 +41,7 @@ import {
   ContratoApp,
   MapeamentoFonte,
   AuditoriaBase,
+  EncontroTurma,
 } from '../types';
 
 export const OFFICIAL_SPREADSHEET_ID = '1DwhmASMStNtT_L2YinG-jkP9vYVv5ETdc-azYqSSIc4';
@@ -78,6 +79,7 @@ export interface DadosIniciaisGas {
   entregas?: Entrega[];
   feedbacksOficiais?: Feedback[];
   registrosSupervisao?: RegistroSupervisao[];
+  encontrosTurma?: EncontroTurma[];
   sincronizacao?: Sincronizacao[];
   // Documentação e Contrato da Base Oficial
   dicionarioDados?: DicionarioDado[];
