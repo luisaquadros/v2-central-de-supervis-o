@@ -37,7 +37,7 @@ globalThis.fetch = (async (url: string | URL | Request, init?: RequestInit) => {
 }) as typeof fetch;
 
 const requiredWrite = (method: string) => {
-  const c = calls.findLast(x => x.init.method === method);
+  const c = [...calls].reverse().find(x => x.init.method === method);
   assert(c, 'expected write ' + method);
   assert(!c.url.includes('A1%3Aappend') && !c.url.includes('A1:append'), 'range A1:append is invalid');
   return c;
