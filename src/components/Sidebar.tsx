@@ -84,9 +84,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {/* Brand / Header */}
         <div className="p-4 border-b border-slate-100">
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-slate-900 text-white flex items-center justify-center font-bold text-sm tracking-wide">
-              CS
-            </div>
+            <img src="/central-supervisao.svg" alt="" aria-hidden="true" className="w-9 h-9 rounded-xl shadow-sm shrink-0" />
             <div>
               <h1 className="text-sm font-bold tracking-tight text-slate-900 leading-tight">
                 Central de Supervisão
@@ -202,7 +200,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <Layers className="w-3.5 h-3.5 text-slate-500" />
             <span>Google Sheets</span>
           </div>
-          <span className="font-mono text-[10px] text-slate-400">30 tabelas</span>
+          <span className="font-mono text-[10px] text-slate-400">Base oficial</span>
         </div>
 
         {/* Connection status badge */}
