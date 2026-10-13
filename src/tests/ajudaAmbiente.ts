@@ -5,6 +5,7 @@
 import worker, { WriteCoordinator } from '../server/worker';
 import { definirProvedorIdToken } from '../services/escritaCoordenadaService';
 import { criarEmissor, ehJwks } from './ajudaAutorizacao';
+import { limparCacheJwks } from '../server/autorizacao';
 
 export type Abas = Record<string, any[][]>;
 export interface OpcoesAmbiente {
@@ -18,6 +19,7 @@ export interface OpcoesAmbiente {
 const ok = (d: unknown, status = 200) => ({ ok: status < 400, status, json: async () => d, text: async () => JSON.stringify(d) }) as Response;
 
 export async function criarAmbiente(op: OpcoesAmbiente) {
+  limparCacheJwks(); // cada ambiente tem o seu par de chaves
   const emissor = await criarEmissor();
   const abas = op.abas;
   const store = new Map<string, unknown>();

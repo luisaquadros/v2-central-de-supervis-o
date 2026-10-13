@@ -8,7 +8,7 @@ export const TABELAS_CRITICAS = new Set([
   'ocorrencias','orientacoes','feedback_alunos','feedbacks','pontos_acompanhamento',
   'registros_supervisao','preparacoes_aula',
   // Cadastro: migrado uma tabela por vez (cada linha abaixo é um passo reversível, ver docs/DOCUMENTO_MESTRE.md)
-  'alunos',
+  'alunos','matriculas',
 ]);
 
 export type OperacaoCritica = 'INSERT' | 'UPDATE' | 'DELETE';
@@ -42,7 +42,16 @@ export function valorComparavel(valor: unknown): string {
   if (valor == null) return '';
   if (typeof valor === 'boolean') return valor ? 'TRUE' : 'FALSE';
   if (typeof valor === 'object') return JSON.stringify(valor);
-  return dataCanonica(String(valor).trim());
+  const t = String(valor).trim();
+  if (/^(true|false)$/i.test(t)) return t.toUpperCase();
+  return dataCanonica(t);
+}
+const DIAS: Record<string, string> = { DOMINGO: '0', SEGUNDA: '1', TERCA: '2', 'TERÇA': '2', QUARTA: '3', QUINTA: '4', SEXTA: '5', SABADO: '6', 'SÁBADO': '6' };
+/** Comparação por campo: o app guarda o dia da semana como número (0–6) e a planilha pode ter o nome do dia. */
+export function valorComparavelCampo(tabela: string, campo: string, valor: unknown): string {
+  const v = valorComparavel(valor);
+  if (tabela === 'horarios_turma' && campo === 'dia_semana') return DIAS[v.toUpperCase()] ?? v;
+  return v;
 }
 export function adaptarRegistroCritico(tabela: string, registro: Record<string, unknown>): Record<string, unknown> {
   const result={...registro};
@@ -85,8 +94,8 @@ export function compararVersaoDeCampos(
   const chaves=(tipo==='DELETE'?cabecalhos:Object.keys(editado)).filter(k=>permitido.has(k));
   const divergencias:string[]=[];
   for(const key of chaves){
-    const original=valorComparavel(base[key]);
-    const atual=valorComparavel(remoto[key]);
+    const original=valorComparavelCampo(tabela,key,base[key]);
+    const atual=valorComparavelCampo(tabela,key,remoto[key]);
     if(original!==atual)divergencias.push(key);
   }
   return divergencias;

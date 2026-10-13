@@ -151,7 +151,8 @@ var TABELAS_CRITICAS = /* @__PURE__ */ new Set([
   "registros_supervisao",
   "preparacoes_aula",
   // Cadastro: migrado uma tabela por vez (cada linha abaixo é um passo reversível, ver docs/DOCUMENTO_MESTRE.md)
-  "alunos"
+  "alunos",
+  "matriculas"
 ]);
 function dataCanonica(texto) {
   if (/^\d{4}-\d{2}-\d{2}/.test(texto)) return texto.slice(0, 10);
@@ -165,9 +166,18 @@ function valorComparavel(valor) {
   if (valor == null) return "";
   if (typeof valor === "boolean") return valor ? "TRUE" : "FALSE";
   if (typeof valor === "object") return JSON.stringify(valor);
-  return dataCanonica(String(valor).trim());
+  const t = String(valor).trim();
+  if (/^(true|false)$/i.test(t)) return t.toUpperCase();
+  return dataCanonica(t);
 }
 __name(valorComparavel, "valorComparavel");
+var DIAS = { DOMINGO: "0", SEGUNDA: "1", TERCA: "2", "TER\xC7A": "2", QUARTA: "3", QUINTA: "4", SEXTA: "5", SABADO: "6", "S\xC1BADO": "6" };
+function valorComparavelCampo(tabela, campo, valor) {
+  const v = valorComparavel(valor);
+  if (tabela === "horarios_turma" && campo === "dia_semana") return DIAS[v.toUpperCase()] ?? v;
+  return v;
+}
+__name(valorComparavelCampo, "valorComparavelCampo");
 function adaptarRegistroCritico(tabela, registro) {
   const result = { ...registro };
   if (tabela === "frequencias" && result.status === "PRESENTE" && (result.atraso === true || result.status_original === "ATRASO")) result.status = "ATRASO";
@@ -208,8 +218,8 @@ function compararVersaoDeCampos(tabela, registro, esperado, remoto, cabecalhos, 
   const chaves = (tipo === "DELETE" ? cabecalhos : Object.keys(editado)).filter((k) => permitido.has(k));
   const divergencias = [];
   for (const key of chaves) {
-    const original = valorComparavel(base[key]);
-    const atual = valorComparavel(remoto[key]);
+    const original = valorComparavelCampo(tabela, key, base[key]);
+    const atual = valorComparavelCampo(tabela, key, remoto[key]);
     if (original !== atual) divergencias.push(key);
   }
   return divergencias;

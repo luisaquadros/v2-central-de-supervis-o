@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { WriteCoordinator } from '../server/worker';
-import { valorComparavel, resumirAlteracaoParaLog, TABELAS_CRITICAS, COLUNAS_LOG_ALTERACOES } from '../server/coordenacaoCritica';
+import { valorComparavel, valorComparavelCampo, resumirAlteracaoParaLog, TABELAS_CRITICAS, COLUNAS_LOG_ALTERACOES } from '../server/coordenacaoCritica';
 
 // ---- Formato de data diferente não pode virar conflito falso ----
 assert.equal(valorComparavel('13/10/2026'), valorComparavel('2026-10-13'));
@@ -8,6 +8,10 @@ assert.equal(valorComparavel(46308), valorComparavel('2026-10-13'));
 assert.notEqual(valorComparavel('14/10/2026'), valorComparavel('2026-10-13'));
 assert.equal(valorComparavel('Set/2026'), 'Set/2026', 'texto livre de data não é alterado');
 assert.equal(valorComparavel(true), 'TRUE');
+assert.equal(valorComparavel('true'), valorComparavel(true), 'TRUE/true da planilha');
+assert.equal(valorComparavelCampo('horarios_turma', 'dia_semana', 'Terça'), valorComparavelCampo('horarios_turma', 'dia_semana', 2), 'nome do dia = número');
+assert.notEqual(valorComparavelCampo('horarios_turma', 'dia_semana', 'Quarta'), valorComparavelCampo('horarios_turma', 'dia_semana', 2));
+assert.equal(valorComparavelCampo('turmas', 'dia_semana', 'Terça'), 'Terça', 'só vale em horarios_turma');
 
 // ---- Função pura: só campos alterados; texto livre nunca vai para o log ----
 {
