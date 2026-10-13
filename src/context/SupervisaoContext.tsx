@@ -1,3 +1,4 @@
+import { filtrarPendenciasResolvidas } from '../services/pendenciaResolutionService';
 import { selecionarRssDoEstudante } from '../services/rssVinculos';
 import { listarAlunosChamada } from '../services/aulaParticipants';
 import { useDurableLocalState } from '../hooks/useDurableLocalState';
@@ -2732,7 +2733,7 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
   const getPendenciasCanonicas = useCallback((periodoId?: string): ItemPendenciaOperacional[] => {
     const pId = periodoId || selectedPeriodoId;
-    return gerarPendenciasCanonicas(
+    const pendencias = gerarPendenciasCanonicas(
       pId,
       turmas,
       matriculas,
@@ -2752,7 +2753,8 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       new Date(),
       gruposPratica,
       grupoIntegrantes
-    ).filter(item => !configuracoes.some(c => c.chave === 'PENDENCIA_RESOLVIDA:' + item.id && c.periodo_id === pId));
+    );
+    return filtrarPendenciasResolvidas(pendencias, configuracoes, pId);
   }, [
     selectedPeriodoId,
     turmas,
