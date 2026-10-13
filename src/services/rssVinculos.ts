@@ -13,7 +13,7 @@ export function selecionarRssDoEstudante(params: {
  if(!matricula) return {registros:[],grupoId:undefined as string|undefined,modo:'SEM_MATRICULA' as const};
  const aluno=alunos.find(a=>id(a.aluno_id)===id(matricula.aluno_id));
  const gruposTurma=new Set(grupos.filter(g=>id(g.turma_id)===id(turmaId)).map(g=>id(g.grupo_id)));
- const vinculos=integrantes.filter(i=>gruposTurma.has(id(i.grupo_id)) && (
+ const vinculos=integrantes.filter(i=>gruposTurma.has(id(i.grupo_id)) && !['INATIVO','REMOVIDO','ENCERRADO'].includes(id(i.status).toUpperCase()) && (
    id(i.matricula_id)===id(matriculaId) || (aluno && id(i.aluno_id)===id(aluno.aluno_id))
  ));
  const idsGrupo=[...new Set(vinculos.map(v=>id(v.grupo_id)))];
