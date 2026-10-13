@@ -29,5 +29,5 @@ export function formatarNotaParaExibicao(val: any): string {
   const norm = normalizarNota(val);
   if (norm === 'ausente') return '—';
   if (norm === 'invalido') return '—'; // ou "—" para manter visual limpo
-  return norm.toFixed(1).replace('.', ',');
+  return norm.toFixed(1);
 }

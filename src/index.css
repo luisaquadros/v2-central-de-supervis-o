@@ -1,27 +1,120 @@
 @import "tailwindcss";
 
-@layer base {
-  body {
-    font-family: 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  }
-  
-  .font-mono {
-    font-family: 'JetBrains Mono', monospace;
+/* Identidade: azul-noite, verde-sálvia e lavanda em superfícies neutras. */
+:root {
+  --cs-navy: #15233b;
+  --cs-teal: #2c827e;
+  --cs-orchid: #8276b1;
+  --cs-canvas: #f4f7fa;
+  --cs-surface: #ffffff;
+  --cs-ink: #15233b;
+  --cs-border: #e2e8f0;
+  --cs-radius: 0.875rem;
+  color-scheme: light;
+}
+* { -webkit-tap-highlight-color: transparent; }
+html { scroll-behavior: smooth; }
+html, body, #root { min-width: 320px; min-height: 100%; }
+body {
+  font-family: 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: var(--cs-canvas);
+}
+.font-mono { font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace; }
+:where(button, input, textarea, select, a):focus-visible {
+  outline: 2px solid var(--cs-teal);
+  outline-offset: 3px;
+}
+button, select, input[type="checkbox"] { touch-action: manipulation; }
+@media (pointer: coarse) {
+  button, [role="button"], select { min-height: 40px; }
+}
+@media (max-width: 639px) {
+  body { overscroll-behavior-y: contain; }
+  main { min-height: 0; }
+  .mobile-scroll { min-height: 0; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
+  .safe-bottom { padding-bottom: max(1rem, env(safe-area-inset-bottom)); }
+}
+::-webkit-scrollbar { width: 7px; height: 7px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #b1c1cf; border-radius: 9999px; }
+::-webkit-scrollbar-thumb:hover { background: #899aa9; }
+
+/* Night Mode: superfícies, hierarquia, bordas, formulários, alarmes.
+   Não inverte botões escuros ou cores de estado: evita contrastes quebrados. */
+html[data-theme="dark"] { color-scheme: dark; background: #0c1423; }
+html[data-theme="dark"] body { background: #0c1423; color: #d7e4ef; }
+html[data-theme="dark"] .bg-white { background-color: #172437; }
+html[data-theme="dark"] .bg-white\/90 { background-color: rgba(23,36,55,.96); }
+html[data-theme="dark"] .bg-slate-50,
+html[data-theme="dark"] .bg-slate-50\/60,
+html[data-theme="dark"] .bg-slate-50\/70 { background-color: #121e30; }
+html[data-theme="dark"] .bg-slate-100 { background-color: #233247; }
+html[data-theme="dark"] .bg-slate-200 { background-color: #33445b; }
+html[data-theme="dark"] .bg-indigo-50,
+html[data-theme="dark"] .bg-indigo-50\/50,
+html[data-theme="dark"] .bg-indigo-50\/60 { background-color: #25253e; }
+html[data-theme="dark"] .bg-emerald-50 { background-color: #14362f; }
+html[data-theme="dark"] .bg-amber-50,
+html[data-theme="dark"] .bg-amber-50\/90 { background-color: #383021; }
+html[data-theme="dark"] .bg-red-50 { background-color: #3b252d; }
+html[data-theme="dark"] .bg-blue-50 { background-color: #1a2f49; }
+html[data-theme="dark"] .bg-purple-50 { background-color: #312841; }
+html[data-theme="dark"] .text-slate-950,
+html[data-theme="dark"] .text-slate-900 { color: #eff6fb; }
+html[data-theme="dark"] .text-slate-800 { color: #dbe8f2; }
+html[data-theme="dark"] .text-slate-700 { color: #cad9e6; }
+html[data-theme="dark"] .text-slate-600 { color: #b2c5d4; }
+html[data-theme="dark"] .text-slate-500 { color: #95adbf; }
+html[data-theme="dark"] .text-slate-400 { color: #8297ac; }
+html[data-theme="dark"] .text-indigo-700,
+html[data-theme="dark"] .text-indigo-800 { color: #c2baff; }
+html[data-theme="dark"] .text-emerald-700,
+html[data-theme="dark"] .text-emerald-800 { color: #87dcc4; }
+html[data-theme="dark"] .text-amber-700,
+html[data-theme="dark"] .text-amber-800 { color: #eed49a; }
+html[data-theme="dark"] .text-red-700 { color: #ffb8bf; }
+html[data-theme="dark"] .text-blue-700 { color: #a5cff9; }
+html[data-theme="dark"] .border-slate-100 { border-color: #27384f; }
+html[data-theme="dark"] .border-slate-200 { border-color: #34475b; }
+html[data-theme="dark"] .border-slate-300 { border-color: #4d6177; }
+html[data-theme="dark"] .border-indigo-100,
+html[data-theme="dark"] .border-indigo-200 { border-color: #414167; }
+html[data-theme="dark"] .border-amber-200 { border-color: #775a37; }
+html[data-theme="dark"] :is(input, textarea, select) {
+  background-color: #172437;
+  color: #eff6fb;
+  border-color: #41526a;
+}
+html[data-theme="dark"] :is(input,textarea)::placeholder { color: #90a4b8; }
+html[data-theme="dark"] .theme-selector { background: #26364b; color: #d8e9f3; }
+html[data-theme="dark"] .hover\\:bg-slate-50:hover,
+html[data-theme="dark"] .hover\\:bg-slate-100:hover { background-color: #293c50; }
+html[data-theme="dark"] ::-webkit-scrollbar-thumb { background-color: #4e647c; }
+html[data-theme="dark"] .shadow-sm,
+html[data-theme="dark"] .shadow-xs { box-shadow: 0 1px 8px rgb(0 0 0 / .22); }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    scroll-behavior: auto !important;
+    transition-duration: .01ms !important;
   }
 }
 
-/* Custom scrollbars for clean tablet/desktop view */
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+/* Design system: núcleo visual reutilizável — preserva as utilidades existentes. */
+.cs-panel { background: var(--cs-surface); border: 1px solid var(--cs-border); border-radius: var(--cs-radius); }
+.cs-nav-active { background: var(--cs-navy); color: #fff; }
+.cs-nav-active:hover { background: #203753; }
+.cs-brand-accent { color: var(--cs-teal); }
+.cs-primary-action { background: var(--cs-navy); color: #fff; border-radius: 0.75rem; }
+.cs-primary-action:hover { background: #203753; }
+.cs-muted-surface { background: var(--cs-canvas); }
+.cs-count { font-variant-numeric: tabular-nums; }
+html[data-theme="dark"] {
+  --cs-canvas: #0c1423;
+  --cs-surface: #172437;
+  --cs-ink: #eff6fb;
+  --cs-border: #34475b;
 }
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
-  border-radius: 9999px;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
-}
+html[data-theme="dark"] .cs-nav-active { background: #314e67; color: #fff; }
+html[data-theme="dark"] .cs-primary-action { background: #314e67; color: #fff; }
+html[data-theme="dark"] .cs-primary-action:hover { background: #3c5b75; }

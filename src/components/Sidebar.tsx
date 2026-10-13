@@ -1,201 +1,307 @@
-import React, { useState } from 'react';
+import React from 'react';
 import {
-  ArrowLeft, Award, Calendar, CheckCircle2, CloudOff, GraduationCap, Home, ListChecks, Menu, PenLine,
-  RefreshCw, Search, Settings, TriangleAlert, Users, X, ExternalLink,
+  LayoutDashboard,
+  Users,
+  GraduationCap,
+  Award,
+  AlertCircle,
+  Calendar,
+  Settings,
+  ChevronDown,
+  Layers,
+  CalendarCheck,
 } from 'lucide-react';
 import { useSupervisao } from '../context/SupervisaoContext';
-import { useNavegacao } from '../context/NavegacaoContext';
-import type { NavTab } from '../types';
-import { Botao } from './ui';
+import { ThemeControl } from './ThemeControl';
+import { NavTab } from '../types';
+export type { NavTab };
 
-const ITENS: { id: NavTab; rotulo: string; icone: React.ElementType }[] = [
-  { id: 'hoje', rotulo: 'Hoje', icone: Home },
-  { id: 'turmas', rotulo: 'Turmas', icone: Users },
-  { id: 'pendencias', rotulo: 'Pendências', icone: ListChecks },
-  { id: 'alunos', rotulo: 'Estudantes', icone: GraduationCap },
-  { id: 'avaliacao', rotulo: 'Avaliação', icone: Award },
-  { id: 'calendario', rotulo: 'Calendário', icone: Calendar },
-  { id: 'ajustes', rotulo: 'Ajustes', icone: Settings },
-];
-
-function useAbaAtual(): NavTab | null {
-  const { tela } = useNavegacao();
-  if (tela.tipo === 'aba') return tela.aba;
-  if (tela.tipo === 'turma') return 'turmas';
-  return null;
+interface SidebarProps {
+  currentTab: NavTab;
+  onSelectTab: (tab: NavTab) => void;
+  isOpenMobile?: boolean;
+  onCloseMobile?: () => void;
 }
 
-const ListaMenu: React.FC<{ aoEscolher?: () => void }> = ({ aoEscolher }) => {
-  const { pendencias } = useSupervisao();
-  const { abrirAba } = useNavegacao();
-  const atual = useAbaAtual();
-  return (
-    <nav className="p-3 space-y-1" aria-label="Menu principal">
-      {ITENS.map(({ id, rotulo, icone: Icone }) => {
-        const ativo = atual === id;
-        const contador = id === 'pendencias' ? pendencias.length : 0;
-        return (
-          <button
-            key={id}
-            onClick={() => { abrirAba(id); aoEscolher?.(); }}
-            aria-current={ativo ? 'page' : undefined}
-            className={`w-full flex items-center justify-between gap-3 px-3 py-2.5 rounded-xl text-[15px] font-semibold cursor-pointer ${
-              ativo ? 'bg-slate-900 text-white' : 'text-slate-700 hover:bg-slate-100'
-            }`}
-          >
-            <span className="flex items-center gap-3"><Icone className="w-5 h-5" />{rotulo}</span>
-            {contador > 0 && (
-              <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${ativo ? 'bg-amber-400 text-slate-950' : 'bg-amber-100 text-amber-900'}`}>
-                {contador}
-              </span>
-            )}
-          </button>
-        );
-      })}
-    </nav>
-  );
-};
+export const Sidebar: React.FC<SidebarProps> = ({
+  currentTab,
+  onSelectTab,
+  isOpenMobile,
+  onCloseMobile,
+}) => {
+  const {
+    periodos,
+    selectedPeriodoId,
+    setSelectedPeriodoId,
+    turmas,
+    matriculas,
+    orientacoes,
+    documentos,
+    frequencias,
+    getSituacaoRssEstudante,
+    getPendenciasCanonicas,
+    registrosSemanais,
+    connectionStatus,
+    saveStatus,
+    currentUser,
+    isLoggingIn,
+    loginGoogle,
+    logoutGoogle,
+  } = useSupervisao();
 
-const SeletorPeriodo: React.FC = () => {
-  const { periodos, selectedPeriodoId, setSelectedPeriodoId } = useSupervisao();
-  if (periodos.length <= 1) return null;
-  return (
-    <label className="block px-3">
-      <span className="text-xs font-semibold text-slate-500">Semestre</span>
-      <select
-        value={selectedPeriodoId}
-        onChange={e => setSelectedPeriodoId(e.target.value)}
-        className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800"
-      >
-        {periodos.map(p => (
-          <option key={p.periodo_id} value={p.periodo_id}>
-            {p.nome}{p.status === 'ATIVO' ? ' (atual)' : p.status === 'PLANEJADO' ? ' (planejado)' : ''}
-          </option>
-        ))}
-      </select>
-    </label>
-  );
-};
+  // Total unificado de itens que vem da coleção canônica de pendências
+  const totalAlerts = getPendenciasCanonicas().length;
 
-export const Sidebar: React.FC = () => (
-  <aside className="hidden lg:flex w-60 shrink-0 flex-col bg-white border-r border-slate-200">
-    <div className="p-4 flex items-center gap-3 border-b border-slate-100">
-      <div className="w-9 h-9 rounded-xl bg-slate-900 text-white flex items-center justify-center font-black">CS</div>
+  const currentPeriodo = periodos.find(p => p.periodo_id === selectedPeriodoId);
+
+  const navItems = [
+    { id: 'hoje' as NavTab, label: 'Hoje', icon: LayoutDashboard },
+    { id: 'turmas' as NavTab, label: 'Turmas', icon: Users },
+    { id: 'frequencia' as NavTab, label: 'Frequência', icon: CalendarCheck },
+    { id: 'alunos' as NavTab, label: 'Alunos', icon: GraduationCap },
+    { id: 'avaliacao' as NavTab, label: 'Avaliação', icon: Award },
+    { id: 'calendario' as NavTab, label: 'Calendário', icon: Calendar },
+    {
+      id: 'pendencias' as NavTab,
+      label: 'Pendências',
+      icon: AlertCircle,
+      badge: totalAlerts > 0 ? totalAlerts : undefined,
+    },
+  ];
+
+  const secondaryItems = [
+    { id: 'semestres' as NavTab, label: 'Semestres', icon: Calendar },
+    { id: 'configuracoes' as NavTab, label: 'Configurações', icon: Settings },
+  ];
+
+  return (
+    <aside
+      className={`
+        w-64 bg-white border-r border-slate-200 flex flex-col justify-between shrink-0 select-none
+        ${isOpenMobile ? 'fixed inset-y-0 left-0 z-50 shadow-xl' : 'hidden md:flex'}
+      `}
+    >
       <div>
-        <p className="font-bold text-slate-900 leading-tight">Central de Supervisão</p>
-        <p className="text-xs text-slate-500">Estágios de Psicologia</p>
-      </div>
-    </div>
-    <div className="pt-3"><SeletorPeriodo /></div>
-    <ListaMenu />
-  </aside>
-);
-
-/** Um único selo diz se tudo está salvo na planilha, enviando, ou precisa de você. */
-export const SeloSincronizacao: React.FC = () => {
-  const { syncStatusState, precisaReconectar, loginGoogle, isLoggingIn, sincronizarAgora, spreadsheetUrl, connectionErrorMessage } = useSupervisao();
-  const [aberto, setAberto] = useState(false);
-  const pend = syncStatusState.pendentesCount;
-  const sincronizando = syncStatusState.status === 'SINCRONIZANDO';
-  const temErro = syncStatusState.status === 'ERRO' || (syncStatusState.status === 'PARCIAL' && syncStatusState.erros.length > 0);
-
-  let estilo = 'bg-emerald-50 text-emerald-800 border-emerald-200';
-  let icone = <CheckCircle2 className="w-4 h-4" />;
-  let texto = 'Tudo salvo';
-  if (precisaReconectar) {
-    estilo = 'bg-amber-50 text-amber-900 border-amber-300';
-    icone = <CloudOff className="w-4 h-4" />;
-    texto = pend > 0 ? `${pend} no aparelho · Conectar` : 'Conectar Google';
-  } else if (sincronizando || pend > 0) {
-    estilo = 'bg-blue-50 text-blue-800 border-blue-200';
-    icone = <RefreshCw className="w-4 h-4 animate-spin" />;
-    texto = pend > 0 ? `Enviando ${pend}…` : 'Atualizando…';
-  } else if (temErro) {
-    estilo = 'bg-amber-50 text-amber-900 border-amber-300';
-    icone = <TriangleAlert className="w-4 h-4" />;
-    texto = 'Ver aviso';
-  }
-
-  const ultima = syncStatusState.ultimaSincronizacao
-    ? new Date(syncStatusState.ultimaSincronizacao).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })
-    : 'ainda não sincronizado';
-
-  return (
-    <div className="relative">
-      <button
-        onClick={() => (precisaReconectar ? loginGoogle() : setAberto(a => !a))}
-        disabled={isLoggingIn}
-        className={`min-h-10 inline-flex items-center gap-2 rounded-xl border px-3 text-sm font-semibold cursor-pointer ${estilo}`}
-        title="Situação do salvamento na planilha"
-      >
-        {icone}
-        <span className="hidden sm:inline">{isLoggingIn ? 'Conectando…' : texto}</span>
-      </button>
-      {aberto && (
-        <div className="absolute right-0 top-12 z-40 w-80 bg-white border border-slate-200 rounded-2xl shadow-xl p-4 space-y-3 text-sm">
-          <div className="flex items-center justify-between">
-            <p className="font-bold text-slate-900">Salvamento na planilha</p>
-            <button onClick={() => setAberto(false)} aria-label="Fechar" className="p-1 rounded-lg hover:bg-slate-100 cursor-pointer"><X className="w-4 h-4" /></button>
-          </div>
-          <p className="text-slate-700">Última leitura: <strong>{ultima}</strong></p>
-          <p className="text-slate-700">
-            {pend > 0 ? <>Aguardando envio: <strong>{pend}</strong> alteração(ões). Elas já estão salvas neste aparelho.</> : 'Nenhuma alteração aguardando envio.'}
-          </p>
-          {[...(connectionErrorMessage ? [connectionErrorMessage] : []), ...syncStatusState.erros].slice(0, 4).map((e, i) => (
-            <p key={i} className="text-amber-900 bg-amber-50 rounded-lg p-2">{e}</p>
-          ))}
-          <div className="flex gap-2">
-            <Botao variante="primario" tamanho="sm" onClick={() => { void sincronizarAgora(); setAberto(false); }} icone={<RefreshCw className="w-4 h-4" />}>
-              Sincronizar agora
-            </Botao>
-            <a href={spreadsheetUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-sm font-semibold text-slate-700 hover:underline px-2">
-              Planilha <ExternalLink className="w-3.5 h-3.5" />
-            </a>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-};
-
-export const BarraSuperior: React.FC = () => {
-  const { podeVoltar, voltar, tela, abrirBusca, abrirAnotar } = useNavegacao();
-  const [menuAberto, setMenuAberto] = useState(false);
-  const mostrarVoltar = podeVoltar && tela.tipo !== 'aba';
-
-  return (
-    <>
-      <header className="bg-white border-b border-slate-200 px-3 sm:px-4 py-2 flex items-center gap-2 shrink-0">
-        <button onClick={() => setMenuAberto(true)} className="lg:hidden p-2 rounded-xl hover:bg-slate-100 cursor-pointer" aria-label="Abrir menu">
-          <Menu className="w-6 h-6" />
-        </button>
-        {mostrarVoltar && (
-          <Botao variante="fantasma" tamanho="sm" onClick={voltar} icone={<ArrowLeft className="w-5 h-5" />}>
-            <span className="hidden sm:inline">Voltar</span>
-          </Botao>
-        )}
-        <div className="flex-1" />
-        <Botao variante="secundario" tamanho="sm" onClick={abrirBusca} icone={<Search className="w-4 h-4" />} title="Buscar (Ctrl+K)">
-          <span className="hidden sm:inline">Buscar</span>
-        </Botao>
-        <Botao variante="primario" tamanho="sm" onClick={() => abrirAnotar()} icone={<PenLine className="w-4 h-4" />} title="Anotar rapidamente (tecla N)">
-          Anotar
-        </Botao>
-        <SeloSincronizacao />
-      </header>
-
-      {menuAberto && (
-        <div className="lg:hidden fixed inset-0 z-50 bg-slate-900/40" onClick={() => setMenuAberto(false)}>
-          <div className="w-72 max-w-[85%] h-full bg-white shadow-xl overflow-y-auto" onClick={e => e.stopPropagation()}>
-            <div className="p-4 flex items-center justify-between border-b border-slate-100">
-              <p className="font-bold text-slate-900">Central de Supervisão</p>
-              <button onClick={() => setMenuAberto(false)} className="p-2 rounded-lg hover:bg-slate-100 cursor-pointer" aria-label="Fechar menu"><X className="w-5 h-5" /></button>
+        {/* Brand / Header */}
+        <div className="p-4 border-b border-slate-100">
+          <div className="flex items-center gap-2.5">
+            <img src="/central-supervisao.svg" alt="" aria-hidden="true" className="w-9 h-9 rounded-xl shrink-0" />
+            <div>
+              <h1 className="text-sm font-bold tracking-tight text-slate-900 leading-tight">
+                Central de Supervisão
+              </h1>
+              <p className="text-[11px] text-slate-500">Estágios de Psicologia</p>
             </div>
-            <div className="pt-3"><SeletorPeriodo /></div>
-            <ListaMenu aoEscolher={() => setMenuAberto(false)} />
+          </div>
+
+          <div className="mt-3 md:hidden flex items-center justify-between gap-2 rounded-lg bg-slate-50 px-3 py-2">
+            <span className="text-xs font-semibold text-slate-700">Aparência</span>
+            <ThemeControl />
+          </div>
+          {/* Context Selector: Período Letivo */}
+          <div className="mt-3.5 pt-3 border-t border-slate-100">
+            <label className="text-[11px] font-medium text-slate-400 block mb-1">
+              Período Letivo
+            </label>
+            <div className="relative">
+              <select
+                value={selectedPeriodoId}
+                onChange={e => setSelectedPeriodoId(e.target.value)}
+                className="w-full bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-800 text-xs font-semibold rounded-lg py-2 pl-3 pr-8 appearance-none cursor-pointer focus:outline-none focus:ring-1 focus:ring-slate-900 transition-colors"
+              >
+                {periodos.length === 0 ? (
+                  <option value="">Aguardando base oficial...</option>
+                ) : (
+                  periodos.map(p => (
+                    <option key={p.periodo_id} value={p.periodo_id}>
+                      {p.nome} {p.status === 'ATIVO' ? '(Atual)' : `(${p.status.toLowerCase()})`}
+                    </option>
+                  ))
+                )}
+              </select>
+              <ChevronDown className="w-3.5 h-3.5 text-slate-500 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+            </div>
           </div>
         </div>
-      )}
-    </>
+
+        {/* Primary Navigation */}
+        <nav className="p-3 space-y-1">
+          {navItems.map(item => {
+            const Icon = item.icon;
+            const isActive = currentTab === item.id;
+            return (
+              <button
+                key={item.id}
+                onClick={() => {
+                  onSelectTab(item.id);
+                  if (onCloseMobile) onCloseMobile();
+                }}
+                className={`
+                  w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-xs font-medium transition-colors text-left
+                  ${
+                    isActive
+                      ? 'cs-nav-active'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                  }
+                `}
+              >
+                <div className="flex items-center gap-2.5">
+                  <Icon className={`w-4 h-4 ${isActive ? 'text-white' : 'text-slate-500'}`} />
+                  <span>{item.label}</span>
+                </div>
+                {item.badge !== undefined && (
+                  <span
+                    className={`
+                      text-[10px] font-semibold px-1.5 py-0.5 rounded-md cs-count
+                      ${isActive ? 'bg-amber-400 text-slate-950 font-bold' : 'bg-amber-100 text-amber-800'}
+                    `}
+                  >
+                    {item.badge}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </nav>
+
+        {/* Divider */}
+        <div className="px-6 py-2">
+          <div className="border-t border-slate-100" />
+        </div>
+
+        {/* Administração menos frequente, recolhida sem retirar funções. */}
+        <details className="mx-3 rounded-lg border border-slate-200" open={currentTab === 'semestres' || currentTab === 'configuracoes' ? true : undefined}>
+        <summary className="px-3 py-2.5 text-xs font-semibold text-slate-600 cursor-pointer">Administração e ajustes</summary>
+        <nav className="px-2 pb-2 space-y-1">
+          {secondaryItems.map(item => {
+            const Icon = item.icon;
+            const isActive = currentTab === item.id;
+            return (
+              <button
+                key={item.id}
+                onClick={() => {
+                  onSelectTab(item.id);
+                  if (onCloseMobile) onCloseMobile();
+                }}
+                className={`
+                  w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-xs font-medium transition-colors text-left
+                  ${
+                    isActive
+                      ? 'cs-nav-active'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                  }
+                `}
+              >
+                <Icon className={`w-4 h-4 ${isActive ? 'text-white' : 'text-slate-500'}`} />
+                <span>{item.label}</span>
+              </button>
+            );
+          })}
+        </nav>
+        </details>
+      </div>
+
+      {/* Footer Info & Connection Status */}
+      <div className="p-3 m-3 rounded-lg bg-slate-50 border border-slate-200 text-[11px] space-y-2">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-1.5 font-medium text-slate-700">
+            <Layers className="w-3.5 h-3.5 text-slate-500" />
+            <span>Google Sheets</span>
+          </div>
+          <span className="font-mono text-[10px] text-slate-400">Base oficial</span>
+        </div>
+
+        {/* Connection status badge */}
+        <div className="flex items-center gap-1.5">
+          {connectionStatus === 'CONECTADO' && (
+            <>
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+              <span className="text-[11px] font-semibold text-emerald-700">Sheets Conectado</span>
+            </>
+          )}
+          {connectionStatus === 'LOCAL_DEV' && (
+            <>
+              <span className="w-2 h-2 rounded-full bg-blue-500" />
+              <span className="text-[11px] font-semibold text-slate-700">Modo Local / Prévia</span>
+            </>
+          )}
+          {connectionStatus === 'CARREGANDO' && (
+            <>
+              <span className="w-2 h-2 rounded-full bg-amber-500 animate-spin" />
+              <span className="text-[11px] font-semibold text-amber-700">Sincronizando...</span>
+            </>
+          )}
+          {connectionStatus === 'ERRO_CONEXAO' && (
+            <>
+              <span className="w-2 h-2 rounded-full bg-red-500" />
+              <span className="text-[11px] font-semibold text-red-700">Erro na Conexão</span>
+            </>
+          )}
+        </div>
+
+        {/* Google Workspace Auth Action (Preview Mode) */}
+        {connectionStatus !== 'CONECTADO' && (
+          <button
+            onClick={loginGoogle}
+            disabled={isLoggingIn}
+            className="w-full flex items-center justify-center gap-2 px-2 py-1.5 bg-white hover:bg-slate-100 border border-slate-200 rounded-lg text-[10px] font-semibold text-slate-700 shadow-2xs transition-colors cursor-pointer disabled:opacity-50 mt-1"
+          >
+            <svg className="w-3.5 h-3.5 shrink-0" viewBox="0 0 48 48">
+              <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"></path>
+              <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"></path>
+              <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"></path>
+              <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"></path>
+            </svg>
+            <span>{isLoggingIn ? 'Conectando...' : 'Conectar Planilha Oficial'}</span>
+          </button>
+        )}
+
+        {currentUser && (
+          <div className="pt-1 flex items-center justify-between text-[10px] text-slate-500 border-t border-slate-200">
+            <span className="truncate max-w-[130px]" title={currentUser.email || ''}>
+              {currentUser.email}
+            </span>
+            <button
+              onClick={logoutGoogle}
+              className="text-slate-700 hover:text-red-600 font-semibold cursor-pointer underline"
+            >
+              Sair
+            </button>
+          </div>
+        )}
+
+        {/* Save status notification with strict differentiation between local and Google Sheets */}
+        {saveStatus === 'SALVANDO' && (
+          <div className="text-[10px] font-semibold text-amber-600 flex items-center gap-1">
+            <span className="animate-spin inline-block w-2.5 h-2.5 border-2 border-amber-600 border-t-transparent rounded-full" />
+            <span>
+              {currentUser && connectionStatus === 'CONECTADO'
+                ? 'Gravando no Google Sheets...'
+                : 'Gravando localmente (IndexedDB)...'}
+            </span>
+          </div>
+        )}
+        {saveStatus === 'SALVO' && (
+          <div className="text-[10px] font-semibold text-emerald-600 flex items-center gap-1">
+            <span>✓</span>
+            <span>
+              {currentUser && connectionStatus === 'CONECTADO'
+                ? 'Sincronizado no Google Sheets'
+                : 'Salvo localmente (cache de trabalho)'}
+            </span>
+          </div>
+        )}
+        {saveStatus === 'ERRO_SALVAR' && (
+          <div className="text-[10px] font-semibold text-red-600 flex items-center gap-1">
+            <span>⚠</span>
+            <span>
+              {currentUser && connectionStatus === 'CONECTADO'
+                ? 'Falha ao gravar no Google Sheets'
+                : 'Falha ao salvar localmente'}
+            </span>
+          </div>
+        )}
+      </div>
+    </aside>
   );
 };

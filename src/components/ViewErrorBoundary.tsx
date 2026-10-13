@@ -26,6 +26,7 @@ export class ViewErrorBoundary extends Component<Props, State> {
 
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     console.error(`[ViewErrorBoundary] Erro capturado na view "${this.props.viewName || 'desconhecida'}":`, error, errorInfo);
+    window.dispatchEvent(new Event('cs:ui-error'));
     this.setState({ errorInfo });
   }
 
@@ -66,19 +67,9 @@ export class ViewErrorBoundary extends Component<Props, State> {
                   <Bug className="w-3.5 h-3.5 text-red-500" />
                   <span>Detalhe técnico:</span>
                 </div>
-                <p className="text-red-700">{errorMessage}</p>
+                <p className="text-red-700">O conteúdo não pôde ser exibido. Nenhuma informação acadêmica será incluída no diagnóstico.</p>
               </div>
 
-              {this.state.errorInfo?.componentStack && (
-                <details className="text-[11px] text-slate-500">
-                  <summary className="cursor-pointer hover:text-slate-800 font-medium">
-                    Ver pilha do componente (Stack trace)
-                  </summary>
-                  <pre className="mt-2 p-3 bg-slate-900 text-slate-200 rounded-lg overflow-x-auto text-[10px] font-mono leading-relaxed">
-                    {this.state.errorInfo.componentStack}
-                  </pre>
-                </details>
-              )}
 
               <div className="pt-2 flex items-center gap-3">
                 <button

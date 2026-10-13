@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="Central de Supervisão Acadêmica">
+<defs><linearGradient id="b" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#14243D"/><stop offset="1" stop-color="#102D36"/></linearGradient><linearGradient id="l" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#85E4D0"/><stop offset="1" stop-color="#4FB9BB"/></linearGradient></defs>
+<rect width="128" height="128" rx="30" fill="url(#b)"/>
+<path d="M64 100C46 100 25 95 19 80c18-6 33-3 45 11 12-14 27-17 45-11-6 15-27 20-45 20Z" fill="#EDF7F4"/>
+<path d="M64 85C47 73 43 55 53 31c9 5 19 21 11 54Z" fill="url(#l)"/>
+<path d="M59 90C39 88 28 73 27 52c19 0 31 15 32 38Z" fill="#6CC2AC"/>
+<path d="M69 90c20-2 31-17 32-38-19 0-31 15-32 38Z" fill="#9D94CF"/>
+<path d="M64 98V61" stroke="#DAFBF5" stroke-width="3.2" stroke-linecap="round"/>
+<path d="m64 20 2.7 6.2L73 29l-6.3 2.5L64 38l-2.7-6.5L55 29l6.3-2.8Z" fill="#F3DBA0"/>
+</svg>
