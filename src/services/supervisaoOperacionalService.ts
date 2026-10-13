@@ -20,6 +20,8 @@ import {
   StatusRssUnidade,
   RegraRss,
   SituacaoRssEstudante,
+  GrupoPratica,
+  GrupoIntegrante,
   Periodo,
 } from '../types';
 
@@ -897,6 +899,22 @@ export function calcularMetricasCronogramaRss(
  * - Total Previsto no Período (regras_rss, situacao_atual_turmas ou padrão 12)
  * Garante distinção explícita entre esperado hoje e total previsto no período.
  */
+/**
+ * RSS importado: apenas respostas validadas e atribuídas a uma semana RSS
+ * específica comprovam o cumprimento daquela semana. O número de sessão
+ * clínica NÃO corresponde necessariamente ao número da semana do semestre.
+ */
+export function obterSemanaRssValidada(reg: RegistroSemanal): number | null {
+  const raw = (reg as any).semana_rss ?? reg.semana;
+  const semana = Number(raw);
+  if (!Number.isInteger(semana) || semana < 1 || semana > 12) return null;
+  const status = String(reg.status || '').trim().toUpperCase();
+  const revisao = String((reg as any).status_revisao || '').trim().toUpperCase();
+  if (status !== 'ENTREGUE' && status !== 'RECEBIDO') return null;
+  if (revisao && revisao !== 'VALIDADO' && revisao !== 'VALIDADO_ALIAS') return null;
+  return semana;
+}
+
 export function obterSituacaoRssEstudante(
   matriculaId: string,
   turmaId: string,
@@ -904,13 +922,24 @@ export function obterSituacaoRssEstudante(
   statusRssUnidade?: StatusRssUnidade,
   regraTurma?: RegraRss,
   situacaoTurma?: SituacaoAtualTurma,
-  calendarioRssTurma?: CalendarioRss[]
+  calendarioRssTurma?: CalendarioRss[],
+  grupoId?: string
 ): SituacaoRssEstudante {
-  // 1. Registros do estudante na tabela oficial registros_semanais
-  const regsEstudante = registrosSemanais.filter(r => r.matricula_id === matriculaId);
-  const entreguesNaTabela = regsEstudante.filter(r => r.status === 'ENTREGUE').length;
+  // Clínica Ampliada: a unidade de entrega é o grupo inteiro, não o autor
+  // responsável pelo preenchimento. Nunca atribuir o RSS somente à matrícula.
+  const regsEstudante = registrosSemanais.filter(r =>
+    grupoId
+      ? (r as any).grupo_id === grupoId && (!(r as any).turma_id || (r as any).turma_id === turmaId)
+      : r.matricula_id === matriculaId && !(r as any).grupo_id
+  );
+  const semanasValidadas = new Set(
+    regsEstudante.map(obterSemanaRssValidada).filter((n): n is number => n !== null)
+  );
+  const entreguesNaTabela = semanasValidadas.size;
 
-  // 2. Registros realizados
+  // Contagem materializada pode incluir semanas antigas cujo detalhamento
+  // foi importado sem chave de semana; usar a maior contagem comprovada, sem
+  // transformar registros em revisão nem duplicidades em semanas adicionais.
   let realizados = entreguesNaTabela;
   if (
     statusRssUnidade?.rss_recebidos_validos !== undefined &&
@@ -952,15 +981,9 @@ export function obterSituacaoRssEstudante(
   }
 
   // 5. Saldo e Status
-  const saldo = statusRssUnidade?.saldo_rss !== undefined && statusRssUnidade.saldo_rss !== null
-    ? Number(statusRssUnidade.saldo_rss)
-    : (realizados - esperadosHoje);
-
-  const statusSemanal = statusRssUnidade?.status_rss ||
-    statusRssUnidade?.status_semanal ||
-    (saldo < 0 ? 'ATRASADO' : saldo === 0 ? 'EM_DIA' : 'ADIANTADO');
-
-  const estaAtrasado = statusSemanal === 'ATRASADO';
+  const saldo = realizados - esperadosHoje;
+  const statusSemanal = saldo < 0 ? 'ATRASADO' : saldo === 0 ? 'EM_DIA' : 'ADIANTADO';
+  const estaAtrasado = saldo < 0;
 
   const textoExibicao = `${realizados} de ${esperadosHoje} esperados até hoje (${totalPrevisto} previstos)`;
 
@@ -1000,7 +1023,9 @@ export function gerarPendenciasCanonicas(
   situacaoAtualTurmas: SituacaoAtualTurma[],
   calendarioRss: CalendarioRss[],
   statusRssUnidades: StatusRssUnidade[],
-  dataReferencia: Date = new Date()
+  dataReferencia: Date = new Date(),
+  gruposPratica: GrupoPratica[] = [],
+  grupoIntegrantes: GrupoIntegrante[] = []
 ): ItemPendenciaOperacional[] {
   const pendencias: ItemPendenciaOperacional[] = [];
   const hojeIso = getHojeDataIso(dataReferencia);
@@ -1033,46 +1058,53 @@ export function gerarPendenciasCanonicas(
       });
     });
 
-  // 2. RSS em Atraso (usando seletor canônico)
+  // 2. RSS em Atraso: cada grupo da Clínica Ampliada é UMA unidade.
+  // Não gerar pendência individual se outra integrante enviou pelo grupo.
+  const gruposJaAvaliados = new Set<string>();
   matriculasDoPeriodo.forEach(m => {
-    const statusRss = statusRssUnidades.find(s =>
-      (s.turma_id === m.turma_id || !s.turma_id) &&
-      (s.unidade_id === m.matricula_id || s.unidade_id === m.aluno_id) &&
-      (s.unidade_tipo === 'INDIVIDUAL' || !s.unidade_tipo)
+    const grupoIntegrante = grupoIntegrantes.find(gi => gi.matricula_id === m.matricula_id &&
+      gruposPratica.some(g => g.grupo_id === gi.grupo_id && g.turma_id === m.turma_id)
     );
-    const regraTurma = regrasRss.find(
-      r => r.turma_id === m.turma_id || r.disciplina_id === (turmasDoPeriodo.find(t => t.turma_id === m.turma_id)?.disciplina_id)
-    );
-    const situacaoTurma = situacaoAtualTurmas.find(s => s.turma_id === m.turma_id);
-    const calTurma = calendarioRss.filter(c => c.turma_id === m.turma_id);
-
-    const sitRss = obterSituacaoRssEstudante(
-      m.matricula_id,
-      m.turma_id,
-      registrosSemanais,
-      statusRss,
-      regraTurma,
-      situacaoTurma,
-      calTurma
-    );
-
-    if (sitRss?.estaAtrasado) {
-      const al = alunos.find(a => a.aluno_id === m.aluno_id);
-      const tur = turmasDoPeriodo.find(t => t.turma_id === m.turma_id);
-      pendencias.push({
-        id: `pend-rss-${m.matricula_id}`,
-        tipo: 'RSS_ATRASADO',
-        titulo: `RSS em Atraso: ${al?.nome || 'Estudante'}`,
-        descricao: `Registros realizados: ${sitRss.registrosRealizados} de ${sitRss.registrosEsperadosAteHoje} esperados hoje (${sitRss.totalPrevistoNoPeriodo} previstos)`,
-        turma_id: m.turma_id,
-        turma_nome: tur?.nome,
-        matricula_id: m.matricula_id,
-        aluno_nome: al?.nome,
-        urgencia: 'ALTA',
-        targetTab: 'pendencias',
-        targetParam: 'registros',
-      });
+    const grupoId = grupoIntegrante?.grupo_id;
+    if (grupoId) {
+      if (gruposJaAvaliados.has(grupoId)) return;
+      gruposJaAvaliados.add(grupoId);
+    } else if (gruposPratica.some(g => g.turma_id === m.turma_id)) {
+      // Vínculo de grupo ausente: não inventar ausência individual de RSS.
+      return;
     }
+    const statusRss = statusRssUnidades.find(st =>
+      (st.turma_id === m.turma_id || !st.turma_id) &&
+      (grupoId
+        ? st.unidade_id === grupoId && st.unidade_tipo === 'GRUPO'
+        : (st.unidade_id === m.matricula_id || st.unidade_id === m.aluno_id) &&
+          (st.unidade_tipo === 'INDIVIDUAL' || !st.unidade_tipo))
+    );
+    const turma = turmasDoPeriodo.find(t => t.turma_id === m.turma_id);
+    const regraTurma = regrasRss.find(r => r.turma_id === m.turma_id || r.disciplina_id === turma?.disciplina_id);
+    const situacaoTurma = situacaoAtualTurmas.find(st => st.turma_id === m.turma_id);
+    const calTurma = calendarioRss.filter(c => c.turma_id === m.turma_id);
+    const sitRss = obterSituacaoRssEstudante(
+      m.matricula_id, m.turma_id, registrosSemanais, statusRss,
+      regraTurma, situacaoTurma, calTurma, grupoId
+    );
+    if (!sitRss.estaAtrasado) return;
+    const al = alunos.find(a => a.aluno_id === m.aluno_id);
+    const grupo = grupoId ? gruposPratica.find(g => g.grupo_id === grupoId) : undefined;
+    const nomeUnidade = grupo ? (grupo.nome_grupo || 'Grupo de prática') : (al?.nome || 'Estudante');
+    pendencias.push({
+      id: grupoId ? `pend-rss-grupo-${grupoId}` : `pend-rss-${m.matricula_id}`,
+      tipo: 'RSS_ATRASADO',
+      titulo: `RSS em Atraso: ${nomeUnidade}`,
+      descricao: `${grupoId ? 'Pendência coletiva do grupo. ' : ''}Registros validados: ${sitRss.registrosRealizados} de ${sitRss.registrosEsperadosAteHoje} esperados até hoje (${sitRss.totalPrevistoNoPeriodo} previstos)`,
+      turma_id: m.turma_id,
+      turma_nome: turma?.nome,
+      matricula_id: m.matricula_id,
+      aluno_nome: nomeUnidade,
+      urgencia: 'ALTA',
+      targetTab: 'pendencias',
+      targetParam: 'registros',
+    });
   });
 
   // 3. Faltas Injustificadas
