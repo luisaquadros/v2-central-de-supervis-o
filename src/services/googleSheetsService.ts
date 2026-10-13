@@ -268,6 +268,17 @@ export function normalizarLinhasDaAba(tabela: string, rows: Record<string, any>[
       r.data_hora = r.data_hora ?? r.data ?? '';
     } else if (tabela === 'grupo_integrantes') {
       r.integrante_id = r.integrante_id ?? r.grupo_integrante_id ?? '';
+    } else if (tabela === 'horarios_turma') {
+      const dias: Record<string, number> = { DOMINGO: 0, SEGUNDA: 1, TERCA: 2, 'TERÇA': 2, QUARTA: 3, QUINTA: 4, SEXTA: 5, SABADO: 6, 'SÁBADO': 6 };
+      const rawDia = String(r.dia_semana ?? '').trim().toUpperCase();
+      r.dia_semana = rawDia in dias ? dias[rawDia] : (Number.isInteger(Number(rawDia)) ? Number(rawDia) : -1);
+      r.ativo = String(r.ativo ?? '').trim().toUpperCase() === 'TRUE' || r.ativo === true || r.ativo === 1;
+      r.data_inicio = normalizarDataAcademica(r.data_inicio);
+      r.data_fim = normalizarDataAcademica(r.data_fim);
+    } else if (tabela === 'marcos_academicos') {
+      r.data_prazo = normalizarDataAcademica(r.data_prazo);
+    } else if (tabela === 'turmas_origem') {
+      r.ativo = String(r.ativo ?? '').trim().toUpperCase() === 'TRUE' || r.ativo === true || r.ativo === 1;
     } else if (tabela === 'leituras_responsaveis') {
       r.leitura_id = r.leitura_id ?? r.leitura_agenda_id ?? '';
       r.data = normalizarDataAcademica(r.data ?? r.data_discussao ?? '');
