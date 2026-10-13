@@ -225,6 +225,23 @@ function parseSheetRowsToObjects<T>(rows: any[][]): T[] {
  * As propriedades canônicas originais são mantidas; os aliases servem
  * apenas para componentes legados até migração completa do front-end.
  */
+/**
+ * A API Sheets retorna datas como DD/MM/AAAA ou números de série de planilha.
+ * Converte ambos para YYYY-MM-DD apenas na leitura do aplicativo.
+ */
+export function normalizarDataAcademica(value: unknown): string {
+  const raw = String(value ?? '').trim();
+  if (/^\d{4}-\d{2}-\d{2}/.test(raw)) return raw.slice(0, 10);
+  const br = /^(\d{2})\/(\d{2})\/(\d{4})/.exec(raw);
+  if (br) return `${br[3]}-${br[2]}-${br[1]}`;
+  if (/^\d{5}(?:[.,]\d+)?$/.test(raw)) {
+    const serial = Number(raw.replace(',', '.'));
+    const ms = Date.UTC(1899, 11, 30) + Math.floor(serial) * 86400000;
+    return new Date(ms).toISOString().slice(0, 10);
+  }
+  return raw;
+}
+
 export function normalizarLinhasDaAba(tabela: string, rows: Record<string, any>[]): Record<string, any>[] {
   return rows.map(item => {
     const r = { ...item };
@@ -243,8 +260,13 @@ export function normalizarLinhasDaAba(tabela: string, rows: Record<string, any>[
       r.leitura_id = r.leitura_id ?? r.leitura_agenda_id ?? '';
       r.data = r.data ?? r.data_discussao ?? '';
     } else if (tabela === 'registros_semanais') {
-      r.semana = r.semana ?? r.semana_rss ?? r.encontro_numero ?? '';
+      // semana_rss é a semana acadêmica, encontro_numero é a sessão clínica.
+      r.semana = r.semana ?? r.semana_rss ?? '';
       r.observacao = r.observacao ?? r.limitacoes ?? '';
+      r.data_entrega = normalizarDataAcademica(r.data_entrega);
+    } else if (tabela === 'calendario_rss') {
+      r.semana_inicio = normalizarDataAcademica(r.semana_inicio);
+      r.semana_fim = normalizarDataAcademica(r.semana_fim);
     } else if (tabela === 'regras_rss') {
       r.regra_id = r.regra_id ?? r.regra_rss_id ?? '';
       r.total_esperado = r.total_esperado ?? r.total_previsto ?? '';
