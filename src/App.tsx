@@ -5,6 +5,7 @@ import { Sidebar } from './components/Sidebar';
 import { SyncIndicator } from './components/SyncIndicator';
 import { NotificationBell } from './components/NotificationBell';
 import { ThemeControl } from './components/ThemeControl';
+import { PrepararAulaModal } from './components/PrepararAulaModal';
 import { ErrorNotifier } from './components/ErrorNotifier';
 import { ViewErrorBoundary } from './components/ViewErrorBoundary';
 import { PrimeiraConexaoView } from './views/PrimeiraConexaoView';
@@ -32,6 +33,7 @@ type AppView =
 const MainContent: React.FC = () => {
   const {
     periodos,
+    turmas,
     currentUser,
     acessoGoogleValidado,
     hasLocalCache,
@@ -42,6 +44,7 @@ const MainContent: React.FC = () => {
 
   const [currentView, setCurrentView] = useState<AppView>({ type: 'tab', tab: 'hoje' });
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [prepararTurmaId, setPrepararTurmaId] = useState<string | null>(null);
 
   // Navigation handlers
   const handleSelectNavTab = (tab: NavTab) => {
@@ -224,6 +227,7 @@ const MainContent: React.FC = () => {
               <HojeView
                 onOpenTurma={handleOpenTurma}
                 onIniciarSupervisao={handleIniciarSupervisao}
+                onOpenPrepararAula={setPrepararTurmaId}
                 onNavigateToTab={(tab, param) => setCurrentView({ type: 'tab', tab, filterParam: param })}
               />
             )}
@@ -284,6 +288,7 @@ const MainContent: React.FC = () => {
                 turmaId={currentView.turmaId}
                 onVoltar={() => setCurrentView({ type: 'tab', tab: 'turmas' })}
                 onIniciarSupervisao={handleIniciarSupervisao}
+                onOpenPrepararAula={setPrepararTurmaId}
                 onOpenAluno={matId =>
                   handleOpenAlunoFicha(matId, 'resumo', 'turma', currentView.turmaId)
                 }
@@ -293,6 +298,7 @@ const MainContent: React.FC = () => {
             {currentView.type === 'modo-supervisao' && (
               <ModoSupervisaoView
                 turmaId={currentView.turmaId}
+                onPrepararAula={setPrepararTurmaId}
                 onEncerrar={() => setCurrentView({ type: 'turma-detalhe', turmaId: currentView.turmaId })}
                 onOpenFichaAluno={(matId, tab) =>
                   handleOpenAlunoFicha(matId, tab || 'resumo', 'supervisao', currentView.turmaId)
@@ -310,6 +316,14 @@ const MainContent: React.FC = () => {
           </ViewErrorBoundary>
         </div>
       </main>
+      {prepararTurmaId && turmas.some(t => t.turma_id === prepararTurmaId) && (
+        <PrepararAulaModal
+          isOpen
+          onClose={() => setPrepararTurmaId(null)}
+          turma={turmas.find(t => t.turma_id === prepararTurmaId)!}
+          onIniciarModoAula={handleIniciarSupervisao}
+        />
+      )}
     </div>
   );
 };
