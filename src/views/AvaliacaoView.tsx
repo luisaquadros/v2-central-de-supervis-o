@@ -29,6 +29,8 @@ export const AvaliacaoView: React.FC = () => {
     alunos,
     matriculas,
     criterios,
+    avaliacoes,
+    saveAvaliacao,
     avaliacoesCompletas,
     salvarAvaliacaoCompleta,
     aprovarDevolutiva,
@@ -58,32 +60,21 @@ export const AvaliacaoView: React.FC = () => {
 
   const turmaAtual = turmas.find(t => t.turma_id === selectedTurmaId) || null;
 
-  // Extração estritamente dinâmica dos instrumentos cadastrados em criterios_avaliacao para a turma/disciplina
+  // A base 2026.2 possui oito critérios oficiais por turma, mas não
+  // preenche as colunas opcionais 'instrumento' ou 'instrumento_avaliacao'.
+  // Exibir uma única rubrica por turma é uma escolha de interface, não
+  // uma mudança ou invenção de identificadores na planilha.
   const instrumentosDisponiveis = React.useMemo(() => {
-    const nomes = new Set<string>();
-    criterios.forEach(c => {
-      const matchTurma = !c.turma_id || c.turma_id === selectedTurmaId;
-      const matchDisc = !c.disciplina_id || (turmaAtual && c.disciplina_id === turmaAtual.disciplina_id);
-      if (matchTurma && matchDisc) {
-        const inst = c.instrumento_avaliacao || c.instrumento;
-        if (typeof inst === 'string' && inst.trim()) {
-          nomes.add(inst.trim());
-        }
-      }
-    });
-
-    // Se não encontrou instrumento específico com filtro de turma/disciplina, verifica se existem instrumentos globais na base
-    if (nomes.size === 0) {
-      criterios.forEach(c => {
-        const inst = c.instrumento_avaliacao || c.instrumento;
-        if (typeof inst === 'string' && inst.trim()) {
-          nomes.add(inst.trim());
-        }
-      });
-    }
-
-    return Array.from(nomes);
-  }, [criterios, selectedTurmaId, turmaAtual]);
+    const aplicaveis = criterios.filter(c =>
+      (c.ativo !== false) &&
+      (!c.turma_id || c.turma_id === selectedTurmaId) &&
+      (!c.disciplina_id || c.disciplina_id === turmaAtual?.disciplina_id)
+    );
+    const explicitos = Array.from(new Set(aplicaveis
+      .map(c => String(c.instrumento_avaliacao || c.instrumento || '').trim())
+      .filter(Boolean)));
+    return explicitos.length ? explicitos : (aplicaveis.length ? ['Avaliação do estágio'] : []);
+  }, [criterios, selectedTurmaId, turmaAtual?.disciplina_id]);
 
   const [selectedInstrumentoNome, setSelectedInstrumentoNome] = useState<string>(
     instrumentosDisponiveis[0] || ''
@@ -103,7 +94,6 @@ export const AvaliacaoView: React.FC = () => {
 
   // Estados da Tela de Correção Ampla
   const [notaSimplesInput, setNotaSimplesInput] = useState<number>(0);
-  const [comentarioSimples, setComentarioSimples] = useState('');
   const [notasCriteriosMap, setNotasCriteriosMap] = useState<Record<string, number>>({});
   const [comentariosCriteriosMap, setComentariosCriteriosMap] = useState<Record<string, string>>({});
   const [pontosFortes, setPontosFortes] = useState('');
@@ -135,7 +125,8 @@ export const AvaliacaoView: React.FC = () => {
       const matchTurma = !c.turma_id || c.turma_id === selectedTurmaId;
       const matchDisc = !c.disciplina_id || (turmaAtual && c.disciplina_id === turmaAtual.disciplina_id);
       const inst = c.instrumento_avaliacao || c.instrumento;
-      const matchInst = inst ? inst.trim() === selectedInstrumentoNome.trim() : true;
+      const matchInst = selectedInstrumentoNome === 'Avaliação do estágio' ?
+        !String(inst || '').trim() : (inst ? inst.trim() === selectedInstrumentoNome.trim() : true);
       return matchTurma && matchDisc && matchInst;
     });
   }, [criterios, selectedTurmaId, turmaAtual, selectedInstrumentoNome]);
@@ -149,15 +140,46 @@ export const AvaliacaoView: React.FC = () => {
     return 10;
   }, [selectedInstrumentoTipo, criteriosAplicaveis]);
 
-  // Carrega ou inicializa a avaliação do aluno atual
+  // Combina pareceres completos (se houver) com as notas oficiais por
+  // critério. A tabela 'avaliacoes' é a fonte primária para as 80 notas
+  // preexistentes e só o que foi efetivamente lançado aparece como nota.
   const matriculaAtualId = currentItem?.matricula?.matricula_id;
-  const avaliacaoExistente = React.useMemo(() => {
+  const avaliacaoExistente = React.useMemo((): AvaliacaoCompleta | undefined => {
     if (!matriculaAtualId || !selectedInstrumentoNome) return undefined;
-    return avaliacoesCompletas.find(
-      (a: AvaliacaoCompleta) => a.matricula_id === matriculaAtualId && a.instrumento_id === selectedInstrumentoNome
+    const detalhada = avaliacoesCompletas.find((a: AvaliacaoCompleta) =>
+      a.matricula_id === matriculaAtualId && a.instrumento_id === selectedInstrumentoNome
     );
-  }, [avaliacoesCompletas, matriculaAtualId, selectedInstrumentoNome]);
+    const daPlanilha = criteriosAplicaveis.flatMap(c => {
+      const nota = avaliacoes.find(a => a.matricula_id === matriculaAtualId && a.criterio_id === c.criterio_id);
+      return nota && nota.nota !== null && nota.nota !== undefined && Number.isFinite(Number(nota.nota))
+        ? [{ criterio_id: c.criterio_id, criterio_nome: c.nome, nota: Number(nota.nota),
+             nota_maxima: Number(c.nota_maxima) || 0, comentario: nota.observacao || '' }]
+        : [];
+    });
+    if (!detalhada && daPlanilha.length === 0) return undefined;
+    const notas = new Map<string, any>(
+      (detalhada?.notas_criterios || []).map(n => [n.criterio_id, n])
+    );
+    daPlanilha.forEach(n => notas.set(n.criterio_id, n));
+    const todas = [...notas.values()];
+    return {
+      ...(detalhada || {}),
+      avaliacao_id: detalhada?.avaliacao_id || `importada-${matriculaAtualId}-${selectedInstrumentoNome}`,
+      matricula_id: matriculaAtualId,
+      turma_id: selectedTurmaId,
+      instrumento_id: selectedInstrumentoNome,
+      tipo_instrumento: detalhada?.tipo_instrumento || 'RUBRICA',
+      nota_final: todas.reduce((acc, n) => acc + n.nota, 0),
+      nota_maxima: criteriosAplicaveis.reduce((acc, c) => acc + (Number(c.nota_maxima) || 0), 0),
+      status: detalhada?.status || 'RASCUNHO',
+      notas_criterios: todas,
+      atualizado_em: detalhada?.atualizado_em || '',
+    } as AvaliacaoCompleta;
+  }, [avaliacoesCompletas, avaliacoes, matriculaAtualId, selectedInstrumentoNome, criteriosAplicaveis, selectedTurmaId]);
 
+  const totalCriteriosLancados = criteriosAplicaveis.filter(c =>
+    Object.prototype.hasOwnProperty.call(notasCriteriosMap, c.criterio_id)).length;
+  const avaliacaoParcial = totalCriteriosLancados < criteriosAplicaveis.length;
   // Sincroniza campos quando muda de aluno ou instrumento
   React.useEffect(() => {
     if (avaliacaoExistente) {
@@ -193,10 +215,17 @@ export const AvaliacaoView: React.FC = () => {
       ? somaNotasCriterios
       : notaSimplesInput;
 
+  const [salvandoAvaliacao, setSalvandoAvaliacao] = useState(false);
+  const [erroAvaliacao, setErroAvaliacao] = useState('');
   const handleSalvarAvaliacao = async (status: StatusDevolutiva = 'AVALIADA') => {
-    if (!currentItem || !currentItem.matricula) return;
+    if (!currentItem || !currentItem.matricula || salvandoAvaliacao) return;
+    setSalvandoAvaliacao(true);
+    setErroAvaliacao('');
+    try {
 
-    const notasCriteriosList = criteriosAplicaveis.map(c => ({
+    const notasCriteriosList = criteriosAplicaveis
+      .filter(c => Object.prototype.hasOwnProperty.call(notasCriteriosMap, c.criterio_id))
+      .map(c => ({
       criterio_id: c.criterio_id,
       criterio_nome: c.nome,
       nota: Number(notasCriteriosMap[c.criterio_id] || 0),
@@ -204,6 +233,15 @@ export const AvaliacaoView: React.FC = () => {
       comentario: comentariosCriteriosMap[c.criterio_id] || '',
     }));
 
+    // Grava no modelo oficial cada nota fornecida, sem transformar critérios
+    // ainda não avaliados em zero. O registro de parecer fica em tabela própria.
+    for (const nota of notasCriteriosList) {
+      const anterior = avaliacoes.find(a => a.matricula_id === currentItem.matricula.matricula_id &&
+        a.criterio_id === nota.criterio_id);
+      if (!anterior || Number(anterior.nota) !== nota.nota || String(anterior.observacao || '') !== nota.comentario) {
+        await saveAvaliacao(currentItem.matricula.matricula_id, nota.criterio_id, nota.nota, nota.comentario || '');
+      }
+    }
     await salvarAvaliacaoCompleta({
       avaliacao_id: avaliacaoExistente?.avaliacao_id || `av-${Date.now()}-${currentItem.matricula.matricula_id}`,
       matricula_id: currentItem.matricula.matricula_id,
@@ -213,7 +251,7 @@ export const AvaliacaoView: React.FC = () => {
       tipo_instrumento: selectedInstrumentoTipo,
       nota_final: Number(notaFinalCalculada) || 0,
       nota_maxima: Number(notaMaximaInstrumento) || 10,
-      status,
+      status: avaliacaoParcial ? 'RASCUNHO' : status,
       notas_criterios: notasCriteriosList,
       comentario_geral: comentarioGeral,
       pontos_fortes: pontosFortes,
@@ -230,6 +268,11 @@ export const AvaliacaoView: React.FC = () => {
       notaFinalCalculada,
       `Avaliação do instrumento ${selectedInstrumentoNome || 'Padrão'}`
     );
+    } catch (err: any) {
+      setErroAvaliacao(err?.message || 'Não foi possível salvar a avaliação.');
+    } finally {
+      setSalvandoAvaliacao(false);
+    }
   };
 
   // Se não existirem turmas carregadas
@@ -246,9 +289,9 @@ export const AvaliacaoView: React.FC = () => {
   }
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto pb-12">
+    <div className="space-y-4 max-w-7xl mx-auto pb-12 min-w-0">
       {/* Top Header */}
-      <div className="bg-white border border-slate-200 rounded-2xl p-5 sm:p-6 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="bg-white border border-slate-200 rounded-2xl p-3 sm:p-5 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">
             <span className="w-2.5 h-2.5 rounded-full bg-purple-500" />
@@ -265,8 +308,8 @@ export const AvaliacaoView: React.FC = () => {
         </div>
 
         {/* Filters */}
-        <div className="flex flex-wrap items-center gap-3">
-          <div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full md:w-auto">
+          <div className="min-w-0">
             <label className="text-[10px] font-bold text-slate-500 block mb-0.5">Turma</label>
             <select
               value={selectedTurmaId}
@@ -274,7 +317,7 @@ export const AvaliacaoView: React.FC = () => {
                 setSelectedTurmaId(e.target.value);
                 setCurrentAlunoIndex(0);
               }}
-              className="p-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800"
+              className="w-full sm:w-auto min-h-11 p-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800"
             >
               {turmas.map(t => (
                 <option key={t.turma_id} value={t.turma_id}>
@@ -328,7 +371,7 @@ export const AvaliacaoView: React.FC = () => {
       )}
 
       {/* Tabs Switch */}
-      <div className="flex border-b border-slate-200 bg-white rounded-xl p-1.5 gap-1 shadow-2xs">
+      <div className="flex border-b border-slate-200 bg-white rounded-xl p-1.5 gap-1 shadow-2xs overflow-x-auto max-w-full">
         <button
           onClick={() => setActiveTab('CORRECAO')}
           className={`flex-1 py-2 px-3 rounded-lg text-xs font-bold transition-colors cursor-pointer flex items-center justify-center gap-2 ${
@@ -336,7 +379,7 @@ export const AvaliacaoView: React.FC = () => {
           }`}
         >
           <FileText className="w-4 h-4" />
-          <span>1. Tela de Correção Ampla</span>
+          <span>Correção</span>
         </button>
 
         <button
@@ -346,7 +389,7 @@ export const AvaliacaoView: React.FC = () => {
           }`}
         >
           <Award className="w-4 h-4" />
-          <span>2. Painel de Devolutivas ({alunosDaTurma.length})</span>
+          <span>Devolutivas</span>
         </button>
 
         <button
@@ -356,7 +399,7 @@ export const AvaliacaoView: React.FC = () => {
           }`}
         >
           <ShieldCheck className="w-4 h-4" />
-          <span>3. Modo Fechamento do Semestre</span>
+          <span>Fechamento</span>
         </button>
       </div>
 
@@ -463,7 +506,7 @@ export const AvaliacaoView: React.FC = () => {
               )}
 
               {/* Main Correction Panel */}
-              <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-xs space-y-6">
+              <div className="bg-white border border-slate-200 rounded-2xl p-3 sm:p-6 shadow-xs space-y-5">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
                   <div>
                     <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
@@ -474,7 +517,7 @@ export const AvaliacaoView: React.FC = () => {
 
                   {/* Automatic Total Score Counter */}
                   <div className="text-right">
-                    <span className="text-xs text-slate-400 block font-medium">Nota Total Calculada</span>
+                    <span className="text-xs text-slate-400 block font-medium">{avaliacaoParcial ? 'Soma parcial das notas lançadas' : 'Nota Total Calculada'}</span>
                     <span className="text-2xl font-black text-slate-900 font-mono">
                       {Number(notaFinalCalculada || 0).toFixed(1)}{' '}
                       <span className="text-sm font-normal text-slate-400">/ {Number(notaMaximaInstrumento || 10).toFixed(1)}</span>
@@ -545,7 +588,7 @@ export const AvaliacaoView: React.FC = () => {
 
                         <div className="divide-y divide-slate-100 border border-slate-200 rounded-xl overflow-hidden">
                           {criteriosAplicaveis.map(crit => {
-                            const notaCrit = notasCriteriosMap[crit.criterio_id] ?? 0;
+                            const notaCrit = notasCriteriosMap[crit.criterio_id] ?? '';
                             const obsCrit = comentariosCriteriosMap[crit.criterio_id] ?? '';
                             const maxNota = Number(crit.nota_maxima) || 0;
 
@@ -568,8 +611,13 @@ export const AvaliacaoView: React.FC = () => {
                                       max={maxNota}
                                       value={notaCrit}
                                       onChange={e => {
-                                        const val = parseFloat(e.target.value) || 0;
-                                        setNotasCriteriosMap(prev => ({ ...prev, [crit.criterio_id]: val }));
+                                        const txt = e.target.value;
+                                        setNotasCriteriosMap(prev => {
+                                          const next = { ...prev };
+                                          if (txt === '') delete next[crit.criterio_id];
+                                          else next[crit.criterio_id] = Math.max(0, Math.min(maxNota, Number(txt)));
+                                          return next;
+                                        });
                                       }}
                                       className="w-20 p-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold font-mono text-slate-900 text-center"
                                     />
@@ -627,7 +675,7 @@ export const AvaliacaoView: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => handleSalvarAvaliacao('RASCUNHO')}
-                    className="px-4 py-2.5 rounded-xl border border-slate-200 text-slate-700 hover:bg-slate-50 text-xs font-bold cursor-pointer"
+                    disabled={salvandoAvaliacao} className="px-4 py-2.5 rounded-xl border border-slate-200 text-slate-700 hover:bg-slate-50 text-xs font-bold cursor-pointer disabled:opacity-50"
                   >
                     Salvar Rascunho
                   </button>
@@ -661,6 +709,7 @@ export const AvaliacaoView: React.FC = () => {
                     <button
                       type="button"
                       onClick={() => handleSalvarAvaliacao('AVALIADA')}
+                      disabled={salvandoAvaliacao}
                       className="px-5 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold flex items-center gap-2 cursor-pointer shadow-xs"
                     >
                       <Check className="w-4 h-4 text-emerald-400" />
