@@ -7,11 +7,36 @@ export const matriculaParticipaDaChamada = (status: unknown): boolean => {
 };
 
 export function listarAlunosChamada(turmaId: string, matriculas: Matricula[], alunos: Aluno[]) {
-  const alunosPorId = new Map(alunos.map(a => [String(a.aluno_id).trim(), a]));
-  return matriculas.filter(m => String(m.turma_id ?? '').trim() === String(turmaId).trim() && matriculaParticipaDaChamada(m.status))
-    .map(m => { const a = alunosPorId.get(String(m.aluno_id ?? '').trim()); return a ? {matricula:m, aluno:a} : null; })
-    .filter((item): item is {matricula:Matricula; aluno:Aluno} => item !== null)
-    .sort((a,b) => a.aluno.nome.localeCompare(b.aluno.nome,'pt-BR'));
+  const codigo = (v: unknown) => String(v ?? '').trim();
+  const alunosPorId = new Map(alunos.map(a => [codigo(a.aluno_id), a]));
+  const alunosPorRa = new Map(alunos.filter(a => codigo(a.identificador_academico)).map(a => [codigo(a.identificador_academico), a]));
+  const candidatos = matriculas.filter(m =>
+    codigo(m.turma_id) === codigo(turmaId) && matriculaParticipaDaChamada(m.status)
+  );
+  const vistos = new Set<string>();
+  return candidatos.map(m => {
+    // Primeiro usar o vínculo canônico. Legados podem salvar RA no campo aluno_id.
+    const a = alunosPorId.get(codigo(m.aluno_id)) || alunosPorRa.get(codigo(m.aluno_id));
+    const id = codigo(m.matricula_id);
+    if (!a || !id || vistos.has(id)) return null;
+    vistos.add(id);
+    return { matricula: m, aluno: a };
+  }).filter((item): item is { matricula: Matricula; aluno: Aluno } => item !== null)
+    .sort((a, b) => a.aluno.nome.localeCompare(b.aluno.nome, 'pt-BR'));
+}
+
+/** Diagnóstico seguro: somente contagens, jamais imprime dados de alunos. */
+export function diagnosticarChamada(turmaId: string, matriculas: Matricula[], alunos: Aluno[]) {
+  const codigo = (v: unknown) => String(v ?? '').trim();
+  const vinculadas = matriculas.filter(m => codigo(m.turma_id) === codigo(turmaId));
+  const elegiveis = vinculadas.filter(m => matriculaParticipaDaChamada(m.status));
+  return {
+    matriculasNaTurma: vinculadas.length,
+    matriculasElegiveis: elegiveis.length,
+    alunosLocalizados: listarAlunosChamada(turmaId, matriculas, alunos).length,
+    totalAlunosBase: alunos.length,
+    totalMatriculasBase: matriculas.length,
+  };
 }
 
 /** Lê células de Sheets em CSV simples, JSON array ou lista separada por quebra de linha. */
