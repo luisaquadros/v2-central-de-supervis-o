@@ -588,7 +588,9 @@ export async function gravarRegistroNaPlanilhaOficial(
     // como número JSON (1.8), não como texto "1.8", para continuar numérica
     // mesmo numa planilha configurada para a localidade pt-BR.
     if (tabela === 'avaliacoes' && lowerHeader === 'nota') {
-      const numero = Number(String(val).trim().replace(',', '.'));
+      const entrada = String(val).trim();
+      if (entrada === '') return ''; // nota não lançada não equivale a zero
+      const numero = Number(entrada.replace(',', '.'));
       if (!Number.isFinite(numero) || numero < 0) {
         throw new Error('Nota inválida: informe um número não negativo.');
       }
