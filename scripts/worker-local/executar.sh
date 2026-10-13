@@ -10,7 +10,7 @@ echo '{"keys":[]}' > "$TMP/jwks.json"
 node --import tsx scripts/worker-local/gerar-credenciais.mts "$TMP/sa.json" > /dev/null
 setsid node scripts/worker-local/planilha-simulada.mjs $PORTA_MOCK "$TMP/jwks.json" "$TMP/estado.json" > "$TMP/mock.log" 2>&1 & PID_MOCK=$!
 ACESSOS='{"monitoras":[{"email":"monitora@exemplo.com","turmas":["t2b"],"operacoes":["CHAMADA","DOCUMENTOS_VER"]}]}'
-setsid npx --yes wrangler@4 dev --local --test-scheduled --port $PORTA_W --ip 127.0.0.1 \
+setsid npx --no-install wrangler dev --local --persist-to "$TMP/state" --test-scheduled --port $PORTA_W --ip 127.0.0.1 \
   --var ADMIN_EMAILS:professora@exemplo.com \
   --var "ACESSOS_JSON:$ACESSOS" \
   --var "GOOGLE_SERVICE_ACCOUNT_JSON:$(cat "$TMP/sa.json")" \

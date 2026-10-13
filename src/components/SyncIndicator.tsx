@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { RefreshCw, CheckCircle2, AlertCircle, Database, Clock, CloudOff, X } from 'lucide-react';
 import { useSupervisao } from '../context/SupervisaoContext';
+import { ConflitosPainel } from './ConflitosPainel';
 
 export const SyncIndicator: React.FC = () => {
   const { syncStatusState, sincronizarAgora, currentUser, loginGoogle, isTokenExpired, tokenExpiredAviso, reconectarESincronizar } = useSupervisao();
@@ -168,6 +169,7 @@ export const SyncIndicator: React.FC = () => {
                 </div>
               </div>
 
+              {syncStatusState.conflitosCount > 0 && <ConflitosPainel />}
               {/* Erros se houver */}
               {syncStatusState.erros && syncStatusState.erros.length > 0 && (
                 <div className="p-3 bg-red-50 border border-red-200 rounded-xl space-y-1 text-red-800">

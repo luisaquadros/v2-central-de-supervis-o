@@ -1,21 +1,15 @@
 # Estado de execução
 
-Atualizado: 13/10/2026 · Branch `fix/backend-persistencia-integridade` (PR #46)
+Atualizado: 13/10/2026. Base: PR #46, `3cf4bc2`. Branch própria: `fix/codex-estabilizacao`.
 
-**Objetivo atual:** fechar E3 sem depender de D2/D3 e preparar a validação real.
+## Estabilização concluída localmente
+Autorização validada na abertura e sincronização; cache/fila separados por conta; validação de vínculos e entradas; recuperação idempotente de resposta perdida; fila ordenada e imutável após envio; conflitos com arquivo de recuperação; confirmação de chamada completa; formulários sem falso sucesso; backup ampliado; carregamento por área; dependências sem vulnerabilidades conhecidas; estado local do Wrangler removido do Git.
 
-## Concluído (detalhes em `DOCUMENTO_MESTRE.md` §6)
-E1 · E2 (perfis, servidor) · 23 tabelas coordenadas · documentos do Drive + sincronização · horário alternativo · **E3-D1** (chamada NAO_REGISTRADO + prévia + confirmação) · cache limpo na troca de usuária · `test:worker-real` no CI.
+## Testes
+34 programas de teste, TypeScript, build, Worker real local com serviços simulados e dry-run aprovados. Navegador Chromium com dados fictícios: chamada, sincronização mantendo nota digitada, erro em modal, temas claro/escuro e 320/390 px. Nenhuma validação em produção ou alteração da planilha.
 
-## Testes (último ciclo)
-lint ✔ · `npm test` (32 arquivos) ✔ · build ✔ · `test:worker-real` ✔ · navegador (simulado): prévia sem gravação prévia, clique duplo sem duplicar. Tudo **simulado**: nada validado com planilha/Google/Drive/Firebase reais.
+## Pendências
+Validação integrada em cópia autorizada da base; decisões D2–D7; conferência do GAS legado; revisão institucional de retenção e permissões. Filas antigas sem titular exigem recuperação explícita. Não há garantia de risco zero.
 
-## Depende da usuária
-- Validação real em cópia da planilha (`ADMIN_EMAILS`, conta de serviço, `ACESSOS_JSON`; Configurações → Conferência: aba `monitoramento_documentos` e vínculos do Olyver).
-- Conferir Apps Script antes de mesclar (PR remove `gas/`).
-- D2, D3, D5, D6, D7. Ativar sincronização/crons só após a validação real.
-
-## Próxima ação exata
-1. **Precisa de autorização**: retificação de chamada encerrada (altera frequência já confirmada, ainda que com trilha).
-2. ✔ Abas confidenciais da ficha ocultas para monitora (implementado; não exercitado no navegador com perfil monitora).
-3. (Bloqueado por D2/D3/validação real) regras de falta/atraso, rubricas, ativação de crons.
+## Próxima ação
+Redesign PRISMA em branch própria, preservando esta base e o trabalho do Claude. Último commit: consultar `git log -1` (este documento integra o commit de estabilização).

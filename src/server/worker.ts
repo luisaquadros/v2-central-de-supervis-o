@@ -1,3 +1,8 @@
+import {numeroAcademico} from '../services/valoresAcademicos';
+import {conferirFechamento} from './fechamentoChamada';
+import {PRIMARY_KEYS} from '../services/recordIdentity';
+import { validarRegistro, valorCelula } from './validacaoRegistro';
+import { valorComparavelCampo } from './coordenacaoCritica';
 import { LIMITE_CORPO, lerCorpoLimitado, baseSheets } from './utilitariosWorker';
 import { autenticarPerfil, type AmbienteAutorizacao } from './autorizacao';
 import { podeEscreverTabela, turmaPermitida, turmaDoRegistro, filtrarLeitura, tabelaLegivelPor, LEITURA_MONITORA, type Perfil } from './acessos';
@@ -5,6 +10,8 @@ import { tokenContaServico, ContaServicoIndisponivel, ESCOPO_SHEETS, ESCOPO_DRIV
 import { sincronizarDocumentos, CRONS_SINCRONIZACAO, HORARIOS_BRASILIA, JANELA_PADRAO_DIAS, ABA_MONITORAMENTO } from './sincronizacaoDocumentos';
 import { compararVersaoDeCampos, adaptarRegistroCritico, idCritico, TABELAS_CRITICAS, resumirAlteracaoParaLog, linhaDeLog, COLUNAS_LOG_ALTERACOES, type EscritaCritica } from './coordenacaoCritica';
 
+const ASSET_BINDING:keyof Cloudflare.Env='ASSETS';
+const WRITE_BINDING:keyof Cloudflare.Env='WRITE_COORDINATOR';
 const SPREADSHEET_ID='1DwhmASMStNtT_L2YinG-jkP9vYVv5ETdc-azYqSSIc4';
 interface DurableStorage {get<T>(key:string):Promise<T|undefined>;put(key:string,value:unknown):Promise<void>}
 interface DurableState {storage:DurableStorage}
@@ -49,6 +56,8 @@ async function anexarLog(base:string,token:string,linha:string[]):Promise<void>{
     await googleFetch(URL_BASE+'/values/'+encodeURIComponent(quoted(ABA_LOG)+'!A1')+'?valueInputOption=RAW',token,
       {method:'PUT',body:JSON.stringify({values:[[...COLUNAS_LOG_ALTERACOES]]})});
   }
+  const ids=await googleFetch(URL_BASE+'/values/'+encodeURIComponent(quoted(ABA_LOG)+'!A2:A'),token);
+  if((ids.values||[]).some((r:unknown[])=>r[0]===linha[0]))return;
   await googleFetch(URL_BASE+'/values/'+encodeURIComponent(quoted(ABA_LOG)+'!A1')+':append?valueInputOption=RAW',token,
     {method:'POST',body:JSON.stringify({values:[linha]})});
 }
@@ -84,14 +93,14 @@ export class WriteCoordinator {
   }
   private async guardarLogPendente(linha:string[]):Promise<void>{
     const atuais=(await this.state.storage.get<string[][]>('logs-pendentes'))||[];
-    await this.state.storage.put('logs-pendentes',[...atuais,linha].slice(-500));
+    await this.state.storage.put('logs-pendentes',[...atuais,linha]);
   }
   private async reenviarLogsPendentes(token:string):Promise<void>{
     const pendentes=(await this.state.storage.get<string[][]>('logs-pendentes'))||[];
     if(!pendentes.length)return;
     const restantes:string[][]=[];
     for(const linha of pendentes){
-      try{if(!restantes.length)await anexarLog(this.base,token,linha);else restantes.push(linha)}
+      try{if(!restantes.length){await anexarLog(this.base,token,linha);const recibo=await this.state.storage.get<Record<string,unknown>>('op:'+linha[0]);if(recibo)await this.state.storage.put('op:'+linha[0],{...recibo,logPending:false});}else restantes.push(linha)}
       catch{restantes.push(linha)}
     }
     await this.state.storage.put('logs-pendentes',restantes);
@@ -146,16 +155,26 @@ export class WriteCoordinator {
       // O DO só é alcançável pelo handler externo, que já verificou a identidade. Defesa em profundidade:
       const usuarioVerificado=request.headers.get('X-Usuario-Verificado')||'';
       if(!usuarioVerificado)return fail('Identidade verificada ausente.',401,'TOKEN_AUSENTE');
-      const payload=await request.json() as EscritaCritica;
+      let payload:EscritaCritica;
+      try {payload=await request.json() as EscritaCritica;} catch {return fail('JSON inválido.',400,'INVALID_JSON');}
       if(!payload||!TABELAS_CRITICAS.has(payload.tabela)||!['INSERT','UPDATE','DELETE'].includes(payload.tipo)||
          !payload.operacaoId||!/^[-a-zA-Z0-9_:]{8,100}$/.test(payload.operacaoId)||!payload.registro||typeof payload.registro!=='object')
         return fail('Operação crítica inválida.',400);
       const liberada=podeEscreverTabela(perfil,payload.tabela,payload.tipo);
       if(!liberada.ok)return fail(liberada.message,403,liberada.code);
       await this.reenviarLogsPendentes(token);
+      try { validarRegistro(payload); } catch { return fail('Registro inválido: confira chave, datas e valores numéricos.',400,'INVALID_RECORD'); }
+      const fingerprint=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify([usuarioVerificado,payload]))))).map(b=>b.toString(16).padStart(2,'0')).join('');
       const receipt='op:'+payload.operacaoId;
+      type Receipt={ok:boolean; fingerprint:string; at:number; linhaLog:string[]; logPending:boolean};
+      const prior=await this.state.storage.get<Receipt>(receipt);
+      if(prior && prior.fingerprint!==fingerprint)return fail('O identificador da operação já pertence a outro conteúdo ou usuário.',409,'OPERATION_MISMATCH');
       // A mesma operação só pode ser aplicada uma vez, mesmo após reenvio da fila offline.
-      if(await this.state.storage.get(receipt)) return json({ok:true,replayed:true});
+      if(prior?.ok) {
+        let auditoria=!prior.logPending;
+        if(prior.logPending) { try { await anexarLog(this.base,token,prior.linhaLog); await this.state.storage.put(receipt,{...prior,logPending:false}); auditoria=true; } catch {} }
+        return json({ok:true,replayed:true,auditoria});
+      }
       const table=payload.tabela;
       const read=await googleFetch(
         this.base+SPREADSHEET_ID+
@@ -163,7 +182,7 @@ export class WriteCoordinator {
       );
       const rows=(read.values||[]) as unknown[][];
       const headers=(rows[0]||[]).map(x=>String(x).trim());
-      if(!headers.length)return fail('A tabela oficial não possui cabeçalho.',409,'SCHEMA_MISMATCH');
+      if(!headers.length || !headers.includes(PRIMARY_KEYS[table]))return fail('A tabela oficial não possui chave no cabeçalho.',409,'SCHEMA_MISMATCH');
       const matches=rows.slice(1).flatMap((cells,i)=>{
         const row=Object.fromEntries(headers.map((h,j)=>[h,cells[j]??'']));
         try{return idCritico(table,row)===idCritico(table,payload.registro)?[{index:i+2,row}]:[]}
@@ -183,12 +202,47 @@ export class WriteCoordinator {
           if(!d.ok)return fail(d.message,403,d.code);
         }
       }
-      const divergencias=compararVersaoDeCampos(table,payload.registro,payload.esperado,remote,headers,payload.tipo);
+      // Referências novas ou alteradas devem existir na base oficial. Não revalida
+      // vínculos legados intactos durante uma edição de outro campo.
+      if(payload.tipo!=='DELETE' && !prior){
+        const refs:Record<string,string>={matricula_id:'matriculas',aluno_id:'alunos',turma_id:'turmas',periodo_id:'periodos',disciplina_id:'disciplinas',criterio_id:'criterios_avaliacao',grupo_id:'grupos_pratica'};
+        for(const [campo,aba] of Object.entries(refs)){
+          const valor=payload.registro[campo];
+          if(campo===PRIMARY_KEYS[table] || valor==null || String(valor).trim()==='' || remote && String(remote[campo])===String(valor))continue;
+          const ref=await googleFetch(this.base+SPREADSHEET_ID+'/values/'+encodeURIComponent(quoted(aba)+'!A1:ZZ'),token);
+          const rr=(ref.values||[]) as unknown[][], ci=(rr[0]||[]).indexOf(PRIMARY_KEYS[aba]);
+          if(ci<0 || rr.slice(1).filter(r=>String(r[ci]).trim()===String(valor).trim()).length!==1)
+            return fail('Referência ausente ou duplicada na base oficial. Confira os vínculos do registro.',400,'INVALID_REFERENCE');
+        }
+      }
+      if(table==='avaliacoes' && payload.registro.nota!=null && valorComparavelCampo(table,'nota',payload.registro.nota)!==valorComparavelCampo(table,'nota',remote?.nota)){
+        const criterio=payload.registro.criterio_id ?? remote?.criterio_id;
+        if(criterio){
+          const dados=await googleFetch(this.base+SPREADSHEET_ID+'/values/'+encodeURIComponent(quoted('criterios_avaliacao')+'!A1:ZZ'),token);
+          const v=(dados.values||[]) as unknown[][], h=(v[0]||[]).map(x=>String(x).trim());
+          const c=v.slice(1).filter(r=>String(r[h.indexOf('criterio_id')])===String(criterio));
+          const max=c.length===1 && h.includes('nota_maxima') ? numeroAcademico(c[0][h.indexOf('nota_maxima')]) : null;
+          if(c.length!==1 || max==null || (numeroAcademico(payload.registro.nota)??0)>max)return fail('Nota incompatível com o critério oficial. Confira a rubrica.',400,'INVALID_GRADE');
+        }
+      }
+      if(table==='encontros_turma' && String(payload.registro.chamada_salva).toUpperCase()==='TRUE'){
+        const converter=(rows:unknown[][])=>{const h=(rows[0]||[]).map(x=>String(x).trim());return rows.slice(1).map(row=>Object.fromEntries(h.map((k,i)=>[k,row[i]??''])));};
+        const m=await googleFetch(this.base+SPREADSHEET_ID+'/values/'+encodeURIComponent(quoted('matriculas')+'!A1:ZZ'),token);
+        const f=await googleFetch(this.base+SPREADSHEET_ID+'/values/'+encodeURIComponent(quoted('frequencias')+'!A1:ZZ'),token);
+        try {conferirFechamento(String(payload.registro.turma_id),String(payload.registro.data),converter(m.values||[]),converter(f.values||[]));}
+        catch {return fail('Chamada incompleta ou não identificada na base oficial. Confira as frequências antes de encerrar.',409,'INCOMPLETE_ATTENDANCE');}
+      }
+      const registro=adaptarRegistroCritico(table,payload.registro);
+      const recuperada=!!prior && (payload.tipo==='DELETE' ? !remote : !!remote && Object.keys(registro).filter(k=>headers.includes(k)).every(k=>valorComparavelCampo(table,k,registro[k])===valorComparavelCampo(table,k,remote[k])));
+      const divergencias=recuperada ? [] : compararVersaoDeCampos(table,payload.registro,payload.esperado,remote,headers,payload.tipo);
       if(divergencias.length)return json({ok:false,code:'VERSION_CONFLICT',campos:divergencias,
         message:'Conflito de versão ou registro inexistente. Atualize e revise a alteração antes de reenviar.'},409);
-      const registro=adaptarRegistroCritico(table,payload.registro);
+      const linhaLog=prior?.linhaLog ?? linhaDeLog(payload.operacaoId,new Date().toISOString(),usuarioVerificado,table,payload.tipo,
+        resumirAlteracaoParaLog(table,payload.tipo,payload.registro,remote,headers));
+      const prepared:Receipt={ok:false,fingerprint,at:Date.now(),linhaLog,logPending:true};
+      await this.state.storage.put(receipt,prepared);
       const columns=headers.map((h,index)=>({h,index})).filter(x=>Object.prototype.hasOwnProperty.call(registro,x.h));
-      if(payload.tipo==='DELETE'){
+      if(!recuperada && payload.tipo==='DELETE'){
         const meta=await googleFetch(
           this.base+SPREADSHEET_ID+
           '?fields='+encodeURIComponent('sheets(properties(title,sheetId))'),token);
@@ -201,34 +255,31 @@ export class WriteCoordinator {
             startIndex:matches[0].index-1,endIndex:matches[0].index
           }}}]})
         });
-      }else if(payload.tipo==='INSERT'){
+      }else if(!recuperada && payload.tipo==='INSERT'){
         if(!columns.length)return fail('Nenhuma coluna correspondente.',409,'SCHEMA_MISMATCH');
         const values=headers.map(h=>{
-          const v=registro[h];return v==null?'':typeof v==='boolean'?(v?'TRUE':'FALSE'):v
+          const v=registro[h];return valorCelula(v)
         });
         await googleFetch(this.base+SPREADSHEET_ID+
           '/values/'+encodeURIComponent(quoted(table)+'!A1:ZZ')+':append?valueInputOption=RAW',token,{
           method:'POST',body:JSON.stringify({values:[values]})
         });
-      }else {
+      }else if(!recuperada) {
         if(!columns.length)return fail('Nenhuma coluna correspondente.',409,'SCHEMA_MISMATCH');
         const data=columns.map(({h,index})=>{
           const v=registro[h];
           return {range:quoted(table)+'!'+colName(index)+matches[0].index,
-            values:[[v==null?'':typeof v==='boolean'?(v?'TRUE':'FALSE'):v]]}
+            values:[[valorCelula(v)]]}
         });
         await googleFetch(this.base+SPREADSHEET_ID+
           '/values:batchUpdate',token,{method:'POST',body:JSON.stringify({valueInputOption:'RAW',data})});
       }
-      // O recibo contém somente o identificador da operação, sem dados dos estudantes.
-      await this.state.storage.put(receipt,{ok:true,at:Date.now()});
-      // A gravação já está confirmada. Se o log falhar, a linha fica guardada e é reenviada na próxima operação.
-      const linhaLog=linhaDeLog(payload.operacaoId,new Date().toISOString(),usuarioVerificado,table,payload.tipo,
-        resumirAlteracaoParaLog(table,payload.tipo,payload.registro,remote,headers));
+      const confirmed={...prepared,ok:true};
+      await this.state.storage.put(receipt,confirmed);
       let auditoria=true;
-      try{await anexarLog(this.base,token,linhaLog)}
-      catch{auditoria=false;await this.guardarLogPendente(linhaLog)}
-      return json({ok:true,replayed:false,auditoria});
+      try{await anexarLog(this.base,token,linhaLog);await this.state.storage.put(receipt,{...confirmed,logPending:false});}
+      catch{auditoria=false;await this.guardarLogPendente(linhaLog);}
+      return json({ok:true,replayed:recuperada,auditoria});
     }catch(error:any){
       return fail(error?.http===401?'Sessão Google expirada.':error?.message||'Falha no servidor.',
         error?.http===401?401:error?.http===403?403:502);
@@ -237,13 +288,21 @@ export class WriteCoordinator {
 }
 
 const ROTAS_API=new Set(['/api/critical-write','/api/acesso','/api/leitura','/api/documentos/sincronizar','/api/documentos/estado']);
-const coordenador=(env:Env)=>env.WRITE_COORDINATOR.get(env.WRITE_COORDINATOR.idFromName(SPREADSHEET_ID));
+const coordenador=(env:Env)=>env[WRITE_BINDING].get(env[WRITE_BINDING].idFromName(SPREADSHEET_ID));
 const perfilPublico=(p:Perfil)=>({papel:p.papel,email:p.email,turmas:p.turmas,operacoes:p.operacoes});
 
 export default {
   async fetch(request:Request,env:Env):Promise<Response>{
     const url=new URL(request.url);
-    if(!ROTAS_API.has(url.pathname)) return env.ASSETS.fetch(request);
+    if(url.pathname.startsWith('/api/')&&!ROTAS_API.has(url.pathname))return fail('Rota não encontrada.',404,'NOT_FOUND');
+    if(!ROTAS_API.has(url.pathname)) {
+      const resposta=await env[ASSET_BINDING].fetch(request);
+      const headers=new Headers(resposta.headers);
+      headers.set('X-Content-Type-Options','nosniff');
+      headers.set('Referrer-Policy','strict-origin-when-cross-origin');
+      headers.set('X-Frame-Options','SAMEORIGIN');
+      return new Response(resposta.body,{status:resposta.status,statusText:resposta.statusText,headers});
+    }
     const origin=request.headers.get('Origin');
     if(origin && origin!==url.origin)return fail('Origem não permitida.',403);
     // Autenticação e autorização NO SERVIDOR: identidade = token de ID do Firebase verificado aqui;

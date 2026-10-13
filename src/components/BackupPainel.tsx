@@ -34,7 +34,7 @@ export const BackupPainel: React.FC = () => {
     try {
       await restaurarRegistroDoBackup(d);
       setDiferencas(lista => lista.filter(x => `${x.tabela}|${x.id}` !== chave));
-      setMsg('Registro restaurado e gravado na planilha (com registro no log).');
+      setMsg('Restauração registrada. Confira o indicador de sincronização para confirmar o envio à planilha.');
       void sincronizarAgora();
     } catch (e) { setMsg(e instanceof Error ? e.message : 'Não foi possível restaurar.'); }
     finally { setOcupado(null); setConfirmar(null); }

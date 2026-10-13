@@ -47,7 +47,8 @@ import { criarAmbiente } from './ajudaAmbiente';
   assert.equal((turmaPermitida(m, undefined) as any).code, 'TURMA_INDETERMINADA', 'turma desconhecida = negado');
   assert.equal(turmaDoRegistro({ matricula_id: 'm9' }, id => (id === 'm9' ? 't2b' : undefined)), 't2b');
   assert.equal(turmaDoRegistro({ matricula_id: 'x' }, () => undefined), undefined);
-  assert.equal(turmaDoRegistro({ turma_id: 't3b', matricula_id: 'm9' }, () => 't2b'), 't3b', 'turma_id explícito prevalece');
+  assert.equal(turmaDoRegistro({ turma_id: 't3b', matricula_id: 'm9' }, () => 't2b'), undefined, 'vínculo contraditório deve ser negado');
+  assert.equal(turmaDoRegistro({ turma_id: 't2b', matricula_id: 'inexistente' }, () => undefined), undefined);
 }
 
 // ---------- leitura filtrada ----------

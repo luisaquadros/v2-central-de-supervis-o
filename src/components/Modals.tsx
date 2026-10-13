@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef, useId } from 'react';
 import { X, Check, AlertCircle } from 'lucide-react';
 import { useSupervisao } from '../context/SupervisaoContext';
 
@@ -7,30 +7,51 @@ interface ModalWrapperProps {
   subtitle?: string;
   onClose: () => void;
   children: React.ReactNode;
+  busy?: boolean;
+  error?: string;
 }
 
 export const ModalWrapper: React.FC<ModalWrapperProps> = ({
   title,
   subtitle,
   onClose,
-  children,
+  children, busy=false, error,
 }) => {
+  const dialog=useRef<HTMLDivElement>(null), titleId=useId();
+  const closeRef=useRef(onClose); closeRef.current=onClose;
+  const busyRef=useRef(busy);busyRef.current=busy;
+  useEffect(()=>{
+    const prior=document.activeElement as HTMLElement|null;
+    dialog.current?.focus();
+    const key=(e:KeyboardEvent)=>{
+      if(e.key==='Escape'&&!busyRef.current){e.preventDefault();closeRef.current();}
+      if(e.key==='Tab'){
+        const nodes=Array.from(dialog.current?.querySelectorAll<HTMLElement>('button:not(:disabled),input:not(:disabled),select:not(:disabled),textarea:not(:disabled),a[href]')??[]);
+        const first=nodes[0],last=nodes[nodes.length-1];
+        if(!first){e.preventDefault();return;}
+        if(e.shiftKey&&(document.activeElement===first||document.activeElement===dialog.current)){e.preventDefault();last.focus();}
+        else if(!e.shiftKey&&(document.activeElement===last||document.activeElement===dialog.current)){e.preventDefault();first.focus();}
+      }
+    };
+    document.addEventListener('keydown',key);
+    return()=>{document.removeEventListener('keydown',key);prior?.focus();};
+  },[]);
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs animate-in fade-in duration-150">
-      <div className="bg-white rounded-xl shadow-xl border border-slate-200 w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh]">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs animate-in fade-in duration-150">
+      <div ref={dialog} role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1} className="bg-white rounded-xl shadow-xl border border-slate-200 w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh]">
         <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
           <div>
-            <h3 className="text-sm font-bold text-slate-900">{title}</h3>
+            <h3 id={titleId} className="text-sm font-bold text-slate-900">{title}</h3>
             {subtitle && <p className="text-xs text-slate-500 mt-0.5">{subtitle}</p>}
           </div>
           <button
-            onClick={onClose}
+            disabled={busy} aria-label="Fechar diálogo" onClick={onClose}
             className="p-1 rounded-md text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
-        <div className="p-5 overflow-y-auto space-y-4 text-xs">{children}</div>
+        <div className="p-5 overflow-y-auto space-y-4 text-xs">{error&&<p role="alert" className="text-red-800">{error}</p>}<fieldset disabled={busy} className="space-y-4">{children}</fieldset>{busy&&<p role="status">Salvando…</p>}</div>
       </div>
     </div>
   );
@@ -44,20 +65,26 @@ export const ModalNovaOrientacao: React.FC<{
   onSaved?: () => void;
 }> = ({ matriculaId, alunoNome, onClose, onSaved }) => {
   const { addOrientacao } = useSupervisao();
+  const [salvando,setSalvando]=useState(false), [erro,setErro]=useState('');
+  const envio=useRef(false);
   const [categoria, setCategoria] = useState('Clínica');
   const [texto, setTexto] = useState('');
   const [status, setStatus] = useState<'ABERTA' | 'CONCLUÍDA'>('ABERTA');
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!texto.trim()) return;
-    addOrientacao(matriculaId, categoria, texto.trim(), status);
-    if (onSaved) onSaved();
-    onClose();
+    if(envio.current)return;envio.current=true;setSalvando(true);setErro('');
+    try {
+      await addOrientacao(matriculaId, categoria, texto.trim(), status);
+      if (onSaved) onSaved();
+      onClose();
+    } catch(e) {setErro(e instanceof Error?e.message:'Não foi possível salvar.');}
+    finally{envio.current=false;setSalvando(false);}
   };
 
   return (
-    <ModalWrapper
+    <ModalWrapper busy={salvando} error={erro}
       title="Nova Orientação"
       subtitle={`Aluno(a): ${alunoNome}`}
       onClose={onClose}
@@ -65,7 +92,7 @@ export const ModalNovaOrientacao: React.FC<{
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
           <label className="font-semibold text-slate-700 block mb-1.5">Categoria</label>
-          <select
+          <select aria-label="Categoria ou tipo do registro"
             value={categoria}
             onChange={e => setCategoria(e.target.value)}
             className="w-full border border-slate-200 rounded-lg p-2.5 bg-slate-50 text-slate-800 focus:outline-none focus:ring-1 focus:ring-slate-900"
@@ -83,7 +110,7 @@ export const ModalNovaOrientacao: React.FC<{
           <label className="font-semibold text-slate-700 block mb-1.5">
             Orientações Fornecidas
           </label>
-          <textarea
+          <textarea aria-label="Texto do registro"
             required
             rows={4}
             value={texto}
@@ -148,23 +175,29 @@ export const ModalNovoFeedback: React.FC<{
   onClose: () => void;
 }> = ({ matriculaId, alunoNome, onClose }) => {
   const { addFeedback } = useSupervisao();
+  const [salvando,setSalvando]=useState(false), [erro,setErro]=useState('');
+  const envio=useRef(false);
   const [texto, setTexto] = useState('');
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!texto.trim()) return;
-    addFeedback(matriculaId, texto.trim());
-    onClose();
+    if(envio.current)return;envio.current=true;setSalvando(true);setErro('');
+    try {
+      await addFeedback(matriculaId, texto.trim());
+      onClose();
+    } catch(e) {setErro(e instanceof Error?e.message:'Não foi possível salvar.');}
+    finally{envio.current=false;setSalvando(false);}
   };
 
   return (
-    <ModalWrapper title="Registrar Feedback" subtitle={`Aluno(a): ${alunoNome}`} onClose={onClose}>
+    <ModalWrapper busy={salvando} error={erro} title="Registrar Feedback" subtitle={`Aluno(a): ${alunoNome}`} onClose={onClose}>
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
           <label className="font-semibold text-slate-700 block mb-1.5">
             Feedback Formativo ao Aluno
           </label>
-          <textarea
+          <textarea aria-label="Texto do registro"
             required
             rows={4}
             value={texto}
@@ -202,18 +235,24 @@ export const ModalRegistrarOcorrencia: React.FC<{
   onClose: () => void;
 }> = ({ matriculaId, alunoNome, tipoInicial = 'ATRASO', onClose }) => {
   const { addOcorrencia } = useSupervisao();
+  const [salvando,setSalvando]=useState(false), [erro,setErro]=useState('');
+  const envio=useRef(false);
   const [tipo, setTipo] = useState<'ATRASO' | 'USO_INADEQUADO_DISPOSITIVO' | 'OUTRO'>(tipoInicial);
   const [observacao, setObservacao] = useState('');
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!observacao.trim()) return;
-    addOcorrencia(matriculaId, tipo, observacao.trim());
-    onClose();
+    if(envio.current)return;envio.current=true;setSalvando(true);setErro('');
+    try {
+      await addOcorrencia(matriculaId, tipo, observacao.trim());
+      onClose();
+    } catch(e) {setErro(e instanceof Error?e.message:'Não foi possível salvar.');}
+    finally{envio.current=false;setSalvando(false);}
   };
 
   return (
-    <ModalWrapper
+    <ModalWrapper busy={salvando} error={erro}
       title={tipo === 'ATRASO' ? 'Registrar Atraso' : 'Registrar Ocorrência'}
       subtitle={`Aluno(a): ${alunoNome}`}
       onClose={onClose}
@@ -260,7 +299,7 @@ export const ModalRegistrarOcorrencia: React.FC<{
 
         <div>
           <label className="font-semibold text-slate-700 block mb-1.5">Detalhes / Observação</label>
-          <textarea
+          <textarea aria-label="Texto do registro"
             required
             rows={3}
             value={observacao}
@@ -303,6 +342,8 @@ export const ModalNovoPontoAcompanhamento: React.FC<{
   onClose: () => void;
 }> = ({ matriculaId, alunoNome, onClose }) => {
   const { addPontoAcompanhamento } = useSupervisao();
+  const [salvando,setSalvando]=useState(false), [erro,setErro]=useState('');
+  const envio=useRef(false);
   const [texto, setTexto] = useState('');
   const [prioridade, setPrioridade] = useState<'ALTA' | 'MEDIA' | 'BAIXA' | ''>('ALTA');
 
@@ -315,15 +356,19 @@ export const ModalNovoPontoAcompanhamento: React.FC<{
     'Acompanhar cumprimento das orientações anteriores',
   ];
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!texto.trim()) return;
-    addPontoAcompanhamento(matriculaId, texto.trim(), prioridade);
-    onClose();
+    if(envio.current)return;envio.current=true;setSalvando(true);setErro('');
+    try {
+      await addPontoAcompanhamento(matriculaId, texto.trim(), prioridade);
+      onClose();
+    } catch(e) {setErro(e instanceof Error?e.message:'Não foi possível salvar.');}
+    finally{envio.current=false;setSalvando(false);}
   };
 
   return (
-    <ModalWrapper
+    <ModalWrapper busy={salvando} error={erro}
       title="Novo Ponto de Acompanhamento"
       subtitle={`Aluno(a): ${alunoNome} (Acompanhamento formativo/acadêmico)`}
       onClose={onClose}
@@ -333,7 +378,7 @@ export const ModalNovoPontoAcompanhamento: React.FC<{
           <label className="font-semibold text-slate-700 block mb-1.5">
             Ponto a ser Acompanhado
           </label>
-          <input
+          <input aria-label="Ponto de acompanhamento"
             type="text"
             required
             value={texto}

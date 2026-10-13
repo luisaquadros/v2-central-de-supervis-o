@@ -381,8 +381,8 @@ export function obterDatasCalendarioAcademico(
   hojeIso: string = getHojeDataIso()
 ): CalendarioAcademicoInfo {
   const nome = periodo?.nome || '2026.2';
-  let dataInicio = periodo?.data_inicio || (nome === '2026.2' ? '2026-08-10' : '2026-08-10');
-  let dataFim = periodo?.data_fim || (nome === '2026.2' ? '2026-12-05' : '2026-12-05');
+  let dataInicio = periodo?.data_inicio || (nome === '2026.2' ? '2026-08-10' : '');
+  let dataFim = periodo?.data_fim || (nome === '2026.2' ? '2026-12-05' : '');
 
   // Proteção da autoridade acadêmica máxima:
   // Se para 2026.2 a base trouxer datas parciais da prática de outubro/novembro,
@@ -394,7 +394,8 @@ export function obterDatasCalendarioAcademico(
     dataInicio = '2026-08-10';
   }
 
-  const estaNaSemanaFinal = Boolean(dataFim && hojeIso >= '2026-12-01' && hojeIso <= dataFim);
+  const inicioSemanaFinal = nome==='2026.2' ? '2026-12-01' : dataFim ? new Date(Date.parse(dataFim)-6*86400000).toISOString().slice(0,10) : '';
+  const estaNaSemanaFinal = Boolean(dataFim && hojeIso >= inicioSemanaFinal && hojeIso <= dataFim);
   const encerrado = Boolean(dataFim && hojeIso > dataFim);
 
   const msPorDia = 1000 * 60 * 60 * 24;

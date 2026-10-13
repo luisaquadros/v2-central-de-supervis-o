@@ -37,6 +37,9 @@ export interface SyncQueueItem {
   criado_em: string;
   status: SyncQueueItemStatus;
   tentativas: number;
+  sequencia?: number;
+  cancelada?: boolean;
+  usuario_uid?: string;
   erro?: string | null;
   versao_conflito?: Record<string, any>;
   versao_base?: Record<string, any> | null;
@@ -153,7 +156,7 @@ export async function limparTabelasDoCache(): Promise<void> {
   const db = await openDatabase();
   await new Promise<void>((resolve, reject) => {
     const tx = db.transaction([STORE_TABELAS, STORE_META], 'readwrite');
-    tx.objectStore(STORE_TABELAS).clear(); tx.objectStore(STORE_META).clear();
+    tx.objectStore(STORE_TABELAS).clear(); tx.objectStore(STORE_META).delete('current_meta');
     tx.oncomplete = () => { db.close(); resolve(); };
     tx.onerror = () => { db.close(); reject(tx.error); };
   });
@@ -167,12 +170,22 @@ export async function garantirCacheDoUsuario(uid: string): Promise<'MESMO' | 'LI
   let anterior: string | null = null;
   try { anterior = localStorage.getItem(CHAVE_UID_CACHE); } catch { /* sem localStorage */ }
   if (anterior === uid) return 'MESMO';
-  if (anterior) {
+  {
     if ((await carregarFilaSincronizacao()).length > 0) return 'PENDENTES_DE_OUTRA_CONTA';
+    const origem=anterior || 'legado-sem-conta';
+    const snapshot=await carregarTodasTabelasDoIndexedDb();
+    if(snapshot) localStorage.setItem('cs_arquivo_conta:'+origem+':cache_v1',JSON.stringify(snapshot));
     await limparTabelasDoCache();
+    // Arquivar dados auxiliares antes de retirar a cópia visível da conta anterior.
+    for (const key of ['cs_avaliacoes_completas_v1','cs_caixa_entrada_v1','cs_fila_professora_v1','cs_fila_supervisao_v1','cs_encontros_turma_v2']) {
+      const raw = localStorage.getItem(key);
+      if (raw !== null) localStorage.setItem('cs_arquivo_conta:' + origem + ':' + key, raw);
+      localStorage.removeItem(key);
+    }
+    if (typeof window.dispatchEvent === 'function') window.dispatchEvent(new Event('cs:account-changed'));
   }
   try { localStorage.setItem(CHAVE_UID_CACHE, uid); } catch { /* ignora */ }
-  return anterior ? 'LIMPO' : 'MESMO';
+  return 'LIMPO';
 }
 
 /**
@@ -326,7 +339,7 @@ export async function carregarFilaSincronizacao(): Promise<SyncQueueItem[]> {
     const tx = db.transaction([STORE_QUEUE], 'readonly');
     const store = tx.objectStore(STORE_QUEUE);
     const req = store.getAll();
-    req.onsuccess = () => resolve(req.result || []);
+    req.onsuccess = () => resolve((req.result || []).sort((a: SyncQueueItem, b: SyncQueueItem) => (a.sequencia ?? 0) - (b.sequencia ?? 0) || a.criado_em.localeCompare(b.criado_em) || a.id.localeCompare(b.id)));
     req.onerror = () => reject(req.error);
   });
 }
@@ -380,9 +393,12 @@ export async function salvarAlteracaoAtomica(
     id: crypto.randomUUID(), tabela, tipo, payload,
     criado_em: new Date().toISOString(), status: 'PENDENTE', tentativas: 0,
   };
+  try { item.usuario_uid=localStorage.getItem(CHAVE_UID_CACHE) || undefined; } catch {}
   return new Promise((resolve, reject) => {
     let erroConflito: Error | null = null;
-    const tx = db.transaction([STORE_TABELAS, STORE_QUEUE], 'readwrite');
+    const tx = db.transaction([STORE_TABELAS, STORE_QUEUE, STORE_META], 'readwrite');
+    const seqReq=tx.objectStore(STORE_META).get('queue-sequence');
+    seqReq.onsuccess=()=>{item.sequencia=Number(seqReq.result||0)+1;tx.objectStore(STORE_META).put(item.sequencia,'queue-sequence');};
     const tables = tx.objectStore(STORE_TABELAS);
     const queue = tx.objectStore(STORE_QUEUE);
     const req = tables.get(tabela);
@@ -407,6 +423,13 @@ export async function salvarAlteracaoAtomica(
               tx.abort(); // Desfaz também a alteração provisória da tabela local.
               return;
             }
+            // Uma operação enviada pode ter sido aplicada: conservar ID e conteúdo até confirmação.
+            if (prior.tentativas > 0) continue;
+            item.sequencia=prior.sequencia ?? item.sequencia;
+            item.criado_em=prior.criado_em;
+            if(prior.tipo==='INSERT' && prior.versao_base==null && tipo==='DELETE') {
+              queue.delete(prior.id); item.cancelada=true; continue;
+            }
             // Múltiplas edições locais preservam a versão mais antiga ainda não enviada.
             item.versao_base = prior.versao_base ?? null;
             if (prior.tipo === 'INSERT' && tipo !== 'DELETE') item.tipo = 'INSERT';
@@ -414,10 +437,42 @@ export async function salvarAlteracaoAtomica(
             queue.delete(prior.id);
           }
         }
-        queue.put(item);
+        if(!item.cancelada) queue.put(item);
       };
     };
     tx.oncomplete = () => { db.close(); resolve(item); };
     tx.onerror = tx.onabort = () => { db.close(); reject(erroConflito || tx.error || new Error('Falha ao salvar no dispositivo.')); };
+  });
+}
+
+/** Arquiva a edição em conflito e adota o registro remoto na mesma transação. */
+export async function resolverItemConflito(item: SyncQueueItem, remoto: Record<string,unknown> | null): Promise<void> {
+  const db=await openDatabase();
+  return new Promise((resolve,reject)=>{
+    const tx=db.transaction([STORE_TABELAS,STORE_QUEUE,STORE_META],'readwrite');
+    const queue=tx.objectStore(STORE_QUEUE), tables=tx.objectStore(STORE_TABELAS);
+    const existing=queue.get(item.id);
+    existing.onsuccess=()=>{
+      if(existing.result?.status!=='CONFLITO'){tx.abort();return;}
+      tx.objectStore(STORE_META).put({item:existing.result,usuario_uid:item.usuario_uid,arquivado_em:new Date().toISOString()},'conflito-arquivado:'+item.id);
+      const req=tables.get(item.tabela);
+      req.onsuccess=()=>{
+        const rows=(req.result||[]).filter((r: Record<string,unknown>)=>recordIdentity(item.tabela,r)!==recordIdentity(item.tabela,item.payload));
+        tables.put(remoto?[...rows,remoto]:rows,item.tabela);queue.delete(item.id);
+      };
+    };
+    tx.oncomplete=()=>{db.close();resolve();};
+    tx.onerror=tx.onabort=()=>{db.close();reject(tx.error||new Error('Conflito mudou durante a revisão.'));};
+  });
+}
+
+export async function carregarRecuperacoesDoUsuario(uid: string): Promise<unknown[]> {
+  if(!uid)return [];
+  const db=await openDatabase();
+  return new Promise((resolve,reject)=>{
+    const tx=db.transaction(STORE_META,'readonly');
+    const req=tx.objectStore(STORE_META).getAll();
+    req.onsuccess=()=>resolve(req.result.filter(v=>v?.usuario_uid===uid && v.item));
+    tx.oncomplete=()=>db.close();tx.onerror=()=>{db.close();reject(tx.error);};
   });
 }

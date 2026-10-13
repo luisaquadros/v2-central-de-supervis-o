@@ -1,4 +1,5 @@
 import { PRIMARY_KEYS } from '../services/recordIdentity';
+import { dataAcademica, numeroAcademico } from '../services/valoresAcademicos';
 
 /** Tabelas que exigem comparação de versão e escrita serializada no servidor. */
 export const TABELAS_CRITICAS = new Set([
@@ -14,6 +15,7 @@ export const TABELAS_CRITICAS = new Set([
   'turmas_origem',
   'grupos_pratica',
   'grupo_integrantes',
+  'configuracoes','criterios_avaliacao','marcos_academicos',
 ]);
 
 export type OperacaoCritica = 'INSERT' | 'UPDATE' | 'DELETE';
@@ -54,14 +56,24 @@ export function valorComparavel(valor: unknown): string {
 const DIAS: Record<string, string> = { DOMINGO: '0', SEGUNDA: '1', TERCA: '2', 'TERÇA': '2', QUARTA: '3', QUINTA: '4', SEXTA: '5', SABADO: '6', 'SÁBADO': '6' };
 /** Comparação por campo: o app guarda o dia da semana como número (0–6) e a planilha pode ter o nome do dia. */
 export function valorComparavelCampo(tabela: string, campo: string, valor: unknown): string {
+  if (['nota','nota_final','nota_maxima','peso'].includes(campo)) {
+    try { return String(numeroAcademico(valor) ?? ''); } catch { return String(valor); }
+  }
+  if (campo.endsWith('_json') || ['responsaveis_efetivos','responsaveis_previstos'].includes(campo)) {
+    try { return JSON.stringify(typeof valor === 'string' ? JSON.parse(valor) : valor); } catch { return String(valor ?? ''); }
+  }
+  // Carimbos de versão conservam hora, minutos e segundos.
+  if (campo.endsWith('_em') || campo === 'data_hora') return String(valor ?? '').trim();
   const v = valorComparavel(valor);
   if (tabela === 'horarios_turma' && campo === 'dia_semana') return DIAS[v.toUpperCase()] ?? v;
   return v;
 }
 export function adaptarRegistroCritico(tabela: string, registro: Record<string, unknown>): Record<string, unknown> {
   const result={...registro};
-  if(tabela==='frequencias' && result.status==='PRESENTE' && (result.atraso===true || result.status_original==='ATRASO'))result.status='ATRASO';
+  for(const campo of ['nota','nota_final','nota_maxima','peso'])if(Object.hasOwn(result,campo))result[campo]=numeroAcademico(result[campo]);
+  if(tabela==='frequencias' && result.status==='PRESENTE' && (result.atraso===true || (!Object.hasOwn(result,'atraso') && result.status_original==='ATRASO')))result.status='ATRASO';
   if(tabela==='leituras_responsaveis'){
+    result.data_discussao = result.data ?? result.data_discussao;
     result.leitura_agenda_id = result.leitura_agenda_id ?? result.leitura_id;
     if(Array.isArray(result.responsaveis_efetivos)) result.responsaveis_efetivos=JSON.stringify(result.responsaveis_efetivos);
   }
@@ -81,7 +93,7 @@ export function adaptarRegistroCritico(tabela: string, registro: Record<string, 
 }
 export function idCritico(tabela:string, registro:Record<string,unknown>):string {
   if(tabela==='frequencias' && registro.matricula_id && registro.data_aula)
-    return JSON.stringify([String(registro.matricula_id),String(registro.data_aula)]);
+    return JSON.stringify([String(registro.matricula_id).trim(),dataAcademica(registro.data_aula)]);
   const key=PRIMARY_KEYS[tabela];
   const value=key && (registro[key] ?? (tabela==='leituras_responsaveis' ? registro.leitura_id : tabela==='grupo_integrantes' ? registro.integrante_id : undefined));
   if(!key || value==null || !String(value).trim()) throw new Error('Identificador do registro inválido');
@@ -108,7 +120,7 @@ export function compararVersaoDeCampos(
 }
 
 /** Colunas de texto livre: o log registra que mudaram, nunca o conteúdo (pode haver narrativa identificável). */
-const CAMPO_TEXTO_LIVRE=/(observa|justific|descri|texto|narrativ|relato|comentari|conteudo|resumo|mensagem|duvida|limita|prioridade|proximo_passo|anotac|nota_texto|feedback|devolutiva|pauta|diario)/i;
+const CAMPO_TEXTO_LIVRE=/(observa|justific|descri|texto|narrativ|relato|comentari|conteudo|resumo|mensagem|duvida|limita|prioridade|proximo_passo|anotac|nota_texto|feedback|devolutiva|pauta|diario|nome|email|identificador_academico)/i;
 const LIMITE_VALOR_LOG=80;
 const CAMPOS_TECNICOS=new Set(['atualizado_em','criado_em','sincronizado_em']);
 

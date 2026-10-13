@@ -78,7 +78,7 @@ import {
   subscribeSyncStatus,
   SyncStatusState,
 } from '../services/syncService';
-import { salvarTabelaUnicaNoIndexedDb, carregarFilaSincronizacao, garantirCacheDoUsuario } from '../services/indexedDbService';
+import { salvarTabelaUnicaNoIndexedDb, carregarFilaSincronizacao, carregarRecuperacoesDoUsuario, garantirCacheDoUsuario } from '../services/indexedDbService';
 import {
   initialPeriodos,
   initialDisciplinas,
@@ -116,7 +116,7 @@ import {
   initialAuditoriaBase,
 } from '../data/initialData';
 import { geraRegistroAutomatico } from '../services/condicoesMatricula';
-import { verificarAcessoEscrita, limparCachePerfil, type PerfilServidor } from '../services/escritaCoordenadaService';
+import { verificarAcessoEscrita, obterPerfilServidor, limparCachePerfil, type PerfilServidor } from '../services/escritaCoordenadaService';
 import { gerarBackup, validarBackup, compararComBackup, operacaoDeRestauracao, type TabelasBackup, type ArquivoBackup, type RelatorioBackup, type DiferencaRegistro } from '../services/backupService';
 import { OFFICIAL_SPREADSHEET_ID, OFFICIAL_SPREADSHEET_NAME, OFFICIAL_SPREADSHEET_URL } from '../services/googleSheetsService';
 import type { DadosIniciais } from '../services/dadosIniciais';
@@ -468,7 +468,11 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   useEffect(() => {
     if (!currentUser) { limparCachePerfil(); setPerfilServidor(null); return; }
     let ativo = true;
-    void verificarAcessoEscrita(true).then(e => { if (ativo) setPerfilServidor(e.estado === 'AUTORIZADO' ? e.perfil : null); });
+    setPerfilServidor(null);
+    void verificarAcessoEscrita(true).then(e => { if (ativo) {
+      setPerfilServidor(e.estado === 'AUTORIZADO' ? e.perfil : null);
+      if (e.estado !== 'AUTORIZADO') setAcessoGoogleValidado(false);
+    } });
     return () => { ativo = false; };
   }, [currentUser?.uid]);
   const [acessoGoogleValidado, setAcessoGoogleValidado] = useState(false);
@@ -497,10 +501,10 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   });
 
   // Estados de apoio, filas e avaliações completas
-  const [caixaEntrada, setCaixaEntrada] = useDurableLocalState<CaixaEntradaItem[]>('cs_caixa_entrada_v1', []);
-  const [filaProfessora, setFilaProfessora] = useDurableLocalState<ItemFilaProfessora[]>('cs_fila_professora_v1', []);
-  const [filaSupervisao, setFilaSupervisao] = useDurableLocalState<ItemFilaSupervisao[]>('cs_fila_supervisao_v1', []);
-  const [avaliacoesCompletas, setAvaliacoesCompletas] = useDurableLocalState<AvaliacaoCompleta[]>('cs_avaliacoes_completas_v1', []);
+  const [caixaEntrada, setCaixaEntrada] = useDurableLocalState<CaixaEntradaItem[]>('cs_caixa_entrada_v1', [], false);
+  const [filaProfessora, setFilaProfessora] = useDurableLocalState<ItemFilaProfessora[]>('cs_fila_professora_v1', [], false);
+  const [filaSupervisao, setFilaSupervisao] = useDurableLocalState<ItemFilaSupervisao[]>('cs_fila_supervisao_v1', [], false);
+  const [avaliacoesCompletas, setAvaliacoesCompletas] = useDurableLocalState<AvaliacaoCompleta[]>('cs_avaliacoes_completas_v1', [], false);
 
   // Política Global de Exclusão & Desfazer
   const [confirmacaoExclusaoModal, setConfirmacaoExclusaoModal] = useState<{
@@ -588,15 +592,6 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     return [];
   });
 
-  useEffect(() => {
-    try {
-      if (typeof window !== 'undefined') {
-        localStorage.setItem('cs_encontros_turma_v2', JSON.stringify(encontrosTurma));
-      }
-    } catch (e) {
-      // ignore
-    }
-  }, [encontrosTurma]);
   const [auditoriaApp, setAuditoriaApp] = useState<HistoricoAuditoria[]>([]);
 
   // Helper para aplicar dados recebidos das 30 tabelas normalizadas
@@ -655,6 +650,54 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     if (Array.isArray(data.auditoriaBase)) setAuditoriaBase(data.auditoriaBase);
   }, []);
 
+  useEffect(() => {
+    const reset = () => {
+      setPeriodos([]);
+      setDisciplinas([]);
+      setTurmas([]);
+      setAlunos([]);
+      setMatriculas([]);
+      setOrientacoes([]);
+      setRegistrosSemanais([]);
+      setDocumentos([]);
+      setAvaliacoes([]);
+      setFeedbacks([]);
+      setCriterios([]);
+      setOcorrencias([]);
+      setConfiguracoes([]);
+      setTurmasOrigem([]);
+      setFrequencias([]);
+      setHorariosTurma([]);
+      setPontosAcompanhamento([]);
+      setMarcosAcademicos([]);
+      setRegrasRss([]);
+      setCalendarioRss([]);
+      setStatusRssUnidades([]);
+      setSituacaoAtualTurmas([]);
+      setLeiturasResponsaveis([]);
+      setRegrasPrazo([]);
+      setGruposPratica([]);
+      setGrupoIntegrantes([]);
+      setEntregas([]);
+      setFeedbacksOficiais([]);
+      setRegistrosSupervisao([]);
+      setSincronizacao([]);
+      setDicionarioDados([]);
+      setContratoApp([]);
+      setMapeamentoFontes([]);
+      setAuditoriaBase([]);
+      setPreparacoesAula([]);
+      setEncontrosTurma([]);
+      setMonitoramentoDocumentos([]);
+      setAuditoriaApp([]);
+      setHasLocalCache(false); setAcessoGoogleValidado(false); setSelectedPeriodoId('');
+    };
+    const revoke=()=>{setAcessoGoogleValidado(false);setPerfilServidor(null);};
+    window.addEventListener('cs:account-changed', reset);
+    window.addEventListener('cs:access-revoked', revoke);
+    return () => {window.removeEventListener('cs:account-changed', reset);window.removeEventListener('cs:access-revoked', revoke);};
+  }, []);
+
   // 1. ABERTURA DO APP: Carrega imediatamente o cache do IndexedDB
   useEffect(() => {
     let isMounted = true;
@@ -689,9 +732,7 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         setCurrentUser(user);
         // Sessão do app é independente do token OAuth do Sheets (que expira antes).
         // Só exibe cache em até 6h se esta conta já foi validada neste dispositivo.
-        if (lerSessaoAutorizada(user.uid)) {
-          setAcessoGoogleValidado(true);
-        }
+        setAcessoGoogleValidado(false);
         // Cache local é do navegador: na troca de conta, apaga a cópia das tabelas (se não houver pendências de outra conta).
         garantirCacheDoUsuario(user.uid)
           .then(estado => {
@@ -701,17 +742,17 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             }
             if (estado === 'LIMPO') { setHasLocalCache(false); }
           })
-          .then(() => processarFilaSincronizacao())
-          .catch(e => { if (e instanceof Error && e.message === 'PENDENTES_DE_OUTRA_CONTA') throw e; })
           .then(() => sincronizarDaBaseOficial())
-          .then(res => {
+          .then(async res => {
             if (!isMounted) return;
             if (res.sucesso && res.dados) {
+              setPerfilServidor(await obterPerfilServidor());
               registrarSessaoAutorizada(user.uid);
               setAcessoGoogleValidado(true);
               aplicarDados(res.dados);
               setHasLocalCache(true);
               setConnectionStatus('CONECTADO');
+              void processarFilaSincronizacao().catch(()=>{});
             }
           })
           .catch(() => { /* pendências de outra conta já sinalizadas; falhas de rede seguem o fluxo de reconexão */ });
@@ -728,6 +769,12 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     };
   }, [aplicarDados]);
 
+  useEffect(()=>{
+    if(!currentUser)return;
+    const timer=setInterval(()=>{if(!lerSessaoAutorizada(currentUser.uid))setAcessoGoogleValidado(false);},60000);
+    return()=>clearInterval(timer);
+  },[currentUser?.uid]);
+
   // 3. SINCRONIZAÇÃO AUTOMÁTICA EM SEGUNDO PLANO (FOCO, REDE ONLINE E INTERVALO)
   useEffect(() => {
     let isMounted = true;
@@ -741,6 +788,7 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           const res = await sincronizarDaBaseOficial();
           if (!isMounted) return;
           if (res.sucesso && res.dados) {
+            setPerfilServidor(await obterPerfilServidor());
             if (currentUser) registrarSessaoAutorizada(currentUser.uid);
             setAcessoGoogleValidado(true);
             aplicarDados(res.dados);
@@ -764,7 +812,7 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       window.removeEventListener('online', autoSyncSePossivel);
       clearInterval(intervalId);
     };
-  }, [aplicarDados]);
+  }, [aplicarDados, currentUser?.uid]);
 
   // 4. SINCRONIZAÇÃO DA BASE OFICIAL COM RENOVAÇÃO INTERATIVA SE NECESSÁRIO
   const sincronizarAgora = useCallback(async () => {
@@ -779,6 +827,8 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       try {
         const resLogin = await googleSignIn();
         if (resLogin) {
+          setAcessoGoogleValidado(false);
+          setPerfilServidor(null);
           setCurrentUser(resLogin.user);
           setIsTokenExpired(false);
           setTokenExpiredAviso(null);
@@ -804,6 +854,7 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     // 2. SEGUNDO: Lê a base oficial atualizada com as novas alterações gravadas!
     const res = await sincronizarDaBaseOficial();
     if (res.sucesso && res.dados) {
+      setPerfilServidor(await obterPerfilServidor());
       if (currentUser) registrarSessaoAutorizada(currentUser.uid);
       setAcessoGoogleValidado(true);
       aplicarDados(res.dados);
@@ -815,7 +866,7 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       setConnectionErrorMessage(res.erro || 'Falha ao sincronizar com Google Sheets');
       setConnectionStatus('ERRO_CONEXAO'); // mantém cache, mas informa falha real
     }
-  }, [aplicarDados, hasLocalCache]);
+  }, [aplicarDados, hasLocalCache, currentUser?.uid]);
 
   const carregarDadosReais = sincronizarAgora;
 
@@ -827,6 +878,8 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       // ela poderia abrir outro popup e iniciar uma segunda tentativa concorrente.
       const res = await googleSignIn();
       if (!res) throw new Error('A autenticação não foi concluída.');
+      setAcessoGoogleValidado(false);
+      setPerfilServidor(null);
       setCurrentUser(res.user);
       setConnectionStatus('CARREGANDO');
       const resultado = await Promise.race([
@@ -839,6 +892,7 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       if (!resultado.sucesso || !resultado.dados) {
         throw new Error(resultado.erro || 'Não foi possível validar o acesso à planilha oficial.');
       }
+      setPerfilServidor(await obterPerfilServidor());
       registrarSessaoAutorizada(res.user.uid);
       setAcessoGoogleValidado(true);
       aplicarDados(resultado.dados);
@@ -1016,8 +1070,8 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       dia_semana: h.dia_semana,
       hora_inicio: h.hora_inicio,
       hora_fim: h.hora_fim,
-      data_inicio: '2026-08-01',
-      data_fim: '2026-12-20',
+      data_inicio: periodos.find(p=>p.periodo_id===pId)?.data_inicio || '',
+      data_fim: periodos.find(p=>p.periodo_id===pId)?.data_fim || '',
       ativo: true,
     }));
 
@@ -1096,8 +1150,8 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         dia_semana: h.dia_semana,
         hora_inicio: h.hora_inicio,
         hora_fim: h.hora_fim,
-        data_inicio: '2026-08-01',
-        data_fim: '2026-12-20',
+        data_inicio: periodos.find(p=>p.periodo_id===anterior.periodo_id)?.data_inicio || '',
+        data_fim: periodos.find(p=>p.periodo_id===anterior.periodo_id)?.data_fim || '',
         ativo: true,
       }));
       const anteriores = horariosTurma.filter(h => h.turma_id === turmaId);
@@ -1181,8 +1235,9 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           notifySaveSuccess(false);
         }
       } catch (err: any) {
-        console.warn('Erro ao persistir orientação de forma resiliente:', err);
-        notifySaveSuccess(false);
+        handleSaveError(err);
+        setOrientacoes(prev=>prev.filter(o=>o.orientacao_id!==newOri.orientacao_id));
+        throw err;
       }
       return newOri;
     }
@@ -1212,8 +1267,9 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         notifySaveSuccess(false);
       }
     } catch (err: any) {
-      console.warn('Erro ao persistir atualização de orientação:', err);
-      notifySaveSuccess(false);
+      handleSaveError(err);
+      setOrientacoes(prev=>prev.map(o=>o.orientacao_id===ori.orientacao_id?ori:o));
+      throw err;
     }
   };
 
@@ -1241,8 +1297,8 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       data_hora: now,
       texto,
     };
-    setFeedbacks(prev => [newFeedback, ...prev]);
     await persistirMudancaWeb('feedback_alunos', 'INSERT', newFeedback, [newFeedback, ...feedbacks]);
+    setFeedbacks(prev => [newFeedback, ...prev]);
   };
 
   const deleteFeedback = async (feedbackId: string): Promise<void> => {
@@ -1274,8 +1330,8 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       tipo,
       observacao,
     };
-    setOcorrencias(prev => [newOcorrencia, ...prev]);
     await persistirMudancaWeb('ocorrencias', 'INSERT', newOcorrencia, [newOcorrencia, ...ocorrencias]);
+    setOcorrencias(prev => [newOcorrencia, ...prev]);
   };
 
   const deleteOcorrencia = async (ocorrenciaId: string): Promise<void> => {
@@ -1309,8 +1365,8 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       data_criacao: today,
       atualizado_em: today,
     };
-    setPontosAcompanhamento(prev => [newPonto, ...prev]);
     await persistirMudancaWeb('pontos_acompanhamento', 'INSERT', newPonto, [newPonto, ...pontosAcompanhamento]);
+    setPontosAcompanhamento(prev => [newPonto, ...prev]);
   };
 
   const togglePontoStatus = async (pontoId: string): Promise<void> => {
@@ -1410,8 +1466,8 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       data_entrega: status === 'ENTREGUE' ? today : '',
       observacao: obs,
     };
-    setDocumentos(prev => [...prev, newDoc]);
     await persistirMudancaWeb('documentos', 'INSERT', newDoc, [...documentos, newDoc]);
+    setDocumentos(prev => [...prev, newDoc]);
   };
 
   // ==========================================
@@ -1440,8 +1496,8 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       criado_em: now,
       atualizado_em: now,
     };
-    setFrequencias(prev => [newFreq, ...prev]);
     await persistirMudancaWeb('frequencias', 'INSERT', newFreq, [newFreq, ...frequencias]);
+    setFrequencias(prev => [newFreq, ...prev]);
   };
 
   const updateFrequenciaStatus = async (
@@ -1489,6 +1545,7 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
     
 
+    await persistirMudancaWeb('avaliacoes', anterior ? 'UPDATE' : 'INSERT', registro, anterior ? avaliacoes.map(a => a.avaliacao_id === anterior.avaliacao_id ? registro : a) : [...avaliacoes, registro]);
     setAvaliacoes(prev => {
       const idx = prev.findIndex(a => a.matricula_id === matriculaId && a.criterio_id === criterioId);
       if (idx >= 0) {
@@ -1508,7 +1565,6 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         ];
       }
     });
-    await persistirMudancaWeb('avaliacoes', anterior ? 'UPDATE' : 'INSERT', registro, anterior ? avaliacoes.map(a => a.avaliacao_id === anterior.avaliacao_id ? registro : a) : [...avaliacoes, registro]);
   };
 
   // ==========================================
@@ -1724,6 +1780,7 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     const turma = turmas.find(t => t.turma_id === turmaId);
     return criterios.filter(c => {
       if (c.ativo === false) return false;
+      if(c.periodo_id && c.periodo_id!==turma?.periodo_id)return false;
       if (c.turma_id && c.turma_id !== turmaId) return false;
       if (c.disciplina_id && turma && c.disciplina_id !== turma.disciplina_id) return false;
       if (instrumento && c.instrumento_avaliacao && c.instrumento_avaliacao !== instrumento) return false;
@@ -2139,10 +2196,10 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       atualizado_em: new Date().toISOString(),
     };
     const listaAtualizada = [...encontrosTurma.filter(e => !(e.turma_id === turmaId && e.data === data)), atualizado];
-    setEncontrosTurma(listaAtualizada);
     // Não alterar realização do estudo dirigido sem confirmação da docente.
     // As aulas canceladas não justificam automaticamente ausência de RSS/prática.
     await persistirMudancaWeb('encontros_turma', anterior ? 'UPDATE' : 'INSERT', atualizado, listaAtualizada);
+    setEncontrosTurma(listaAtualizada);
     await registrarAuditoria({
       acao: 'MARCAR_AULA_NAO_REALIZADA',
       entidade: 'encontros_turma',
@@ -2163,51 +2220,6 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     setSaveStatus('SALVANDO');
     const now = new Date().toISOString();
     const horarioOriginal = horariosTurma.find(h => h.turma_id === turmaId);
-
-    setEncontrosTurma(prev => {
-      // 1. Marca encontro original como REAGENDADO
-      const idxOrig = prev.findIndex(e => e.turma_id === turmaId && e.data === dataOriginal);
-      const origAtualizado: EncontroTurma = {
-        encontro_id: idxOrig >= 0 ? prev[idxOrig].encontro_id : generateUuid(),
-        turma_id: turmaId,
-        periodo_id: selectedPeriodoId,
-        data: dataOriginal,
-        status: 'REAGENDADO',
-        motivo_nao_realizado: motivo || 'Reagendamento',
-        data_reagendada: novaData,
-        hora_reagendada: novoHorario,
-        atualizado_em: now,
-      };
-
-      // 2. Cria novo encontro para a novaData
-      const idxNovo = prev.findIndex(e => e.turma_id === turmaId && e.data === novaData);
-      const novoEncontro: EncontroTurma = {
-        encontro_id: idxNovo >= 0 ? prev[idxNovo].encontro_id : generateUuid(),
-        turma_id: turmaId,
-        periodo_id: selectedPeriodoId,
-        data: novaData,
-        status: 'PREVISTO',
-        data_original: dataOriginal,
-        hora_inicio: novoHorario || horarioOriginal?.hora_inicio || '18:30',
-        hora_fim: horarioOriginal?.hora_fim || '21:12',
-        observacao: `Reagendado de ${dataOriginal}. Motivo: ${motivo || 'Reorganização acadêmica'}`,
-        atualizado_em: now,
-      };
-
-      const copy = [...prev];
-      if (idxOrig >= 0) copy[idxOrig] = origAtualizado;
-      else copy.push(origAtualizado);
-
-      if (idxNovo >= 0) copy[idxNovo] = novoEncontro;
-      else copy.push(novoEncontro);
-
-      return copy;
-    });
-
-    // A transferência do estudo dirigido NÃO altera `leituras_responsaveis`: ela é derivada dos encontros
-    // cancelados/reagendados (gravados abaixo) em `leiturasDoEncontro`. Mudar a data só na memória faria
-    // as telas divergirem até recarregar e outros dispositivos nunca veriam a mudança.
-    void transferirEstudoDirigido;
 
     // Compartilha o cancelamento e o reagendamento com outros dispositivos.
     const itemOriginal = encontrosTurma.find(e => e.turma_id === turmaId && e.data === dataOriginal);
@@ -2234,6 +2246,14 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     await persistirMudancaWeb('encontros_turma', itemOriginal ? 'UPDATE' : 'INSERT', registroOriginal, listaReagendada);
     await persistirMudancaWeb('encontros_turma', itemNovo ? 'UPDATE' : 'INSERT', registroNovo, listaReagendada);
 
+    setEncontrosTurma(listaReagendada);
+    if (transferirEstudoDirigido) {
+      for(const leitura of leiturasResponsaveis.filter(l=>l.turma_id===turmaId && l.data===dataOriginal)) {
+        const alterada={...leitura,data:novaData,observacao:`Transferido de ${dataOriginal} (Reagendamento)`};
+        await persistirMudancaWeb('leituras_responsaveis','UPDATE',alterada,[]);
+        setLeiturasResponsaveis(prev=>prev.map(l=>l.leitura_id===leitura.leitura_id?alterada:l));
+      }
+    }
     await registrarAuditoria({
       acao: 'REAGENDAR_SUPERVISAO',
       entidade: 'encontros_turma',
@@ -2249,8 +2269,8 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     const anterior = encontrosTurma.find(e => e.turma_id === turmaId && e.data === data);
     if (!anterior) return;
     const atualizados = encontrosTurma.filter(e => !(e.turma_id === turmaId && e.data === data));
-    setEncontrosTurma(atualizados);
     await persistirMudancaWeb('encontros_turma', 'DELETE', anterior, atualizados);
+    setEncontrosTurma(atualizados);
   };
 
   // ==========================================
@@ -2413,76 +2433,20 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       total_faltas: Object.values(mapNovasFreqs).filter(f => f.status !== 'PRESENTE').length,
       atualizado_em: now,
     };
-    setEncontrosTurma(prev => {
-      const idx = prev.findIndex(e => e.turma_id === turmaId && e.data === dataAula);
-      if (idx < 0) return [...prev, encontroAtualizado];
-      const copy = [...prev];
-      copy[idx] = encontroAtualizado;
-      return copy;
-    });
-
-    // 1. Persistência local imediata e segura em cache persistente (IndexedDB)
+    // Cada alteração captura a versão ANTERIOR na transação cache + fila.
     const novasFreqsArray = Object.values(mapNovasFreqs);
-    const todasFreqsAtualizadas = [
-      ...novasFreqsArray,
-      ...frequencias.filter(
-        f => !(matriculasDaTurma.some(m => m.matricula_id === f.matricula_id) && f.data_aula === dataAula)
-      ),
-    ];
-    await salvarTabelaUnicaNoIndexedDb('frequencias', todasFreqsAtualizadas).catch(err =>
-      console.warn('Erro ao salvar frequências no IndexedDB:', err)
-    );
-
-    if (novasOcorrencias.length > 0) {
-      await salvarTabelaUnicaNoIndexedDb('ocorrencias', [...novasOcorrencias, ...ocorrencias]).catch(err =>
-        console.warn('Erro ao salvar ocorrencias no IndexedDB:', err)
-      );
-    }
-
-    // 2. Persistência remota com tratamento rigoroso para token expirado / offline
-    const token = await getAccessToken();
-    let todasGravadasRemotamente = true;
-    let houveTokenExpirado = false;
-
-    if (!token) {
-      todasGravadasRemotamente = false;
-      // Enfileira na fila segura syncQueue com chave determinística (evita duplicidade)
+    let todasGravadasRemotamente=true;
+    const houveTokenExpirado=!await getAccessToken();
+    try {
       for (const freq of novasFreqsArray) {
-        await salvarRegistroResiliente('frequencias', 'INSERT', freq);
+        const res=await salvarRegistroResiliente('frequencias','INSERT',freq);
+        if(!res.gravadoOnline)todasGravadasRemotamente=false;
       }
       for (const oc of novasOcorrencias) {
-        await salvarRegistroResiliente('ocorrencias', 'INSERT', oc);
+        const res=await salvarRegistroResiliente('ocorrencias','INSERT',oc);
+        if(!res.gravadoOnline)todasGravadasRemotamente=false;
       }
-    } else {
-      // Tenta persistir diretamente no Google Sheets com confirmação remota
-      for (const freq of novasFreqsArray) {
-        try {
-          const res = await salvarRegistroResiliente('frequencias', 'INSERT', freq);
-          if (!res.gravadoOnline) {
-            todasGravadasRemotamente = false;
-          }
-        } catch (err: any) {
-          todasGravadasRemotamente = false;
-          if (err?.message?.includes('Sessão expirada') || err?.message?.includes('401')) {
-            houveTokenExpirado = true;
-          }
-        }
-      }
-
-      for (const oc of novasOcorrencias) {
-        try {
-          const res = await salvarRegistroResiliente('ocorrencias', 'INSERT', oc);
-          if (!res.gravadoOnline) {
-            todasGravadasRemotamente = false;
-          }
-        } catch (err: any) {
-          todasGravadasRemotamente = false;
-          if (err?.message?.includes('Sessão expirada') || err?.message?.includes('401')) {
-            houveTokenExpirado = true;
-          }
-        }
-      }
-    }
+    } catch(error) { handleSaveError(error); throw error; }
 
     // Encerramento do encontro é uma escrita real e independente.
     // Se a rede não estiver disponível, fica na fila após as frequências;
@@ -2496,6 +2460,14 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       handleSaveError(erro);
       throw new Error('Frequências processadas, mas não foi possível garantir o fechamento do encontro. Verifique a fila de sincronização antes de tentar novamente.');
     }
+
+    setEncontrosTurma(prev => {
+      const idx = prev.findIndex(e => e.turma_id === turmaId && e.data === dataAula);
+      if (idx < 0) return [...prev, encontroAtualizado];
+      const copy = [...prev];
+      copy[idx] = encontroAtualizado;
+      return copy;
+    });
 
     if (houveTokenExpirado) {
       setIsTokenExpired(true);
@@ -2739,6 +2711,12 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         entregas,
         feedbacks: feedbacksOficiais,
         registros_supervisao: registrosSupervisao,
+        encontros_turma: encontrosTurma,
+        preparacoes_aula: preparacoesAula,
+        avaliacoes_completas: avaliacoesCompletas,
+        caixa_entrada_local: caixaEntrada,
+        fila_professora_local: filaProfessora,
+        fila_supervisao_local: filaSupervisao,
         sincronizacao,
         dicionario_dados: dicionarioDados,
         contrato_app: contratoApp,
@@ -2747,7 +2725,7 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   }) as unknown as TabelasBackup;
 
   const exportDatabaseAsJson = async (): Promise<string> =>
-    JSON.stringify(await gerarBackup(tabelasParaBackup()), null, 2);
+    JSON.stringify({...await gerarBackup(tabelasParaBackup()), pendencias:await carregarFilaSincronizacao(), recuperacoes:await carregarRecuperacoesDoUsuario(currentUser?.uid ?? ''), proprietario:currentUser?.uid ?? null}, null, 2);
 
   /** Confere o arquivo (somente leitura) e lista o que difere dos dados atuais. */
   const conferirBackup = async (bruto: unknown): Promise<{ relatorio: RelatorioBackup; diferencas: DiferencaRegistro[] }> => {

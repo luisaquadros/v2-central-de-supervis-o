@@ -38,19 +38,22 @@ export type EstadoAcesso =
   | { estado: 'AUTORIZADO'; email: string; perfil: PerfilServidor }
   | { estado: 'SEM_PERMISSAO' | 'NAO_CONFIGURADO' | 'SESSAO_INVALIDA' | 'INDISPONIVEL'; mensagem: string };
 
-let acessoCache: { em: number; estado: EstadoAcesso } | null = null;
+let acessoCache: { identidade: string; em: number; estado: EstadoAcesso } | null = null;
 export const limparCachePerfil = () => { acessoCache = null; };
 
 /** Pergunta ao servidor quem é esta conta e o que ela pode. A decisão é do servidor; a tela só mostra o resultado. */
 export async function verificarAcessoEscrita(forcar = false): Promise<EstadoAcesso> {
-  if (!forcar && acessoCache && Date.now() - acessoCache.em < 10 * 60_000 && acessoCache.estado.estado === 'AUTORIZADO') return acessoCache.estado;
+  const identidade = await provedorIdToken();
+  if (!identidade) { limparCachePerfil(); return {estado: 'SESSAO_INVALIDA', mensagem: 'Entre novamente com a conta Google.'}; }
+  if (!forcar && acessoCache?.identidade === identidade && Date.now() - acessoCache.em < 10 * 60_000 && acessoCache.estado.estado === 'AUTORIZADO') return acessoCache.estado;
   const estado = await consultarAcesso();
-  if (estado.estado === 'AUTORIZADO') acessoCache = { em: Date.now(), estado };
+  if (estado.estado === 'AUTORIZADO') acessoCache = { identidade, em: Date.now(), estado };
+  else limparCachePerfil();
   return estado;
 }
 /** Perfil verificado no servidor, ou null se indisponível (offline, sem permissão, não configurado). */
-export async function obterPerfilServidor(): Promise<PerfilServidor | null> {
-  const e = await verificarAcessoEscrita();
+export async function obterPerfilServidor(forcar=false): Promise<PerfilServidor | null> {
+  const e = await verificarAcessoEscrita(forcar);
   return e.estado === 'AUTORIZADO' ? e.perfil : null;
 }
 async function consultarAcesso(): Promise<EstadoAcesso> {
@@ -61,7 +64,10 @@ async function consultarAcesso(): Promise<EstadoAcesso> {
     const data = await res.json().catch(() => ({}));
     if (res.ok && data.ok) return { estado: 'AUTORIZADO', email: String(data.email), perfil: { papel: data.papel, email: String(data.email), turmas: data.turmas ?? [], operacoes: data.operacoes ?? [], avisos: data.avisos ?? [] } };
     const mensagem = String(data.message || 'Não foi possível verificar o acesso.');
-    if (res.status === 403) return { estado: 'SEM_PERMISSAO', mensagem };
+    if (res.status === 403) {
+      if(typeof window!=='undefined'&&typeof window.dispatchEvent==='function')window.dispatchEvent(new Event('cs:access-revoked'));
+      return { estado:'SEM_PERMISSAO',mensagem };
+    }
     if (res.status === 503) return { estado: 'NAO_CONFIGURADO', mensagem };
     if (res.status === 401) return { estado: 'SESSAO_INVALIDA', mensagem };
     return { estado: 'INDISPONIVEL', mensagem };

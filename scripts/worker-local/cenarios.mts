@@ -26,7 +26,7 @@ assert.equal(estado().orientacoes[1][3], 'CONCLUIDA'); assert.equal(estado().ori
 const log = estado().log_alteracoes; assert.equal(log.length, 2);
 resultado['linha do log'] = { usuario: log[1][2], tabela: log[1][3], id: log[1][4], acao: log[1][5], campos: log[1][6], antes: log[1][7], depois: log[1][8] };
 assert.equal(log[1][2], 'professora@exemplo.com'); assert(!JSON.stringify(log).includes('texto reservado'), 'texto livre fora do log');
-r = await escrever(idAdmin, '0003', 'orientacoes', 'UPDATE', { orientacao_id: 'o1', status: 'CONCLUIDA' }, v0); const j2 = await r.json(); resultado['reenvio idêntico'] = `${r.status} replayed=${j2.replayed}`; assert.equal(j2.replayed, true); assert.equal(estado().log_alteracoes.length, 2);
+r = await escrever(idAdmin, '0003', 'orientacoes', 'UPDATE', { orientacao_id: 'o1', status: 'CONCLUIDA', descricao: 'texto reservado novo' }, v0); const j2 = await r.json(); resultado['reenvio idêntico'] = `${r.status} replayed=${j2.replayed}`; assert.equal(j2.replayed, true); assert.equal(estado().log_alteracoes.length, 2);
 r = await escrever(idAdmin, '0004', 'orientacoes', 'UPDATE', { orientacao_id: 'o1', status: 'CANCELADA' }, v0); resultado['versão antiga'] = r.status; assert.equal(r.status, 409); assert.equal(estado().orientacoes[1][3], 'CONCLUIDA');
 const atual = { ...v0, status: 'CONCLUIDA', descricao: 'texto reservado novo' };
 const par = await Promise.all([escrever(idAdmin, '0005', 'orientacoes', 'UPDATE', { orientacao_id: 'o1', status: 'REVISAR', descricao: 'texto reservado novo' }, atual), escrever(idAdmin, '0006', 'orientacoes', 'UPDATE', { orientacao_id: 'o1', status: 'ARQUIVADA', descricao: 'texto reservado novo' }, atual)]);

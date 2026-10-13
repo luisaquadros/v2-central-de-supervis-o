@@ -1,11 +1,13 @@
 import { strict as assert } from 'node:assert';
 import { indexedDB } from 'fake-indexeddb';
 const mem = new Map<string, string>();
-Object.assign(globalThis, { window: { indexedDB }, localStorage: { getItem: (k: string) => mem.get(k) ?? null, setItem: (k: string, v: string) => { mem.set(k, v); } } });
+Object.assign(globalThis, { window: { indexedDB }, localStorage: { removeItem:(k:string)=>mem.delete(k), getItem: (k: string) => mem.get(k) ?? null, setItem: (k: string, v: string) => { mem.set(k, v); } } });
 const I = await import('../services/indexedDbService');
 
 await I.salvarTabelasNoIndexedDb({ alunos: [{ aluno_id: 'a1' }], avaliacoes: [{ avaliacao_id: 'v1', nota: 8 }] });
-assert.equal(await I.garantirCacheDoUsuario('uid-A'), 'MESMO', 'primeira conta adota o cache');
+assert.equal(await I.garantirCacheDoUsuario('uid-A'), 'LIMPO', 'cache sem proprietário é arquivado, nunca adotado silenciosamente');
+assert(mem.has('cs_arquivo_conta:legado-sem-conta:cache_v1'));
+await I.salvarTabelasNoIndexedDb({avaliacoes:[{avaliacao_id:'v1',nota:8}]});
 assert.equal(await I.garantirCacheDoUsuario('uid-A'), 'MESMO');
 assert.equal((await I.carregarTodasTabelasDoIndexedDb())?.avaliacoes.length, 1);
 

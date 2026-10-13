@@ -30,8 +30,8 @@ assert.equal(valorComparavelCampo('turmas', 'dia_semana', 'Terça'), 'Terça', '
 }
 for (const t of ['ocorrencias', 'orientacoes', 'feedbacks', 'feedback_alunos', 'pontos_acompanhamento', 'registros_supervisao', 'preparacoes_aula'])
   assert(TABELAS_CRITICAS.has(t), `${t} deve passar pelo coordenador`);
-for (const t of ['configuracoes', 'criterios_avaliacao', 'marcos_academicos', 'registros_semanais'])
-  assert(!TABELAS_CRITICAS.has(t), `${t} fica no caminho direto nesta etapa`);
+for (const t of ['configuracoes','criterios_avaliacao','marcos_academicos']) assert(TABELAS_CRITICAS.has(t));
+assert(!TABELAS_CRITICAS.has('registros_semanais'), 'RSS permanece somente leitura');
 
 // ---- Worker: log gravado, idempotente e tolerante a falha ----
 const abas: Record<string, any[][]> = { ocorrencias: [['ocorrencia_id', 'matricula_id', 'status', 'observacao'], ['o1', 'm1', 'ABERTA', 'segredo']] };

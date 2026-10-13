@@ -4,27 +4,10 @@ Object.assign(globalThis, { window: { indexedDB } });
 const { salvarRegistroResiliente, processarFilaSincronizacao, subscribeSyncStatus } = await import('../services/syncService');
 const { carregarFilaSincronizacao, carregarTodasTabelasDoIndexedDb, atualizarItemFila } = await import('../services/indexedDbService');
 const { setMockToken, clearAccessToken } = await import('../services/googleSheetsService');
-let rows: any[][] = [['marco_id', 'matricula_id', 'texto', 'status']];
-let writes = 0;
-const ok = (body: any) => ({ ok: true, status: 200, json: async () => body }) as Response;
-globalThis.fetch = (async (url: any, init?: RequestInit) => {
-  const u = String(url);
-  if (u.includes('fields=')) return ok({ sheets: [{properties: {title: 'marcos_academicos', sheetId: 1}}] });
-  if (!init?.method) return ok({values: rows});
-  const body = JSON.parse(String(init.body));
-  if (init.method === 'POST' && u.includes(':append?')) { rows.push(body.values[0]); writes++; return ok({}); }
-  if (init.method === 'POST' && u.includes('/values:batchUpdate')) {
-    for (const change of body.data as {range:string;values:any[][]}[]) {
-      const col = change.range.match(/!([A-Z]+)\d+$/)?.[1];
-      if (!col) throw new Error('Invalid update range');
-      const index = [...col].reduce((acc,char)=>acc*26+char.charCodeAt(0)-64,0)-1;
-      rows[1][index] = change.values[0][0];
-    }
-    writes++; return ok({});
-  }
-  if (init.method === 'PUT') { rows[1] = body.values[0]; writes++; return ok({}); }
-  throw new Error('Unexpected write');
-}) as typeof fetch;
+const {criarAmbiente}=await import('./ajudaAmbiente');
+const rows:any[][]=[['marco_id','matricula_id','texto','status']];
+const amb=await criarAmbiente({abas:{marcos_academicos:rows,matriculas:[['matricula_id'],['m1']]}});
+const contarEscritas=()=>amb.chamadas.filter(c=>c.metodo==='POST'&&(c.url.includes('/values:batchUpdate')||c.url.includes('marcos_academicos')&&c.url.includes(':append?'))).length;
 clearAccessToken();
 await salvarRegistroResiliente('marcos_academicos', 'INSERT', {marco_id:'a1',matricula_id:'m1',texto:'primeira',status:'ABERTA'});
 assert.equal((await carregarTodasTabelasDoIndexedDb())?.marcos_academicos[0].texto, 'primeira');
@@ -32,12 +15,12 @@ assert.equal((await carregarFilaSincronizacao()).length, 1);
 await salvarRegistroResiliente('marcos_academicos', 'UPDATE', {marco_id:'a1',texto:'mais recente'});
 assert.equal((await carregarFilaSincronizacao()).length, 1);
 assert.equal((await carregarFilaSincronizacao())[0].payload.matricula_id, 'm1');
-// (Usa uma tabela fora do coordenador: as de acompanhamento agora passam pelo Worker, coberto em testAuditoriaLog.)
+// Todas as tabelas editáveis passam pelo Worker; teste com handler real e Sheets simulado.
 // Resume an operation interrupted by closing the browser.
 await atualizarItemFila((await carregarFilaSincronizacao())[0].id, {status:'SINCRONIZANDO'});
 setMockToken('ficticio');
 await Promise.all([processarFilaSincronizacao(), processarFilaSincronizacao()]);
-assert.equal(writes, 1);
+assert.equal(contarEscritas(), 1);
 assert.equal(rows[1][2], 'mais recente');
 assert.equal((await carregarFilaSincronizacao()).length, 0);
 // A new online edit cannot be overwritten by an old queued version.
@@ -71,3 +54,5 @@ clearAccessToken();
 (globalThis as any).window.indexedDB = undefined;
 await assert.rejects(() => salvarRegistroResiliente('marcos_academicos', 'INSERT', {marco_id:'a2'}), /IndexedDB/);
 console.log('[PASS] Cache+outbox atomicity, offline edits, restart recovery, concurrent replay, latest edit and storage failure.');
+
+amb.restaurar();

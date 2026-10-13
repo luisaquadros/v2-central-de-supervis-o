@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, lazy, Suspense } from 'react';
 import { Menu, X, Play, ArrowLeft, RefreshCw, AlertTriangle } from 'lucide-react';
 import { SupervisaoProvider, useSupervisao } from './context/SupervisaoContext';
 import { Sidebar } from './components/Sidebar';
@@ -10,20 +10,21 @@ import { MobileBottomNav } from './components/MobileBottomNav';
 import { PrepararAulaModal } from './components/PrepararAulaModal';
 import { ErrorNotifier } from './components/ErrorNotifier';
 import { ViewErrorBoundary } from './components/ViewErrorBoundary';
-import { PrimeiraConexaoView } from './views/PrimeiraConexaoView';
+import {PrimeiraConexaoView} from './views/PrimeiraConexaoView';
 import { NavTab } from './types';
-import { DashboardView } from './views/DashboardView';
-import { HojeView } from './views/HojeView';
-import { AvaliacaoView } from './views/AvaliacaoView';
-import { CalendarioView } from './views/CalendarioView';
-import { TurmasView, TurmaDetalheView } from './views/TurmasView';
-import { ModoSupervisaoView } from './views/ModoSupervisaoView';
-import { AlunosListView } from './views/AlunosListView';
-import { AlunoFichaView } from './views/AlunoFichaView';
-import { FrequenciaView } from './views/FrequenciaView';
-import { PendenciasView } from './views/PendenciasView';
-import { SemestresView } from './views/SemestresView';
-import { ConfiguracoesView } from './views/ConfiguracoesView';
+const DashboardView = lazy(() => import('./views/DashboardView').then(m=>({default:m.DashboardView})));
+const HojeView = lazy(() => import('./views/HojeView').then(m=>({default:m.HojeView})));
+const AvaliacaoView = lazy(() => import('./views/AvaliacaoView').then(m=>({default:m.AvaliacaoView})));
+const CalendarioView = lazy(() => import('./views/CalendarioView').then(m=>({default:m.CalendarioView})));
+const TurmasView = lazy(() => import('./views/TurmasView').then(m=>({default:m.TurmasView})));
+const TurmaDetalheView = lazy(() => import('./views/TurmasView').then(m=>({default:m.TurmaDetalheView})));
+const ModoSupervisaoView = lazy(() => import('./views/ModoSupervisaoView').then(m=>({default:m.ModoSupervisaoView})));
+const AlunosListView = lazy(() => import('./views/AlunosListView').then(m=>({default:m.AlunosListView})));
+const AlunoFichaView = lazy(() => import('./views/AlunoFichaView').then(m=>({default:m.AlunoFichaView})));
+const FrequenciaView = lazy(() => import('./views/FrequenciaView').then(m=>({default:m.FrequenciaView})));
+const PendenciasView = lazy(() => import('./views/PendenciasView').then(m=>({default:m.PendenciasView})));
+const SemestresView = lazy(() => import('./views/SemestresView').then(m=>({default:m.SemestresView})));
+const ConfiguracoesView = lazy(() => import('./views/ConfiguracoesView').then(m=>({default:m.ConfiguracoesView})));
 
 type AppView =
   | { type: 'tab'; tab: NavTab; filterParam?: string }
@@ -143,7 +144,7 @@ const MainContent: React.FC = () => {
 
   // 2. Proteção de dados acadêmicos: cache de dispositivo nunca libera telas sem login.
   // Firebase preserva o login legítimo ao atualizar a página; Sheets mantém permissão por conta.
-  if ((!currentUser || !acessoGoogleValidado) || (!hasLocalCache && periodos.length === 0)) {
+  if ((!currentUser || !acessoGoogleValidado || !perfilServidor || perfilServidor.email!==currentUser?.email?.toLowerCase()) || (!hasLocalCache && periodos.length === 0)) {
     return <PrimeiraConexaoView />;
   }
 
@@ -177,7 +178,7 @@ const MainContent: React.FC = () => {
             <div className="flex items-center gap-3">
               <div className="md:hidden flex items-center gap-2">
                 <button
-                  onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+                  aria-label={isMobileMenuOpen ? 'Fechar menu' : 'Abrir menu'} onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
                   className="p-1.5 rounded-lg border border-slate-200 text-slate-700"
                 >
                   {isMobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
@@ -228,7 +229,7 @@ const MainContent: React.FC = () => {
         )}
 
         {/* Viewport View Content with Resilience against White Screen */}
-        <div className={`flex-1 min-h-0 overflow-y-auto overscroll-contain touch-pan-y p-3 sm:p-6 lg:p-8 ${isModoSupervisao ? '' : 'pb-[calc(5rem+env(safe-area-inset-bottom))] md:pb-8'}`}>
+        <div className={`flex-1 min-h-0 overflow-y-auto overscroll-contain touch-pan-y ${isModoSupervisao ? 'p-0' : 'p-3 sm:p-6 lg:p-8 pb-[calc(5rem+env(safe-area-inset-bottom))] md:pb-8'}`}>
           <ViewErrorBoundary
             key={
               currentView.type === 'tab'
@@ -249,6 +250,7 @@ const MainContent: React.FC = () => {
                 : 'da ficha do estudante'
             }
           >
+            <Suspense fallback={<p role="status">Carregando área…</p>}>
             {currentView.type === 'tab' && currentView.tab === 'hoje' && (
               <HojeView
                 onOpenTurma={handleOpenTurma}
@@ -339,6 +341,7 @@ const MainContent: React.FC = () => {
                 onVoltar={handleVoltarDeAluno}
               />
             )}
+            </Suspense>
           </ViewErrorBoundary>
         </div>
       </main>

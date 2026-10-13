@@ -53,6 +53,7 @@ const abas: Record<string, any[][]> = {
   entregas: [['entrega_id', 'matricula_id', 'tipo_entrega', 'status', 'data_envio']],
 };
 const ok = (d: unknown) => ({ ok: true, status: 200, json: async () => d }) as Response;
+abas.matriculas=[['matricula_id'], ...[...new Set(tabelas.entregas.map(e=>e.matricula_id))].map(id=>[id])];
 const store = new Map<string, unknown>();
 const coord = new WriteCoordinator({ storage: { get: async (k: string) => store.get(k), put: async (k: string, v: unknown) => { store.set(k, v); } } } as any, {} as any);
 const envWorker: any = { ADMIN_EMAILS: 'professora@exemplo.com', ASSETS: { fetch: async () => new Response('') },

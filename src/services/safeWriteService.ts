@@ -18,7 +18,6 @@ export const TABELAS_AUTORIZADAS_ESCRITA = [
   'alunos',
   'matriculas',
   'orientacoes',
-  'registros_semanais',
   'documentos',
   'avaliacoes',
   'feedback_alunos',

@@ -65,7 +65,7 @@ html[data-theme="dark"] .text-slate-800 { color: #dbe8f2; }
 html[data-theme="dark"] .text-slate-700 { color: #cad9e6; }
 html[data-theme="dark"] .text-slate-600 { color: #b2c5d4; }
 html[data-theme="dark"] .text-slate-500 { color: #95adbf; }
-html[data-theme="dark"] .text-slate-400 { color: #8297ac; }
+html[data-theme="dark"] .text-slate-400 { color: #95adbf; }
 html[data-theme="dark"] .text-indigo-700,
 html[data-theme="dark"] .text-indigo-800 { color: #c2baff; }
 html[data-theme="dark"] .text-emerald-700,
@@ -87,8 +87,8 @@ html[data-theme="dark"] :is(input, textarea, select) {
 }
 html[data-theme="dark"] :is(input,textarea)::placeholder { color: #90a4b8; }
 html[data-theme="dark"] .theme-selector { background: #26364b; color: #d8e9f3; }
-html[data-theme="dark"] .hover\\:bg-slate-50:hover,
-html[data-theme="dark"] .hover\\:bg-slate-100:hover { background-color: #293c50; }
+html[data-theme="dark"] .hover\:bg-slate-50:hover,
+html[data-theme="dark"] .hover\:bg-slate-100:hover { background-color: #293c50; }
 html[data-theme="dark"] ::-webkit-scrollbar-thumb { background-color: #4e647c; }
 html[data-theme="dark"] .shadow-sm,
 html[data-theme="dark"] .shadow-xs { box-shadow: 0 1px 8px rgb(0 0 0 / .22); }
@@ -132,3 +132,12 @@ html[data-theme="dark"] .cs-primary-action:hover { background: #3c5b75; }
 .cs-reading-link:hover { color: var(--cs-navy); }
 html[data-theme="dark"] .cs-reading-link { color: #91dfd1; }
 html[data-theme="dark"] .cs-reading-link:hover { color: #c2f4eb; }
+
+/* Texto auxiliar também precisa de contraste suficiente em telas pequenas. */
+html:not([data-theme="dark"]) .text-slate-400 { color: #52647b; }
+
+html header.bg-slate-900 .text-slate-400 { color: #cbd5e1; }
+
+html[data-theme="dark"] .bg-amber-400.text-slate-950 { color: #15233b; }
+html[data-theme="dark"] .text-red-800 { color: #ffb8bf; }
+html[data-theme="dark"] .text-amber-900 { color: #eed49a; }

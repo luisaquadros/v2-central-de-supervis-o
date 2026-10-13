@@ -32,6 +32,7 @@ import {
   SyncMeta,
   SyncQueueItem,
   SyncQueueOpTipo,
+  garantirCacheDoUsuario,
 } from './indexedDbService';
 import {
   carregarDadosDaPlanilhaOficial,
@@ -39,6 +40,7 @@ import {
   removerRegistroDaPlanilhaOficial,
   getAccessToken,
   TABELAS_NORMALIZADAS,
+  auth,
 } from './googleSheetsService';
 import { validarEscritaTabela } from './safeWriteService';
 import { DadosIniciais } from './dadosIniciais';
@@ -195,6 +197,7 @@ async function sincronizarDaBaseOficialInterna(): Promise<{
   erro?: string;
 }> {
   notifySyncStatusChange({ status: 'SINCRONIZANDO' });
+  const usuarioInicial=auth.currentUser?.uid;
 
   try {
     const token = await getAccessToken();
@@ -206,9 +209,13 @@ async function sincronizarDaBaseOficialInterna(): Promise<{
       return { sucesso: false, erro: 'Não autenticado no Google.' };
     }
 
+    const perfilAutorizado = await obterPerfilServidor(true);
+    if (!perfilAutorizado) throw new Error('Acesso não autorizado ou indisponível. Nenhum dado remoto foi carregado.');
+    await conferirProprietario();
+
     // Alterações locais precisam ser confirmadas antes de aceitar o snapshot remoto.
     // Caso permaneçam pendentes, a leitura não pode sobrescrever essas tabelas.
-    await processarFilaInterna();
+    // A leitura não espera toda a fila: tabelas pendentes são preservadas abaixo.
     const pendentesAntesDaLeitura = (await carregarFilaSincronizacao())
       .filter(i => ['PENDENTE', 'ERRO', 'SINCRONIZANDO', 'CONFLITO'].includes(i.status));
     const tabelasComEscritaPendente = new Set(pendentesAntesDaLeitura.map(i => i.tabela));
@@ -218,7 +225,7 @@ async function sincronizarDaBaseOficialInterna(): Promise<{
 
     // Executa a busca resiliente na planilha oficial
     // Monitoras não leem a planilha diretamente: o servidor entrega só o que foi delegado a elas.
-    const perfilServidor = await obterPerfilServidor().catch(() => null);
+    const perfilServidor = perfilAutorizado;
     const resultado = perfilServidor?.papel === 'MONITORA'
       ? await carregarViaServidor(perfilServidor)
       : await carregarDadosDaPlanilhaOficial();
@@ -287,6 +294,7 @@ async function sincronizarDaBaseOficialInterna(): Promise<{
       erros.push(`Abas ausentes na planilha: ${missingSheets.join(', ')}`);
     }
 
+    if(auth.currentUser?.uid!==usuarioInicial)throw new Error('A conta mudou durante a leitura. Snapshot não aplicado.');
     // Salva a cópia no cache persistente do IndexedDB
     await salvarTabelasNoIndexedDb(mapParaSalvar);
 
@@ -379,6 +387,7 @@ export function salvarRegistroResiliente(
   _tabelaAtualizadaCompleta?: any[]
 ): Promise<{ gravadoOnline: boolean; enfileiradoOffline: boolean; queueItem?: SyncQueueItem }> {
   return exclusively(async () => {
+    await conferirProprietario();
     const validacao = validarEscritaTabela(tabela, registro);
     if (!validacao.valido) throw new Error(validacao.motivo);
     const item = await salvarAlteracaoAtomica(tabela, tipo, registro);
@@ -411,6 +420,7 @@ async function processarFilaInterna(): Promise<{
   erros: number;
   conflitos: number;
 }> {
+  await conferirProprietario();
   const fila = await carregarFilaSincronizacao();
   const pendentes = fila.filter(i => i.status === 'PENDENTE' || i.status === 'ERRO' || i.status === 'SINCRONIZANDO');
 
@@ -441,14 +451,13 @@ async function processarFilaInterna(): Promise<{
 
   for (const item of pendentes) {
     try {
+      await conferirProprietario();
       await atualizarItemFila(item.id, { status: 'SINCRONIZANDO', tentativas: item.tentativas + 1 });
 
       if (TABELAS_CRITICAS.has(item.tabela)) {
         await gravarCriticoCoordenado(item);
-      } else if (item.tipo === 'DELETE') {
-        await removerRegistroDaPlanilhaOficial(item.tabela, item.payload);
       } else {
-        await gravarRegistroNaPlanilhaOficial(item.tabela, item.payload);
+        throw new Error('Tabela sem coordenador de escrita. Nenhuma operação remota foi executada.');
       }
 
       // Confirmação real recebida: remove do syncQueue
@@ -481,4 +490,10 @@ async function processarFilaInterna(): Promise<{
   });
 
   return { processados, erros, conflitos };
+}
+
+async function conferirProprietario(): Promise<void> {
+  const uid = auth.currentUser?.uid;
+  if (uid && await garantirCacheDoUsuario(uid) === 'PENDENTES_DE_OUTRA_CONTA')
+    throw new Error('Há alterações de outra conta. Reconecte a conta original antes de sincronizar.');
 }

@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - fix/backend-persistencia-integridade
       - fix/cloudflare-bun-compat-20261013
       - fix/operacional-20261013-leituras-aulas-mobile
   pull_request:
@@ -28,6 +29,10 @@ jobs:
           cache: npm
       - name: Instalar dependencias
         run: npm ci
+      - name: Auditoria de dependências
+        run: npm audit --audit-level=high
+      - name: Conferir bindings Cloudflare
+        run: npx --no-install wrangler types src/server/env.d.ts --include-runtime=false --check
       - name: Checagem TypeScript
         run: npm run lint
       - name: Testes operacionais
@@ -37,4 +42,4 @@ jobs:
       - name: Validar Worker real (workerd) com planilha simulada
         run: npm run test:worker-real
       - name: Validar empacotamento Cloudflare Worker e Durable Object
-        run: npx --yes wrangler@4 deploy --dry-run --outdir=/tmp/central-supervisao-worker-check
+        run: npx --no-install wrangler deploy --dry-run --outdir=/tmp/central-supervisao-worker-check

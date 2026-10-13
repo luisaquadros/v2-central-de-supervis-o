@@ -1,3 +1,4 @@
+import { dataAcademica } from './valoresAcademicos';
 /** Explicit primary keys: never mistake a foreign key for the record identity. */
 export const PRIMARY_KEYS: Record<string, string> = {
   periodos: 'periodo_id', disciplinas: 'disciplina_id', turmas: 'turma_id',
@@ -14,7 +15,7 @@ export const PRIMARY_KEYS: Record<string, string> = {
 };
 export function recordIdentity(table: string, row: Record<string, any>): string {
   if (table === 'frequencias' && row.matricula_id && row.data_aula)
-    return JSON.stringify([String(row.matricula_id), String(row.data_aula)]);
+    return JSON.stringify([String(row.matricula_id).trim(), dataAcademica(row.data_aula)]);
   const key = PRIMARY_KEYS[table];
   // A planilha conserva as chaves físicas; a UI usa aliases de leitura.
   // Ambos identificam exatamente a mesma linha, sem criar IDs alternativos.

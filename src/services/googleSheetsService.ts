@@ -1,3 +1,4 @@
+import {dataAcademica} from './valoresAcademicos';
 import { interpretarFrequenciaOficial, statusFrequenciaParaPlanilha } from './normalizacaoAcademica';
 import { PRIMARY_KEYS, recordIdentity } from './recordIdentity';
 import { initializeApp, getApps, getApp } from 'firebase/app';
@@ -77,9 +78,12 @@ provider.addScope('https://www.googleapis.com/auth/spreadsheets');
 // Persistência segura da sessão e token de acesso OAuth no sessionStorage (com expiração de 55 minutos)
 const SESSION_TOKEN_KEY = 'cs_google_access_token_session';
 const SESSION_EXPIRY_KEY = 'cs_google_access_token_exp';
+const SESSION_UID_KEY = 'cs_google_access_token_uid';
+let accessTokenUid: string | null = null;
 let accessTokenExpiresAt = 0;
 
-function saveTokenToSession(token: string) {
+function saveTokenToSession(token: string, uid = auth.currentUser?.uid) {
+  accessTokenUid=uid ?? null;
   accessTokenExpiresAt = Date.now() + 55 * 60 * 1000;
   try {
     if (typeof window !== 'undefined') {
@@ -87,6 +91,7 @@ function saveTokenToSession(token: string) {
       try {
         sessionStorage.setItem(SESSION_TOKEN_KEY, token);
         sessionStorage.setItem(SESSION_EXPIRY_KEY, String(expiresAt));
+        if(uid)sessionStorage.setItem(SESSION_UID_KEY,uid);else sessionStorage.removeItem(SESSION_UID_KEY);
       } catch {}
     }
   } catch (e) {
@@ -107,6 +112,8 @@ function getStoredTokenFromSession(): string | null {
         const exp = Number(expStr);
         if (Date.now() < exp) {
           accessTokenExpiresAt = exp;
+          accessTokenUid=sessionStorage.getItem(SESSION_UID_KEY);
+          if(auth.currentUser && accessTokenUid!==auth.currentUser.uid){clearSessionToken();return null;}
           return token;
         } else {
           clearSessionToken();
@@ -120,11 +127,13 @@ function getStoredTokenFromSession(): string | null {
 }
 
 function clearSessionToken() {
+  accessTokenUid=null;accessTokenExpiresAt=0;
   try {
     if (typeof window !== 'undefined') {
       try {
         sessionStorage.removeItem(SESSION_TOKEN_KEY);
         sessionStorage.removeItem(SESSION_EXPIRY_KEY);
+        sessionStorage.removeItem(SESSION_UID_KEY);
       } catch {}
       try {
         localStorage.removeItem(SESSION_TOKEN_KEY);
@@ -145,6 +154,7 @@ export const initAuth = (
 ) => {
   return onAuthStateChanged(auth, async (user: User | null) => {
     if (user) {
+      if(inMemoryAccessToken && accessTokenUid!==user.uid)clearAccessToken();
       const token = inMemoryAccessToken || getStoredTokenFromSession();
       if (token) {
         inMemoryAccessToken = token;
@@ -152,6 +162,7 @@ export const initAuth = (
       if (onAuthSuccess) onAuthSuccess(user, token);
     } else {
       if (!isSigningIn) {
+        clearAccessToken();
         if (onAuthFailure) onAuthFailure();
       }
     }
@@ -168,7 +179,7 @@ export const googleSignIn = async (): Promise<{ user: User; accessToken: string 
       throw new Error('Falha ao obter token de acesso do Google.');
     }
     inMemoryAccessToken = credential.accessToken;
-    saveTokenToSession(credential.accessToken);
+    saveTokenToSession(credential.accessToken,result.user.uid);
     return { user: result.user, accessToken: inMemoryAccessToken };
   } catch (error: any) {
     console.error('Erro de autenticação Google:', error);
@@ -179,6 +190,7 @@ export const googleSignIn = async (): Promise<{ user: User; accessToken: string 
 };
 
 export const getAccessToken = async (): Promise<string | null> => {
+  if(auth.currentUser && accessTokenUid!==auth.currentUser.uid)clearAccessToken();
   if (inMemoryAccessToken && Date.now() < accessTokenExpiresAt) return inMemoryAccessToken;
   inMemoryAccessToken = null;
   const stored = getStoredTokenFromSession();
@@ -246,18 +258,7 @@ export function parseSheetRowsToObjects<T>(rows: any[][]): T[] {
  * A API Sheets retorna datas como DD/MM/AAAA ou números de série de planilha.
  * Converte ambos para YYYY-MM-DD apenas na leitura do aplicativo.
  */
-export function normalizarDataAcademica(value: unknown): string {
-  const raw = String(value ?? '').trim();
-  if (/^\d{4}-\d{2}-\d{2}/.test(raw)) return raw.slice(0, 10);
-  const br = /^(\d{2})\/(\d{2})\/(\d{4})/.exec(raw);
-  if (br) return `${br[3]}-${br[2]}-${br[1]}`;
-  if (/^\d{5}(?:[.,]\d+)?$/.test(raw)) {
-    const serial = Number(raw.replace(',', '.'));
-    const ms = Date.UTC(1899, 11, 30) + Math.floor(serial) * 86400000;
-    return new Date(ms).toISOString().slice(0, 10);
-  }
-  return raw;
-}
+export function normalizarDataAcademica(value: unknown): string { return dataAcademica(value); }
 
 export function normalizarLinhasDaAba(tabela: string, rows: Record<string, any>[]): Record<string, any>[] {
   return rows.map(item => {

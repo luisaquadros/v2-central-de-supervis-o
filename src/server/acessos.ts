@@ -68,9 +68,13 @@ export function turmaPermitida(p: Perfil, turmaId: string | undefined): Decisao 
 export function turmaDoRegistro(registro: Record<string, unknown> | null, turmaDaMatricula: (matriculaId: string) => string | undefined): string | undefined {
   if (!registro) return undefined;
   const t = String(registro.turma_id ?? '').trim();
-  if (t) return t;
   const m = String(registro.matricula_id ?? '').trim();
-  return m ? turmaDaMatricula(m) : undefined;
+  if (m) {
+    const oficial = turmaDaMatricula(m);
+    // Um campo adicional do cliente nunca substitui a matrícula oficial.
+    return oficial && (!t || t === oficial) ? oficial : undefined;
+  }
+  return t || undefined;
 }
 
 // ---------------------------------------------------------------------------------------------

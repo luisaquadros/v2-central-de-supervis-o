@@ -4,7 +4,7 @@ import { diagnosticarChamada } from '../services/aulaParticipants';
 import { temSupervisaoHorarioAlternativo, ROTULO_HORARIO_ALTERNATIVO } from '../services/condicoesMatricula';
 import { prepararEncerramentoChamada, naoRegistrados } from '../services/chamadaService';
 import { resolverResponsaveis } from '../services/aulaParticipants';
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import {
   Search,
   AlertTriangle,
@@ -267,6 +267,7 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
   // Encerrar chamada (D1): primeiro a prévia; a gravação só acontece após a confirmação explícita.
   const [previaAberta, setPreviaAberta] = useState(false);
   const [encerrando, setEncerrando] = useState(false);
+  const encerrandoRef=useRef(false);
   const previa = prepararEncerramentoChamada(alunosLista, excecoes);
   const abrirPrevia = () => {
     if (chamadaIncompleta) {
@@ -276,7 +277,8 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
     setPreviaAberta(true);
   };
   const handleSalvarChamada = async () => {
-    if (encerrando) return; // evita cliques repetidos e registros duplicados
+    if (encerrandoRef.current) return;
+    encerrandoRef.current=true; // evita cliques repetidos e registros duplicados
     setEncerrando(true);
     try {
       const res = await salvarChamadaPorExcecao(turmaId, hojeIso, previa.registros);
@@ -287,7 +289,9 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
         tokenExpirado: res.tokenExpirado,
       });
       setTimeout(() => setChamadaSalvaMsg(null), 6000);
-    } finally { setEncerrando(false); }
+    } catch(e) {
+      setChamadaSalvaMsg({texto:e instanceof Error?e.message:'Não foi possível encerrar a chamada.',tipo:'local'});
+    } finally { encerrandoRef.current=false;setEncerrando(false); }
   };
 
   // Contagem instantânea em memória
@@ -327,7 +331,7 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
   const resumoAluno = selectedMatriculaId ? getResumoAlunoSupervisao(selectedMatriculaId) : null;
 
   return (
-    <div className="flex flex-col min-h-0 md:h-[calc(100dvh-2.5rem)] -m-4 sm:-m-6 bg-slate-100 font-sans max-md:overflow-y-auto md:overflow-hidden">
+    <div className="flex flex-col min-h-0 md:h-full bg-slate-100 font-sans max-md:overflow-y-auto md:overflow-hidden">
       {/* 1. TOP HEADER DE NAVEGAÇÃO E AÇÕES RÁPIDAS DA AULA */}
       <header className="bg-slate-900 text-white px-4 py-3 flex flex-wrap items-center justify-between gap-3 shrink-0 shadow-sm">
         <div className="flex items-center gap-3">

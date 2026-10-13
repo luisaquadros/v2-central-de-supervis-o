@@ -47,17 +47,19 @@ export const AvaliacaoView: React.FC = () => {
     getCriteriosDaTurma,
   } = useSupervisao();
 
+  const turmasDoPeriodo=turmas.filter(t=>t.periodo_id===selectedPeriodoId);
+  const dirty=React.useRef(false), formKey=React.useRef('');
   // Seleção de Turma resiliente
   const [selectedTurmaId, setSelectedTurmaId] = useState<string>(() => {
-    return turmas[0]?.turma_id || '';
+    return turmasDoPeriodo[0]?.turma_id || '';
   });
 
   // Atualiza turma se a lista mudar ou a selecionada não existir mais
   React.useEffect(() => {
-    if (turmas.length > 0 && (!selectedTurmaId || !turmas.some(t => t.turma_id === selectedTurmaId))) {
-      setSelectedTurmaId(turmas[0].turma_id);
+    if (turmasDoPeriodo.length > 0 && (!selectedTurmaId || !turmasDoPeriodo.some(t => t.turma_id === selectedTurmaId))) {
+      setSelectedTurmaId(turmasDoPeriodo[0].turma_id);
     }
-  }, [turmas, selectedTurmaId]);
+  }, [turmas, selectedTurmaId, selectedPeriodoId]);
 
   const turmaAtual = turmas.find(t => t.turma_id === selectedTurmaId) || null;
 
@@ -67,7 +69,7 @@ export const AvaliacaoView: React.FC = () => {
   // uma mudança ou invenção de identificadores na planilha.
   const instrumentosDisponiveis = React.useMemo(() => {
     const aplicaveis = criterios.filter(c =>
-      (c.ativo !== false) &&
+      (c.ativo !== false) && (!c.periodo_id || c.periodo_id===turmaAtual?.periodo_id) &&
       (!c.turma_id || c.turma_id === selectedTurmaId) &&
       (!c.disciplina_id || c.disciplina_id === turmaAtual?.disciplina_id)
     );
@@ -124,6 +126,7 @@ export const AvaliacaoView: React.FC = () => {
     if (!selectedInstrumentoNome) return [];
     return criterios.filter(c => {
       if (c.ativo === false) return false;
+      if(c.periodo_id && c.periodo_id!==turmaAtual?.periodo_id)return false;
       const matchTurma = !c.turma_id || c.turma_id === selectedTurmaId;
       const matchDisc = !c.disciplina_id || (turmaAtual && c.disciplina_id === turmaAtual.disciplina_id);
       const inst = c.instrumento_avaliacao || c.instrumento;
@@ -184,6 +187,9 @@ export const AvaliacaoView: React.FC = () => {
   const avaliacaoParcial = totalCriteriosLancados < criteriosAplicaveis.length;
   // Sincroniza campos quando muda de aluno ou instrumento
   React.useEffect(() => {
+    const key=matriculaAtualId+'|'+selectedInstrumentoNome;
+    if(dirty.current && formKey.current===key)return;
+    formKey.current=key;dirty.current=false;
     if (avaliacaoExistente) {
       setNotaSimplesInput(Number(avaliacaoExistente.nota_final) || 0);
       setComentarioGeral(avaliacaoExistente.comentario_geral || '');
@@ -262,6 +268,7 @@ export const AvaliacaoView: React.FC = () => {
       atualizado_em: new Date().toISOString(),
     });
 
+    dirty.current=false;
     registrarAuditoria(
       'GRAVAR_AVALIACAO',
       'avaliacoes_completas',
@@ -313,7 +320,7 @@ export const AvaliacaoView: React.FC = () => {
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full md:w-auto">
           <div className="min-w-0">
             <label className="text-[10px] font-bold text-slate-500 block mb-0.5">Turma</label>
-            <select
+            <select aria-label="Turma ou instrumento de avaliação"
               value={selectedTurmaId}
               onChange={e => {
                 setSelectedTurmaId(e.target.value);
@@ -321,7 +328,7 @@ export const AvaliacaoView: React.FC = () => {
               }}
               className="w-full sm:w-auto min-h-11 p-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800"
             >
-              {turmas.map(t => (
+              {turmasDoPeriodo.map(t => (
                 <option key={t.turma_id} value={t.turma_id}>
                   {t.nome}
                 </option>
@@ -332,7 +339,7 @@ export const AvaliacaoView: React.FC = () => {
           <div>
             <label className="text-[10px] font-bold text-slate-500 block mb-0.5">Instrumento</label>
             {instrumentosDisponiveis.length > 0 ? (
-              <select
+              <select aria-label="Turma ou instrumento de avaliação"
                 value={selectedInstrumentoNome}
                 onChange={e => {
                   const val = e.target.value;
@@ -543,13 +550,13 @@ export const AvaliacaoView: React.FC = () => {
                 {selectedInstrumentoTipo === 'NOTA_SIMPLES' && (
                   <div className="p-5 rounded-xl border border-slate-200 bg-slate-50/50 space-y-3 max-w-md">
                     <label className="text-xs font-bold text-slate-800 block">Nota Direta (0 a {Number(notaMaximaInstrumento || 10).toFixed(1)})</label>
-                    <input
+                    <input aria-label="Campo da avaliação"
                       type="number"
                       step="0.1"
                       min="0"
                       max={notaMaximaInstrumento}
                       value={notaSimplesInput}
-                      onChange={e => setNotaSimplesInput(parseFloat(e.target.value) || 0)}
+                      onChange={e => {dirty.current=true;setNotaSimplesInput(parseFloat(e.target.value)||0);}}
                       className="p-3 bg-white border border-slate-200 rounded-xl text-lg font-bold text-slate-900 w-full font-mono"
                     />
                   </div>
@@ -560,22 +567,22 @@ export const AvaliacaoView: React.FC = () => {
                   <div className="space-y-4 max-w-xl">
                     <div>
                       <label className="text-xs font-bold text-slate-800 block mb-1">Nota (0 a {Number(notaMaximaInstrumento || 10).toFixed(1)})</label>
-                      <input
+                      <input aria-label="Campo da avaliação"
                         type="number"
                         step="0.1"
                         min="0"
                         max={notaMaximaInstrumento}
                         value={notaSimplesInput}
-                        onChange={e => setNotaSimplesInput(parseFloat(e.target.value) || 0)}
+                        onChange={e => {dirty.current=true;setNotaSimplesInput(parseFloat(e.target.value)||0);}}
                         className="p-2.5 bg-white border border-slate-200 rounded-xl text-base font-bold text-slate-900 w-48 font-mono"
                       />
                     </div>
                     <div>
                       <label className="text-xs font-bold text-slate-800 block mb-1">Comentário / Parecer Opcional</label>
-                      <textarea
+                      <textarea aria-label="Comentário da avaliação"
                         rows={3}
                         value={comentarioGeral}
-                        onChange={e => setComentarioGeral(e.target.value)}
+                        onChange={e => {dirty.current=true;setComentarioGeral(e.target.value);}}
                         placeholder="Observações da entrega..."
                         className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs"
                       />
@@ -618,13 +625,14 @@ export const AvaliacaoView: React.FC = () => {
                                     <span className="font-mono text-xs font-bold text-slate-400">
                                       {maxNota.toFixed(1)}
                                     </span>
-                                    <input
+                                    <input aria-label="Campo da avaliação"
                                       type="number"
                                       step="0.1"
                                       min="0"
                                       max={maxNota}
                                       value={notaCrit}
                                       onChange={e => {
+                                        dirty.current=true;
                                         const txt = e.target.value;
                                         setNotasCriteriosMap(prev => {
                                           const next = { ...prev };
@@ -639,10 +647,11 @@ export const AvaliacaoView: React.FC = () => {
                                 </div>
 
                                 <div>
-                                  <input
+                                  <input aria-label="Campo da avaliação"
                                     type="text"
                                     value={obsCrit}
                                     onChange={e => {
+                                      dirty.current=true;
                                       const val = e.target.value;
                                       setComentariosCriteriosMap(prev => ({ ...prev, [crit.criterio_id]: val }));
                                     }}
@@ -663,10 +672,10 @@ export const AvaliacaoView: React.FC = () => {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-3 border-t border-slate-100 text-xs">
                   <div>
                     <label className="font-bold text-slate-800 block mb-1">Pontos Fortes Demonstrados</label>
-                    <textarea
+                    <textarea aria-label="Comentário da avaliação"
                       rows={2}
                       value={pontosFortes}
-                      onChange={e => setPontosFortes(e.target.value)}
+                      onChange={e => {dirty.current=true;setPontosFortes(e.target.value);}}
                       placeholder="Aspectos em que o estudante se destacou..."
                       className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl"
                     />
@@ -674,10 +683,10 @@ export const AvaliacaoView: React.FC = () => {
 
                   <div>
                     <label className="font-bold text-slate-800 block mb-1">Aspectos a Desenvolver</label>
-                    <textarea
+                    <textarea aria-label="Comentário da avaliação"
                       rows={2}
                       value={pontosDesenvolver}
-                      onChange={e => setPontosDesenvolver(e.target.value)}
+                      onChange={e => {dirty.current=true;setPontosDesenvolver(e.target.value);}}
                       placeholder="Sugestões de melhoria e foco pedagógico..."
                       className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl"
                     />
