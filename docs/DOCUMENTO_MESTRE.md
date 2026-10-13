@@ -61,7 +61,7 @@ Google Sheets (planilha 1DwhmASMStNtT_L2YinG-jkP9vYVv5ETdc-azYqSSIc4) · Drive A
 | Trilha de auditoria | `log_alteracoes` (criada na 1ª gravação) | Worker | administradora | identidade verificada; **sem texto livre** |
 | RSS | `registros_semanais` (fórmula, somente leitura) | formulário/planilha | app | original imutável ainda não preservado (E4) |
 | Avaliações e rubricas | `avaliacoes`, `avaliacoes_completas`, `criterios_avaliacao` | app (coordenador) | só administradora | rubrica versionada: ❌ (E5) |
-| Cadastros ainda no caminho direto | `periodos`, `disciplinas`, `turmas_origem`, `configuracoes`, `marcos_academicos`, `criterios_avaliacao`, `grupos_pratica`, `grupo_integrantes`, `registros_semanais` | navegador da administradora | todos | migrar uma a uma |
+| Ainda no caminho direto (4) | `configuracoes`, `marcos_academicos`, `criterios_avaliacao`, `registros_semanais` | navegador da administradora | todos | `registros_semanais` e `marcos_academicos` parecem derivados por fórmula/origem (escrever pode sobrescrever fórmulas); `criterios_avaliacao` aguarda D3; `configuracoes` mistura itens operacionais. Migrar só após conferir |
 
 Colunas escritas pela sincronização: `data_modificacao_drive`, `consultado_em`, `status`, `erro_codigo`. **Nunca** `validacao_manual`, observações, `origem_metadado` ou qualquer outra. Não cria nem remove linhas.
 
@@ -77,8 +77,8 @@ Colunas escritas pela sincronização: `data_modificacao_drive`, `consultado_em`
 - Notas oficiais não são calculadas nem alteradas por esta entrega; nenhum registro histórico é excluído automaticamente.
 - Restauração de backup é sempre por registro, com confirmação, e nunca apaga o que foi criado depois.
 
-**Decididas, ainda não implementadas**
-- D1: ao **encerrar** a chamada, mostrar prévia dos que serão considerados presentes e exigir confirmação explícita; enquanto aberta, `NAO_REGISTRADO` (E3). Hoje "Salvar chamada" ainda grava os não marcados como presentes.
+**Decididas**
+- D1 ✅ implementada: chamada aberta = `NAO_REGISTRADO`; ao encerrar, prévia de quem será considerado presente e confirmação explícita. Pendente: reabrir/retificar chamada encerrada com justificativa, data e autor.
 - D2: faltas, atrasos, justificativas e dispensas registrados separadamente, sem presumir abono ou reposição (E3).
 - D3: critérios, pesos e competências configuráveis por turma; rubrica versionada; prazo de homologação 14 dias corridos após o início das aulas; sem notas oficiais com critérios não confirmados (E5).
 
@@ -119,7 +119,7 @@ Entradas inválidas (sem turma, sem operação, `"*"`, e-mail ruim) são **ignor
 **Limites conhecidos (não resolvidos)**
 1. A **administradora** ainda lê/escreve cadastros não migrados direto na planilha com o próprio token; o controle dela é o compartilhamento Google.
 2. Quem tiver acesso de edição à planilha pelo Google contorna o app. Para as monitoras, **não compartilhe a planilha com elas** (o servidor usa a conta de serviço).
-3. O cache local (IndexedDB) é do navegador, não da conta: ao entrar como monitora, as tabelas retidas são sobrescritas por vazio; falta limpar o cache inteiro na troca de usuário.
+3. O cache local é do navegador: na troca de conta a cópia das tabelas é apagada; se houver alterações pendentes de outra conta, nada é apagado e a troca é sinalizada.
 4. Texto livre de RSS/ocorrências ainda é exibido por inteiro à administradora (E2/E4).
 
 ---
@@ -131,15 +131,16 @@ Entradas inválidas (sem turma, sem operação, `"*"`, e-mail ruim) são **ignor
 | Autorização e identidade no servidor | ✅ | §5 |
 | Perfis PROFESSORA_ADMIN e MONITORA por turma | ✅ servidor · 🟡 interface | monitora não vê Avaliação/Semestres/Configurações; revisar fichas com abas vazias |
 | Leitura filtrada para monitora (`/api/leitura`) | ✅ | exige conta de serviço |
-| Controle de versão + log em 18 tabelas | ✅ | 7 originais + 7 de acompanhamento + `alunos`, `matriculas`, `turmas`, `horarios_turma` (um commit cada, reversível) |
-| Cadastros restantes (9 tabelas) | ❌ | caminho direto |
+| Controle de versão + log em 23 tabelas | ✅ | 7 originais + 7 de acompanhamento + 9 de cadastro (`alunos`, `matriculas`, `turmas`, `horarios_turma`, `periodos`, `disciplinas`, `turmas_origem`, `grupos_pratica`, `grupo_integrantes`), um commit cada, reversível |
+| Cadastros restantes (4 tabelas) | ❌ | ver §3: risco de sobrescrever fórmulas / dependem de D3 |
 | Backup v2.0 (checksum) · conferência · restauração por registro | ✅ | restauração testada só em planilha simulada |
 | `monitoramento_documentos` na turma e na ficha (aluno e grupo) | ✅ | existência, data de modificação, data de verificação, status, erros e "a conferir" |
 | Condição `SUPERVISAO_HORARIO_ALTERNATIVO` (Olyver: matrículas 2B e 3B) | ✅ regra e interface · ⏸ dados reais | selo na turma, ficha e chamada; sem presença/falta automática |
 | Conferência dos vínculos da aba real (Configurações) | ✅ | roda no navegador da administradora |
 | Sincronização Drive→planilha ("Sincronizar agora", lock, histórico, falhas) | ✅ simulado · ⏸ real | só administradora |
 | Cron 08:00 e 18:00 (Brasília) | ⏸ | lógica e horários testados; **não declarados** em `wrangler.jsonc` |
-| Chamada com `NAO_REGISTRADO` até encerrar (D1) | ❌ | E3 |
+| Chamada: `NAO_REGISTRADO` até encerrar, prévia e confirmação explícita (D1) | ✅ local/simulado | modal "Encerrar chamada"; nada é gravado antes de confirmar; clique duplo não duplica. Retificação com justificativa de chamada já encerrada: ❌ |
+| Cache local limpo na troca de usuária | ✅ | preserva e sinaliza pendências de outra conta |
 | Participação, diário, marcos, rubricas, competências, devolutiva com evidência | ❌ | E3–E5 |
 | RSS original imutável e conferência de vínculos | ❌ | E4 |
 | Resumos por turma (RSS 7 dias, documentos) e quadro "Marcar entregas" | ✅ | consulta, sem notificação |
@@ -148,7 +149,7 @@ Entradas inválidas (sem turma, sem operação, `"*"`, e-mail ruim) são **ignor
 
 ## 7. Testes e evidências
 
-Comandos: `npm run lint` · `npm test` (30 arquivos) · `npm run build` · `npm run test:worker-real` (também no CI).
+Comandos: `npm run lint` · `npm test` (32 arquivos) · `npm run build` · `npm run test:worker-real` (também no CI).
 
 | Prova | Cobertura | Resultado |
 |---|---|---|
@@ -200,8 +201,8 @@ O teste `testSincronizacaoDocumentos` recusa qualquer outro valor. **Desligar:**
 ## 10. Próximas etapas priorizadas
 
 1. **Validação real (bloqueia o resto):** itens de §1 e §8 numa cópia da planilha; conferir cabeçalhos e vínculos do Olyver.
-2. **E2 restante:** limpar cache local na troca de usuário; migrar as 9 tabelas de cadastro; esconder abas confidenciais da ficha para monitora; decidir D5.
-3. **E3:** chamada com `NAO_REGISTRADO` até encerrar + prévia de presentes (D1); falta/atraso/justificativa/dispensa separados (D2, depende do regulamento); diário e participação.
+2. **E2 restante:** esconder abas confidenciais da ficha para monitora; conferir e migrar as 4 tabelas restantes; decidir D5.
+3. **E3 restante:** retificação de chamada encerrada; falta/atraso/justificativa/dispensa separados (D2, depende do regulamento); diário e participação.
 4. **E4:** RSS original imutável, tela de conferência de vínculos, janela operacional de 7 dias sem cortar histórico.
 5. **E5:** rubricas versionadas, competências, devolutiva com evidência (D3).
 6. **E6:** menu (Agenda/Acervo), pendências tipadas, fechamento semestral.

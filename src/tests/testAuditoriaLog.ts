@@ -30,7 +30,7 @@ assert.equal(valorComparavelCampo('turmas', 'dia_semana', 'Terça'), 'Terça', '
 }
 for (const t of ['ocorrencias', 'orientacoes', 'feedbacks', 'feedback_alunos', 'pontos_acompanhamento', 'registros_supervisao', 'preparacoes_aula'])
   assert(TABELAS_CRITICAS.has(t), `${t} deve passar pelo coordenador`);
-for (const t of ['periodos', 'disciplinas', 'turmas_origem', 'configuracoes', 'registros_semanais'])
+for (const t of ['configuracoes', 'criterios_avaliacao', 'marcos_academicos', 'registros_semanais'])
   assert(!TABELAS_CRITICAS.has(t), `${t} fica no caminho direto nesta etapa`);
 
 // ---- Worker: log gravado, idempotente e tolerante a falha ----
