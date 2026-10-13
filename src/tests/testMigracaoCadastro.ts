@@ -1,0 +1,57 @@
+/**
+ * Migração, uma tabela por vez, das tabelas de cadastro para o coordenador (versão + log + identidade).
+ * Cada tabela usa o CABEÇALHO real da planilha de desenvolvimento (somente nomes de colunas) e dados sintéticos.
+ */
+import { strict as assert } from 'node:assert';
+import { indexedDB } from 'fake-indexeddb';
+Object.assign(globalThis, { window: { indexedDB } });
+import { TABELAS_CRITICAS } from '../server/coordenacaoCritica';
+const { salvarRegistroResiliente } = await import('../services/syncService');
+const { salvarTabelasNoIndexedDb, carregarFilaSincronizacao } = await import('../services/indexedDbService');
+const { setMockToken } = await import('../services/googleSheetsService');
+const { criarAmbiente } = await import('./ajudaAmbiente');
+
+interface Caso { tabela: string; cab: string[]; linha: any[]; chave: string; campo: string; novo: string; local: Record<string, any> }
+const casos: Caso[] = [
+  { tabela: 'alunos', cab: ['aluno_id', 'nome', 'identificador_academico', 'status', 'email'], linha: ['a1', 'Estudante 1', 'RA001', 'ATIVO', ''],
+    chave: 'aluno_id', campo: 'status', novo: 'INATIVO', local: { aluno_id: 'a1', nome: 'Estudante 1', identificador_academico: 'RA001', status: 'ATIVO', email: '' } },
+  { tabela: 'matriculas', cab: ['matricula_id', 'aluno_id', 'turma_id', 'periodo_id', 'status', 'papel_na_turma'], linha: ['m1', 'a1', 't1', 'p1', 'MATRICULADO', 'SUPERVISAO_HORARIO_ALTERNATIVO'],
+    chave: 'matricula_id', campo: 'status', novo: 'TRANCADO', local: { matricula_id: 'm1', aluno_id: 'a1', turma_id: 't1', periodo_id: 'p1', status: 'MATRICULADO', papel_na_turma: 'SUPERVISAO_HORARIO_ALTERNATIVO' } },
+  { tabela: 'turmas', cab: ['turma_id', 'periodo_id', 'disciplina_id', 'nome', 'turno', 'status'], linha: ['t1', 'p1', 'd1', 'Turma 1', 'Manhã', 'ATIVA'],
+    chave: 'turma_id', campo: 'turno', novo: 'Noite', local: { turma_id: 't1', periodo_id: 'p1', disciplina_id: 'd1', nome: 'Turma 1', turno: 'Manhã', status: 'ATIVA' } },
+  { tabela: 'horarios_turma', cab: ['horario_id', 'turma_id', 'dia_semana', 'hora_inicio', 'hora_fim', 'data_inicio', 'data_fim', 'ativo', 'total_aulas_previstas', 'codigo_origem', 'dia_semana_rotulo'],
+    linha: ['h1', 't1', 2, '08:00', '10:00', '03/08/2026', '20/12/2026', 'TRUE', 16, '', 'Terça'],
+    chave: 'horario_id', campo: 'hora_fim', novo: '10:30', local: { horario_id: 'h1', turma_id: 't1', dia_semana: 2, hora_inicio: '08:00', hora_fim: '10:00', data_inicio: '2026-08-03', data_fim: '2026-12-20', ativo: true, total_aulas_previstas: 16, codigo_origem: '', dia_semana_rotulo: 'Terça' } },
+];
+const alvo = process.argv[2]; // permite validar uma tabela de cada vez
+// Roda para as tabelas JÁ migradas (as demais ainda usam o caminho direto até o seu passo).
+const pendentes = casos.filter(x => !TABELAS_CRITICAS.has(x.tabela)).map(x => x.tabela);
+if (alvo) assert(TABELAS_CRITICAS.has(alvo), `${alvo} deve passar pelo coordenador`);
+for (const c of casos.filter(x => TABELAS_CRITICAS.has(x.tabela) && (!alvo || x.tabela === alvo))) {
+  const amb = await criarAmbiente({ abas: { [c.tabela]: [c.cab, c.linha] } });
+  setMockToken('ficticio');
+  await salvarTabelasNoIndexedDb({ [c.tabela]: [c.local] });
+  const idx = c.cab.indexOf(c.campo);
+  const antes = c.linha.map(String);
+
+  // 1) edição válida: grava só a coluna alterada, preserva as demais (inclusive datas em formato brasileiro) e deixa 1 linha de log
+  const r = await salvarRegistroResiliente(c.tabela, 'UPDATE', { [c.chave]: c.local[c.chave], [c.campo]: c.novo });
+  assert.equal(r.gravadoOnline, true, `${c.tabela}: edição válida precisa ser confirmada`);
+  assert.equal(String(amb.abas[c.tabela][1][idx]), c.novo);
+  c.cab.forEach((_, i) => { if (i !== idx) assert.equal(String(amb.abas[c.tabela][1][i]), antes[i], `${c.tabela}: coluna ${c.cab[i]} preservada`); });
+  const log = amb.abas.log_alteracoes; assert.equal(log.length, 2, `${c.tabela}: 1 linha de log`);
+  assert.equal(log[1][2], 'professora@exemplo.com'); assert.equal(log[1][3], c.tabela); assert.equal(log[1][6], c.campo);
+
+  // 2) versão antiga (outro aparelho já mudou): conflito e valor do outro aparelho preservado
+  await salvarTabelasNoIndexedDb({ [c.tabela]: [c.local] });
+  await assert.rejects(() => salvarRegistroResiliente(c.tabela, 'UPDATE', { [c.chave]: c.local[c.chave], [c.campo]: 'OUTRO' }), /CONFLITO_VERSAO/);
+  assert.equal(String(amb.abas[c.tabela][1][idx]), c.novo, `${c.tabela}: sem sobrescrever`);
+  assert.equal(amb.abas.log_alteracoes.length, 2, 'conflito não gera log');
+
+  // 3) conta fora da lista não grava e não "salva"
+  const fila = (await carregarFilaSincronizacao()).filter(i => i.tabela === c.tabela && i.status === 'CONFLITO');
+  assert.equal(fila.length, 1, 'conflito fica preservado para revisão');
+  amb.restaurar();
+  console.log(`  migração ${c.tabela}: versão, log, preservação de colunas e conflito validados`);
+}
+console.log('Migração de cadastro: validada por tabela. Ainda no caminho direto:', pendentes.join(', ') || 'nenhuma');

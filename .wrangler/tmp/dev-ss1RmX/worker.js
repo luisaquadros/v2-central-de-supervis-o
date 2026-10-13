@@ -149,7 +149,9 @@ var TABELAS_CRITICAS = /* @__PURE__ */ new Set([
   "feedbacks",
   "pontos_acompanhamento",
   "registros_supervisao",
-  "preparacoes_aula"
+  "preparacoes_aula",
+  // Cadastro: migrado uma tabela por vez (cada linha abaixo é um passo reversível, ver docs/DOCUMENTO_MESTRE.md)
+  "alunos"
 ]);
 function dataCanonica(texto) {
   if (/^\d{4}-\d{2}-\d{2}/.test(texto)) return texto.slice(0, 10);
