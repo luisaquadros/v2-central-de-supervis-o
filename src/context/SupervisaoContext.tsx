@@ -2734,7 +2734,7 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       new Date(),
       gruposPratica,
       grupoIntegrantes
-    ).filter(item => item.tipo !== 'RSS_ATRASADO');
+    ); // Preservar RSS_ATRASADO: a página de pendências deve mostrar o mesmo que o radar.
   }, [
     selectedPeriodoId,
     turmas,
