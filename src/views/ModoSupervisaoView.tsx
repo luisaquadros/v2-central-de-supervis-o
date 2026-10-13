@@ -149,15 +149,16 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
 
   // 3. Chamada por Exceção: Estado em memória durante a aula
   // Por padrão: todos presentes (excecoes vazias = presentes).
-  const [excecoes, setExcecoes] = useState<Record<string, ExcecaoAluno>>(() => {
-    // Se a chamada já foi salva hoje, inicializa a partir das frequências salvas
+  // A chamada salva pertence exclusivamente à turma e à data em exibição.
+  // Nunca aproveitar as exceções de outra turma quando o componente é reutilizado.
+  const construirExcecoesDaTurma = (): Record<string, ExcecaoAluno> => {
+    const ids = new Set(alunosLista.map(item => item.matricula.matricula_id));
     const initialMap: Record<string, ExcecaoAluno> = {};
-    const freqsHoje = frequencias.filter(f => f.data_aula === hojeIso);
-    freqsHoje.forEach(f => {
-      const isFalta = f.status !== 'PRESENTE';
-      if (isFalta || f.atraso || f.celular || f.justificativa || f.observacao) {
+    frequencias.filter(f => f.data_aula === hojeIso && ids.has(f.matricula_id)).forEach(f => {
+      const faltou = f.status !== 'PRESENTE';
+      if (faltou || f.atraso || f.celular || f.justificativa || f.observacao) {
         initialMap[f.matricula_id] = {
-          faltou: isFalta,
+          faltou,
           atraso: !!f.atraso,
           celular: !!f.celular,
           justificativa: f.justificativa || '',
@@ -166,7 +167,15 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
       }
     });
     return initialMap;
-  });
+  };
+  const [excecoes, setExcecoes] = useState<Record<string, ExcecaoAluno>>(construirExcecoesDaTurma);
+  // Refaz o formulário quando a turma muda; não reseta alterações do usuário
+  // durante a sincronização normal da mesma turma.
+  useEffect(() => {
+    setExcecoes(construirExcecoesDaTurma());
+    setSearchQuery('');
+    setChamadaSalvaMsg(null);
+  }, [turmaId, hojeIso]);
 
   const [chamadaSalvaMsg, setChamadaSalvaMsg] = useState<{
     texto: string;
@@ -275,7 +284,7 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
     });
 
     const res = await salvarChamadaPorExcecao(turmaId, hojeIso, excecoesArray);
-    const faltasCount = Object.values(excecoes).filter(e => e.faltou).length;
+    const faltasCount = alunosLista.filter(item => excecoes[item.matricula.matricula_id]?.faltou).length;
     const presentesCount = alunosLista.length - faltasCount;
     setChamadaSalvaMsg({
       texto: `${res.statusTexto} — ${presentesCount} presentes, ${faltasCount} falta(s).`,
@@ -286,10 +295,11 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
   };
 
   // Contagem instantânea em memória
-  const faltasCount = Object.values(excecoes).filter(e => e.faltou).length;
+  const excecoesDaTurma = alunosLista.map(item => excecoes[item.matricula.matricula_id]).filter((e): e is ExcecaoAluno => !!e);
+  const faltasCount = excecoesDaTurma.filter(e => e.faltou).length;
   const presentesCount = alunosLista.length - faltasCount;
-  const atrasosCount = Object.values(excecoes).filter(e => e.atraso).length;
-  const celularCount = Object.values(excecoes).filter(e => e.celular).length;
+  const atrasosCount = excecoesDaTurma.filter(e => e.atraso).length;
+  const celularCount = excecoesDaTurma.filter(e => e.celular).length;
 
   // Filtro de alunos
   const filteredAlunos = alunosLista.filter(item =>

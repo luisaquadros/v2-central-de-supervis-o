@@ -2635,10 +2635,12 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   };
 
   const setOrigemDoAluno = async (matriculaId: string, origemId: string): Promise<void> => {
-    setMatriculas(prev =>
-      prev.map(m => (m.matricula_id === matriculaId ? { ...m, origem_id: origemId } : m))
-    );
-    notifySaveSuccess();
+    const mat = matriculas.find(m => m.matricula_id === matriculaId);
+    const origem = turmasOrigem.find(o => o.origem_id === origemId && o.turma_id === mat?.turma_id && o.ativo);
+    if (!mat || !origem) throw new Error('Origem do Docente Online inválida para esta matrícula.');
+    // A planilha matriculas atualmente não dispõe de origem_id/codigo_origem.
+    // Não anunciar persistência de uma alteração que a fonte oficial não armazena.
+    throw new Error('O vínculo individual do Docente Online requer coluna de origem na planilha matriculas. Nenhuma alteração foi salva.');
   };
 
   // ==========================================
