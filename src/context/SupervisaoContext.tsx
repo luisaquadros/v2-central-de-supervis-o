@@ -1,3 +1,4 @@
+import { interpretarStatusEntrega } from '../services/normalizacaoAcademica';
 import { filtrarPendenciasResolvidas } from '../services/pendenciaResolutionService';
 import { selecionarRssDoEstudante } from '../services/rssVinculos';
 import { listarAlunosChamada } from '../services/aulaParticipants';
@@ -1458,49 +1459,15 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   // REGISTROS SEMANAIS & DOCUMENTOS
   // ==========================================
 
+  // RSS originais são respostas importadas: não permitir alterar o histórico
+  // por uma ação que modificava apenas o React, sem gravar no Sheets.
   const updateRegistroSemanal = async (
-    matriculaId: string,
-    semana: number,
-    status: 'ENTREGUE' | 'FALTANTE' | 'PENDENTE_REVISAO',
-    obs: string = ''
+    _matriculaId: string,
+    _semana: number,
+    _status: 'ENTREGUE' | 'FALTANTE' | 'PENDENTE_REVISAO',
+    _obs: string = ''
   ): Promise<void> => {
-    setSaveStatus('SALVANDO');
-    const today = getHojeDataIso();
-
-    if (isRunningInAppsScript()) {
-      try {
-        await salvarRegistroSemanalNoSheets({ matricula_id: matriculaId, semana, status, observacao: obs });
-      } catch (err) {
-        handleSaveError(err);
-      }
-    }
-
-    setRegistrosSemanais(prev => {
-      const existingIdx = prev.findIndex(r => r.matricula_id === matriculaId && r.semana === semana);
-      if (existingIdx >= 0) {
-        const updated = [...prev];
-        updated[existingIdx] = {
-          ...updated[existingIdx],
-          status,
-          data_entrega: status === 'ENTREGUE' ? today : '',
-          observacao: obs,
-        };
-        return updated;
-      } else {
-        return [
-          ...prev,
-          {
-            registro_id: generateUuid(),
-            matricula_id: matriculaId,
-            semana,
-            status,
-            data_entrega: status === 'ENTREGUE' ? today : '',
-            observacao: obs,
-          },
-        ];
-      }
-    });
-    notifySaveSuccess();
+    throw new Error('RSS da planilha oficial são somente leitura. Registre sua orientação na ficha; não é possível alterar uma entrega sem trilha de auditoria.');
   };
 
   const updateDocumento = async (
@@ -1896,7 +1863,8 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     if (materializado?.total_pendencias === undefined || materializado?.total_pendencias === null) {
       const mats = matriculas.filter(m => m.turma_id === turmaId).map(m => m.matricula_id);
       const docs = entregas.length > 0
-        ? entregas.filter(e => mats.includes(e.matricula_id || '') && e.status_entrega !== 'ENTREGUE').length
+        ? entregas.filter(e => mats.includes(e.matricula_id || '') &&
+          ['PENDENTE', 'A_CONFERIR'].includes(interpretarStatusEntrega(e.status_entrega ?? e.status))).length
         : documentos.filter(d => mats.includes(d.matricula_id) && d.status === 'PENDENTE').length;
       const freqs = frequencias.filter(f => mats.includes(f.matricula_id) && f.status === 'FALTA_SEM_JUSTIFICATIVA').length;
       totalPendencias = docs + freqs;
