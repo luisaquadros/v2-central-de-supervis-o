@@ -61,6 +61,7 @@ import {
   ItemChamadaPendente,
 } from '../services/supervisaoOperacionalService';
 import { getHojeDataIso } from '../services/supervisaoOperacionalService';
+import { lerSessaoAutorizada, registrarSessaoAutorizada, encerrarSessaoAutorizada } from '../services/sessionPolicy';
 import { validarEscritaTabela, gerarIdEstavel } from '../services/safeWriteService';
 import {
   inicializarCacheLocal,
@@ -679,6 +680,11 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       (user, _token) => {
         if (!isMounted) return;
         setCurrentUser(user);
+        // Sessão do app é independente do token OAuth do Sheets (que expira antes).
+        // Só exibe cache em até 6h se esta conta já foi validada neste dispositivo.
+        if (lerSessaoAutorizada(user.uid)) {
+          setAcessoGoogleValidado(true);
+        }
         // Ao autenticar, primeiro esvazia alterações locais pendentes e depois busca o estado atualizado
         processarFilaSincronizacao()
           .catch(() => {})
@@ -686,6 +692,7 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           .then(res => {
             if (!isMounted) return;
             if (res.sucesso && res.dados) {
+              registrarSessaoAutorizada(user.uid);
               setAcessoGoogleValidado(true);
               aplicarDados(res.dados);
               setHasLocalCache(true);
@@ -718,6 +725,7 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           const res = await sincronizarDaBaseOficial();
           if (!isMounted) return;
           if (res.sucesso && res.dados) {
+            if (currentUser) registrarSessaoAutorizada(currentUser.uid);
             setAcessoGoogleValidado(true);
             aplicarDados(res.dados);
             setHasLocalCache(true);
@@ -732,7 +740,7 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     window.addEventListener('focus', autoSyncSePossivel);
     window.addEventListener('online', autoSyncSePossivel);
 
-    const intervalId = setInterval(autoSyncSePossivel, 60 * 1000); // 1 minuto automático
+    const intervalId = setInterval(autoSyncSePossivel, 5 * 60 * 1000); // 5 min; evita excesso de consultas
 
     return () => {
       isMounted = false;
@@ -794,6 +802,7 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     // 2. SEGUNDO: Lê a base oficial atualizada com as novas alterações gravadas!
     const res = await sincronizarDaBaseOficial();
     if (res.sucesso && res.dados) {
+      if (currentUser) registrarSessaoAutorizada(currentUser.uid);
       setAcessoGoogleValidado(true);
       aplicarDados(res.dados);
       setHasLocalCache(true);
@@ -831,6 +840,7 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
   const logoutGoogle = async () => {
     await googleLogout();
+    encerrarSessaoAutorizada();
     setAcessoGoogleValidado(false);
     setCurrentUser(null);
     setConnectionStatus('LOCAL_DEV');
