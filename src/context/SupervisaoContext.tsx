@@ -2029,13 +2029,23 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   };
 
   const addItemFilaSupervisao = async (item: any) => {
-    const novo = { id: gerarIdEstavel('fs'), criado_em: new Date().toISOString(), status: 'AGUARDANDO' as const, ordem: filaSupervisao.length + 1, ...item };
+    const novo: ItemFilaSupervisao = { ...item, id: gerarIdEstavel('fs'),
+      criado_em: new Date().toISOString(), status: item.status || 'AGUARDANDO',
+      ordem: filaSupervisao.length + 1 };
+    await gravarItemOperacional('FILA_SUPERVISAO', novo);
     setFilaSupervisao(prev => [...prev, novo]);
   };
-  const updateStatusFilaSupervisao = async (id: string, status: any) => {
-    setFilaSupervisao(prev => prev.map(i => i.id === id ? { ...i, status } : i));
+  const updateStatusFilaSupervisao = async (id: string, status: ItemFilaSupervisao['status']) => {
+    const anterior = filaSupervisao.find(i => i.id === id);
+    if (!anterior) throw new Error('Item da supervisão não encontrado.');
+    const atualizado: ItemFilaSupervisao = { ...anterior, status };
+    await gravarItemOperacional('FILA_SUPERVISAO', atualizado);
+    setFilaSupervisao(prev => prev.map(i => i.id === id ? atualizado : i));
   };
   const removerItemFilaSupervisao = async (id: string) => {
+    const anterior = filaSupervisao.find(i => i.id === id);
+    if (!anterior) throw new Error('Item da supervisão não encontrado.');
+    await gravarItemOperacional('FILA_SUPERVISAO', anterior, true);
     setFilaSupervisao(prev => prev.filter(i => i.id !== id));
   };
 
