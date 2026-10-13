@@ -1,3 +1,4 @@
+import { matriculaParticipaDaChamada } from './aulaParticipants';
 import {
   Turma,
   HorarioTurma,
@@ -24,6 +25,18 @@ import {
   GrupoIntegrante,
   Periodo,
 } from '../types';
+
+/** Uma frequência isolada não pode concluir a chamada de toda a turma. */
+export function chamadaCompletaNaData(
+  turmaId: string, data: string, matriculas: Matricula[], frequencias: Frequencia[],
+): boolean {
+  const elegiveis = matriculas
+    .filter(m => m.turma_id === turmaId && matriculaParticipaDaChamada(m.status))
+    .map(m => m.matricula_id);
+  if (elegiveis.length === 0) return false;
+  const presentes = new Set(frequencias.filter(f => f.data_aula === data).map(f => f.matricula_id));
+  return elegiveis.every(id => presentes.has(id));
+}
 
 export const DIAS_SEMANA_NOMES = [
   'Domingo',
@@ -135,10 +148,7 @@ export function identificarSupervisaoAtual(
       const horaFim = horarioHoje.hora_fim || '21:12';
 
       // Verifica se a chamada foi salva hoje para essa turma
-      const matsTurma = matriculas.filter(m => m.turma_id === turma.turma_id).map(m => m.matricula_id);
-      const chamadaSalva = frequencias.some(
-        f => matsTurma.includes(f.matricula_id) && f.data_aula === dataHoje
-      ) || (encontroHoje?.chamada_salva === true);
+      const chamadaSalva = chamadaCompletaNaData(turma.turma_id, dataHoje, matriculas, frequencias);
 
       // Está acontecendo agora no horário exato
       const emAndamento = horaAtual >= horaInicio && horaAtual <= horaFim;
@@ -336,10 +346,7 @@ export function identificarChamadasPendentes(
       if (aulaEncerrada) continue;
 
       // Verifica se a chamada foi salva
-      const matsTurma = matriculas.filter(m => m.turma_id === turma.turma_id).map(m => m.matricula_id);
-      const chamadaSalva = frequencias.some(
-        f => matsTurma.includes(f.matricula_id) && f.data_aula === dataIso
-      ) || (encontro?.chamada_salva === true);
+      const chamadaSalva = chamadaCompletaNaData(turma.turma_id, dataIso, matriculas, frequencias);
 
       if (!chamadaSalva) {
         pendencias.push({
