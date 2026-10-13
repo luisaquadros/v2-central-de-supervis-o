@@ -10,7 +10,7 @@ const rows:unknown[][]=[
 ];
 const turmas=[{turma_id:'turma-ca-mat',nome:'Clínica Ampliada — Matutino'}] as Turma[];
 const matriculas=[{matricula_id:'m1',aluno_id:'a1',turma_id:'turma-ca-mat'}] as Matricula[];
-const alunos=[{aluno_id:'a1',nome:'Estudante fictício',email:'teste@example.org'}] as Aluno[];
+const alunos=[{aluno_id:'a1',nome:'Estudante fictício',email:'teste@example.org'}] as unknown as Aluno[];
 const entregas=[
  {matricula_id:'m1',tipo_entrega:'MANUAL_ESTAGIO',status:'Enviado'},
  {matricula_id:'m1',tipo_entrega:'TERMO_COMPROMISSO',status:'Entregue'},
