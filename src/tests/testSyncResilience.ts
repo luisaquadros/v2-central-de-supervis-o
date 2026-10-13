@@ -4,12 +4,12 @@ Object.assign(globalThis, { window: { indexedDB } });
 const { salvarRegistroResiliente, processarFilaSincronizacao, subscribeSyncStatus } = await import('../services/syncService');
 const { carregarFilaSincronizacao, carregarTodasTabelasDoIndexedDb, atualizarItemFila } = await import('../services/indexedDbService');
 const { setMockToken, clearAccessToken } = await import('../services/googleSheetsService');
-let rows: any[][] = [['aluno_id', 'matricula_id', 'texto', 'status']];
+let rows: any[][] = [['disciplina_id', 'matricula_id', 'texto', 'status']];
 let writes = 0;
 const ok = (body: any) => ({ ok: true, status: 200, json: async () => body }) as Response;
 globalThis.fetch = (async (url: any, init?: RequestInit) => {
   const u = String(url);
-  if (u.includes('fields=')) return ok({ sheets: [{properties: {title: 'alunos', sheetId: 1}}] });
+  if (u.includes('fields=')) return ok({ sheets: [{properties: {title: 'disciplinas', sheetId: 1}}] });
   if (!init?.method) return ok({values: rows});
   const body = JSON.parse(String(init.body));
   if (init.method === 'POST' && u.includes(':append?')) { rows.push(body.values[0]); writes++; return ok({}); }
@@ -26,10 +26,10 @@ globalThis.fetch = (async (url: any, init?: RequestInit) => {
   throw new Error('Unexpected write');
 }) as typeof fetch;
 clearAccessToken();
-await salvarRegistroResiliente('alunos', 'INSERT', {aluno_id:'a1',matricula_id:'m1',texto:'primeira',status:'ABERTA'});
-assert.equal((await carregarTodasTabelasDoIndexedDb())?.alunos[0].texto, 'primeira');
+await salvarRegistroResiliente('disciplinas', 'INSERT', {disciplina_id:'a1',matricula_id:'m1',texto:'primeira',status:'ABERTA'});
+assert.equal((await carregarTodasTabelasDoIndexedDb())?.disciplinas[0].texto, 'primeira');
 assert.equal((await carregarFilaSincronizacao()).length, 1);
-await salvarRegistroResiliente('alunos', 'UPDATE', {aluno_id:'a1',texto:'mais recente'});
+await salvarRegistroResiliente('disciplinas', 'UPDATE', {disciplina_id:'a1',texto:'mais recente'});
 assert.equal((await carregarFilaSincronizacao()).length, 1);
 assert.equal((await carregarFilaSincronizacao())[0].payload.matricula_id, 'm1');
 // (Usa uma tabela fora do coordenador: as de acompanhamento agora passam pelo Worker, coberto em testAuditoriaLog.)
@@ -42,15 +42,15 @@ assert.equal(rows[1][2], 'mais recente');
 assert.equal((await carregarFilaSincronizacao()).length, 0);
 // A new online edit cannot be overwritten by an old queued version.
 clearAccessToken();
-await salvarRegistroResiliente('alunos', 'UPDATE', {aluno_id:'a1',texto:'antiga'});
+await salvarRegistroResiliente('disciplinas', 'UPDATE', {disciplina_id:'a1',texto:'antiga'});
 setMockToken('ficticio');
-await salvarRegistroResiliente('alunos', 'UPDATE', {aluno_id:'a1',texto:'nova'});
+await salvarRegistroResiliente('disciplinas', 'UPDATE', {disciplina_id:'a1',texto:'nova'});
 await processarFilaSincronizacao();
 assert.equal(rows[1][2], 'nova');
-assert.equal((await carregarTodasTabelasDoIndexedDb())?.alunos[0].texto, 'nova');
+assert.equal((await carregarTodasTabelasDoIndexedDb())?.disciplinas[0].texto, 'nova');
 // Um conflito persistente não pode sumir da UI nem ser eliminado por outra edição.
 clearAccessToken();
-await salvarRegistroResiliente('alunos', 'UPDATE', {aluno_id:'a1',texto:'em conflito'});
+await salvarRegistroResiliente('disciplinas', 'UPDATE', {disciplina_id:'a1',texto:'em conflito'});
 const conflito = (await carregarFilaSincronizacao())[0];
 await atualizarItemFila(conflito.id, {status:'CONFLITO'});
 let statusAtual: any = null;
@@ -59,15 +59,15 @@ const resultConflito = await processarFilaSincronizacao();
 assert.equal(resultConflito.conflitos,1);
 assert.equal(statusAtual.status,'PARCIAL');
 assert.equal(statusAtual.conflitosCount,1);
-await assert.rejects(() => salvarRegistroResiliente('alunos','UPDATE',
-  {aluno_id:'a1',texto:'tentativa de sobrescrever conflito'}), /conflito de sincronização/);
+await assert.rejects(() => salvarRegistroResiliente('disciplinas','UPDATE',
+  {disciplina_id:'a1',texto:'tentativa de sobrescrever conflito'}), /conflito de sincronização/);
 assert.equal((await carregarFilaSincronizacao()).length,1);
 assert.equal((await carregarFilaSincronizacao())[0].status,'CONFLITO');
-assert.equal((await carregarTodasTabelasDoIndexedDb())?.alunos[0].texto,'em conflito');
+assert.equal((await carregarTodasTabelasDoIndexedDb())?.disciplinas[0].texto,'em conflito');
 unsubscribe();
 
 // Cache failure must reject: it must never report local save success.
 clearAccessToken();
 (globalThis as any).window.indexedDB = undefined;
-await assert.rejects(() => salvarRegistroResiliente('alunos', 'INSERT', {aluno_id:'a2'}), /IndexedDB/);
+await assert.rejects(() => salvarRegistroResiliente('disciplinas', 'INSERT', {disciplina_id:'a2'}), /IndexedDB/);
 console.log('[PASS] Cache+outbox atomicity, offline edits, restart recovery, concurrent replay, latest edit and storage failure.');
