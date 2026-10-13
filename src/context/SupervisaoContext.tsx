@@ -2426,8 +2426,9 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     setSaveStatus('SALVANDO');
     const original = leiturasResponsaveis.find(l => l.leitura_id === leituraId);
     if (!original || !original.leitura_id) {
-      handleSaveError(new Error('Leitura não encontrada na base oficial.'));
-      return;
+      const erro = new Error('Leitura não encontrada na base oficial.');
+      handleSaveError(erro);
+      throw erro;
     }
     const atualizado: LeituraResponsavel = {
       ...original, status_realizacao: status,
@@ -2437,11 +2438,11 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       motivo_substituicao: motivoSubstituicao !== undefined ? motivoSubstituicao : original.motivo_substituicao,
     };
     const lista = leiturasResponsaveis.map(l => l.leitura_id === leituraId ? atualizado : l);
-    setLeiturasResponsaveis(lista);
     await persistirMudancaWeb('leituras_responsaveis', 'UPDATE', {
       ...atualizado,
       leitura_agenda_id: (atualizado as any).leitura_agenda_id || atualizado.leitura_id,
     }, lista);
+    setLeiturasResponsaveis(lista);
   };
 
   // ==========================================
