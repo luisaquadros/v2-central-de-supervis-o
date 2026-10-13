@@ -81,7 +81,7 @@ export function resolverResponsaveis(params: {
   separarResponsaveis(leitura.responsavel_id).forEach(id=>inserir(id,'TITULAR'));
   // Texto livre da planilha: exibir todos, mesmo sem matrícula vinculada.
   // Não usar texto livre como chave para alterações na base.
-  const textos=separarResponsaveis(leitura.responsavel_nome ?? leitura.responsaveis_texto);
+  const textos=separarResponsaveis(leitura.responsavel_nome || leitura.responsaveis_texto);
   for(const nome of textos) {
     if(list.some(x=>x.nome.trim().toLocaleLowerCase('pt-BR')===nome.toLocaleLowerCase('pt-BR'))) continue;
     const {mat,al}=achar(nome);

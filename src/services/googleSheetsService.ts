@@ -310,7 +310,7 @@ export function normalizarLinhasDaAba(tabela: string, rows: Record<string, any>[
     } else if (tabela === 'registros_semanais') {
       // semana_rss é a semana acadêmica, encontro_numero é a sessão clínica.
       r.semana = r.semana ?? r.semana_rss ?? '';
-      r.observacao = r.observacao ?? r.limitacoes ?? '';
+      r.observacao = r.observacao ?? ''; // Limitações são campo próprio, não observação genérica.
       r.data_entrega = normalizarDataAcademica(r.data_entrega);
     } else if (tabela === 'preparacoes_aula') {
       r.data_aula = normalizarDataAcademica(r.data_aula);

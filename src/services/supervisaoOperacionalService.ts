@@ -316,9 +316,11 @@ export function identificarChamadasPendentes(
       const encontro = encontrosTurma.find(
         e => e.turma_id === turma.turma_id && e.data === dataIso
       );
-      if (encontro && (encontro.status === 'NAO_REALIZADO' || encontro.status === 'REAGENDADO')) {
-        continue;
-      }
+      // A base pode conter encontros duplicados pela sincronização: qualquer
+      // encerramento explícito da aula elimina sua pendência de chamada.
+      const aulaEncerrada = encontrosTurma.some(e => e.turma_id === turma.turma_id &&
+        e.data === dataIso && (e.status === 'NAO_REALIZADO' || e.status === 'REAGENDADO'));
+      if (aulaEncerrada) continue;
 
       // Verifica se a chamada foi salva
       const matsTurma = matriculas.filter(m => m.turma_id === turma.turma_id).map(m => m.matricula_id);
