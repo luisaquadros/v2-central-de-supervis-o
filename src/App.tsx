@@ -5,6 +5,7 @@ import { Sidebar } from './components/Sidebar';
 import { SyncIndicator } from './components/SyncIndicator';
 import { NotificationBell } from './components/NotificationBell';
 import { ThemeControl } from './components/ThemeControl';
+import { ErrorNotifier } from './components/ErrorNotifier';
 import { ViewErrorBoundary } from './components/ViewErrorBoundary';
 import { PrimeiraConexaoView } from './views/PrimeiraConexaoView';
 import { isRunningInAppsScript } from './services/gasService';
@@ -129,6 +130,7 @@ const MainContent: React.FC = () => {
 
   return (
     <div className="flex h-screen bg-slate-100 overflow-hidden font-sans">
+      <ErrorNotifier />
       {/* Sidebar (hidden during Modo Supervisão for maximum tablet focus) */}
       {!isModoSupervisao && (
         <Sidebar
