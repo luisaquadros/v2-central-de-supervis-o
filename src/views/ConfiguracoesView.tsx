@@ -1,3 +1,4 @@
+import { valorConfiguracaoVisivel } from '../services/configuracoesSeguras';
 import { lerCentralControleSomenteLeitura, type DiagnosticoCentralControle } from '../services/centralControleDiagnostico';
 import React, { useState } from 'react';
 import {
@@ -900,7 +901,7 @@ function importarAlunosLote(payload) {
                       )}
                     </div>
                     <span className="font-semibold text-slate-900 bg-slate-100 px-2 py-0.5 rounded font-mono text-[11px]">
-                      {cfg.valor || '—'}
+                      {valorConfiguracaoVisivel(cfg.chave, cfg.valor)}
                     </span>
                   </div>
                 ))}
