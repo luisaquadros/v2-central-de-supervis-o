@@ -43,6 +43,7 @@ export const CaixaEntradaPendenteModal: React.FC<CaixaEntradaPendenteModalProps>
   };
 
   const handleSalvarResolucao = async (itemId: string) => {
+    try {
     await confirmarCaixaEntradaItem(itemId, {
       aluno_id: targetAlunoId || undefined,
       turma_id: targetTurmaId || undefined,
@@ -51,6 +52,7 @@ export const CaixaEntradaPendenteModal: React.FC<CaixaEntradaPendenteModalProps>
       observacao: targetObs,
     });
     setResolvendoId(null);
+    } catch (erro: any) { window.alert(erro?.message || 'Não foi possível confirmar o item.'); }
   };
 
   return (
@@ -127,7 +129,7 @@ export const CaixaEntradaPendenteModal: React.FC<CaixaEntradaPendenteModalProps>
                         </button>
                       )}
                       <button
-                        onClick={() => descartarCaixaEntradaItem(item.id)}
+                        onClick={() => void descartarCaixaEntradaItem(item.id).catch(e => window.alert(e?.message || 'Falha ao descartar item.'))}
                         className="p-1 rounded-md text-slate-400 hover:text-red-600 hover:bg-red-50 cursor-pointer"
                         title="Descartar anotação"
                       >
