@@ -30,6 +30,7 @@ import {
   ModalNovoPontoAcompanhamento,
 } from '../components/Modals';
 import { getHojeDataIso } from '../services/supervisaoOperacionalService';
+import { obterLeiturasAgendadas } from '../services/supervisaoOperacionalService';
 import { Frequencia, MotivoNaoRealizado } from '../types';
 
 interface ModoSupervisaoViewProps {
@@ -87,12 +88,11 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
   );
 
   // 2. Estudo Dirigido de Hoje programado para esta turma
-  const estudoDirigidoHoje = useMemo(() => {
-    return (
-      leiturasResponsaveis.find(l => l.turma_id === turmaId && l.data === hojeIso) ||
-      leiturasResponsaveis.find(l => l.turma_id === turmaId)
-    );
-  }, [leiturasResponsaveis, turmaId, hojeIso]);
+  const leiturasDaAula = useMemo(() => {
+    return obterLeiturasAgendadas(leiturasResponsaveis.filter(l => l.turma_id === turmaId), encontrosTurma)
+      .filter(l => l.data_apresentacao === hojeIso);
+  }, [leiturasResponsaveis, turmaId, hojeIso, encontrosTurma]);
+  const estudoDirigidoHoje = leiturasDaAula.find(l => l.reprogramada) || leiturasDaAula[0];
 
   // Resolução dinâmica e robusta de responsáveis pelo estudo dirigido/leitura de hoje
   const responsaveisEstudo = useMemo(() => {
@@ -451,6 +451,17 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
                   {renderStatusEstudoBadge(estudoDirigidoHoje.status_realizacao)}
                 </div>
 
+                {estudoDirigidoHoje.reprogramada && (
+                  <div className="text-[11px] font-semibold text-amber-800 mt-1">
+                    Apresentação transferida da aula cancelada de {estudoDirigidoHoje.data_original.split('-').reverse().join('/')} para hoje.
+                    Os responsáveis originais permanecem vinculados.
+                  </div>
+                )}
+                {leiturasDaAula.length > 1 && (
+                  <div className="mt-1.5 text-[11px] text-amber-900">
+                    Há {leiturasDaAula.length} leituras para esta aula: {leiturasDaAula.map(l => l.tema || l.titulo).join('; ')}.
+                  </div>
+                )}
                 {nomeGrupoEstudo && (
                   <div className="text-slate-800 font-semibold mt-0.5 text-[11px]">
                     Grupo: <span className="underline">{nomeGrupoEstudo}</span>
