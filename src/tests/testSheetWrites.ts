@@ -41,6 +41,11 @@ globalThis.fetch = (async (url: string | URL | Request, init?: RequestInit) => {
   throw new Error('Unexpected URL in test: ' + u);
 }) as typeof fetch;
 
+const updatedValue = (col: string) => {
+  const call = [...calls].reverse().find(c=>c.url.includes('/values:batchUpdate')&&c.init.method==='POST');
+  assert(call, 'Expected values:batchUpdate');
+  return call.body.data.find((d:any)=>d.range.endsWith(col+'2'))?.values[0][0];
+};
 const requiredWrite = (method: string) => {
   const c = [...calls].reverse().find(x => x.init.method === method);
   assert(c, 'expected write ' + method);
@@ -69,9 +74,8 @@ try {
     ['ori-1', 'mat-1', '2026-10-13', 'Clínica', 'Orientação preservada', 'ABERTA'],
   ];
   await gravarRegistroNaPlanilhaOficial('orientacoes', { orientacao_id: 'ori-1', status: 'CONCLUÍDA' });
-  const update = requiredWrite('PUT');
-  assert.equal(update.body.values[0][4], 'Orientação preservada');
-  assert.equal(update.body.values[0][5], 'CONCLUÍDA');
+  assert.equal(updatedValue('F'), 'CONCLUÍDA');
+  assert(!calls.find(c=>c.url.includes('/values:batchUpdate'))?.body.data.some((d:any)=>d.range.endsWith('E2')));
 
   // 3. Campos da aba entregas devem respeitar o schema oficial.
   calls = [];
@@ -95,8 +99,8 @@ try {
     frequencia_id: 'f-2', matricula_id: 'm-1', data_aula: '2026-10-13',
     status: 'FALTA_JUSTIFICADA', justificativa: 'Atestado conferido',
   });
-  assert(requiredWrite('PUT').body.values[0][3] === 'FALTA_JUSTIFICADA');
-  assert(!calls.some(c => c.init.method === 'POST'), 'Must not append duplicate attendance');
+  assert(updatedValue('D') === 'FALTA_JUSTIFICADA');
+  assert(!calls.some(c => c.init.method === 'POST' && c.url.includes(':append?')), 'Must not append duplicate attendance');
 
   // 4b. Presença com atraso deve continuar sendo ATRASO na planilha.
   calls = [];
@@ -108,7 +112,7 @@ try {
     frequencia_id: 'f-1', matricula_id: 'm-1',
     data_aula: '2026-10-13', status: 'PRESENTE', atraso: true,
   });
-  assert.equal(requiredWrite('PUT').body.values[0][3], 'ATRASO', 'Não perder atraso na persistência');
+  assert.equal(updatedValue('D'), 'ATRASO', 'Não perder atraso na persistência');
 
   // 4c. Encerramento da aula deve possuir caminho de gravação real.
   calls = [];
@@ -131,12 +135,10 @@ try {
     leitura_id: 'LEIT-001', status_realizacao: 'REALIZADO',
     responsaveis_efetivos: ['m1','m2'],
   });
-  const leituraAtualizada = requiredWrite('PUT');
-  assert.equal(leituraAtualizada.body.values[0][0], 'LEIT-001');
-  assert.equal(leituraAtualizada.body.values[0][2], 'Leitura original');
-  assert.equal(leituraAtualizada.body.values[0][3], 'REALIZADO');
-  assert.equal(leituraAtualizada.body.values[0][4], '["m1","m2"]');
-  assert(!calls.some(c => c.init.method === 'POST'));
+  assert.equal(updatedValue('A'), 'LEIT-001');
+  assert.equal(updatedValue('D'), 'REALIZADO');
+  assert.equal(updatedValue('E'), '["m1","m2"]');
+  assert(!calls.some(c => c.init.method === 'POST' && c.url.includes(':append?')));
 
   // 4e. Grupo usa grupo_integrante_id, mesmo se a UI enviar integrante_id.
   calls = [];
@@ -147,8 +149,8 @@ try {
   await gravarRegistroNaPlanilhaOficial('grupo_integrantes', {
     integrante_id: 'gi1', status: 'INATIVO',
   });
-  assert.equal(requiredWrite('PUT').body.values[0][3], 'INATIVO');
-  assert(!calls.some(c => c.init.method === 'POST'));
+  assert.equal(updatedValue('D'), 'INATIVO');
+  assert(!calls.some(c => c.init.method === 'POST' && c.url.includes(':append?')));
 
   // 4f. Identidade da leitura também protege exclusões.
   calls = [];
@@ -212,11 +214,11 @@ try {
   calls = [];
   sheetRows = [['orientacao_id', 'texto'], ['ori-1', 'a'], ['ori-1', 'b']];
   await assert.rejects(() => gravarRegistroNaPlanilhaOficial('orientacoes', {orientacao_id:'ori-1', texto:'c'}), /duplicada/);
-  assert(!calls.some(c => c.init.method === 'PUT'));
+  assert(!calls.some(c => c.init.method === 'PUT' || c.url.includes('/values:batchUpdate')));
   calls = [];
   sheetRows = [['orientacao_id', 'texto']];
   await removerRegistroDaPlanilhaOficial('orientacoes', {orientacao_id:'already-deleted'});
-  assert(!calls.some(c => c.init.method === 'POST'));
+  assert(!calls.some(c => c.init.method === 'POST' && c.url.includes(':append?')));
 
   // Notas devem ser números da API, inclusive em planilha pt-BR.
   // Textos continuam RAW, sem interpretar conteúdo como fórmula.
@@ -235,14 +237,14 @@ try {
   await gravarRegistroNaPlanilhaOficial('avaliacoes', {
     avaliacao_id:'av-01',matricula_id:'mat-01',criterio_id:'PROVA',nota:'0'
   });
-  assert.equal(requiredWrite('PUT').body.values[0][3], 0, 'nota zero é um lançamento válido');
+  assert.equal(updatedValue('D'), 0, 'nota zero é um lançamento válido');
 
   calls = [];
   sheetRows = [['avaliacao_id', 'matricula_id', 'criterio_id', 'nota']];
   await assert.rejects(() => gravarRegistroNaPlanilhaOficial('avaliacoes', {
     avaliacao_id:'av-02',matricula_id:'mat-02',criterio_id:'PROVA',nota:'=2+2'
   }), /Nota inválida/);
-  assert(!calls.some(c => c.init.method === 'POST'));
+  assert(!calls.some(c => c.init.method === 'POST' && c.url.includes(':append?')));
 
   console.log('[PASS] 11 grupos de testes da API do Google Sheets.');
 } finally {
