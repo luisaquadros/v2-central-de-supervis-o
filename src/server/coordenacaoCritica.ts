@@ -11,6 +11,7 @@ export const TABELAS_CRITICAS = new Set([
   'alunos','matriculas','turmas','horarios_turma',
   'periodos',
   'disciplinas',
+  'turmas_origem',
 ]);
 
 export type OperacaoCritica = 'INSERT' | 'UPDATE' | 'DELETE';
