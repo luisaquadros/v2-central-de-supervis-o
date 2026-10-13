@@ -979,6 +979,32 @@ export function obterSituacaoRssEstudante(
   };
 }
 
+/**
+ * Informações de RSS exibidas só na aula/turma; nunca criam notificações.
+ * Cada semana encerrada é distinta do número de encontro clínico.
+ */
+export function obterLacunasRssDaAula(
+  situacao: SituacaoRssEstudante | null,
+  calendario: CalendarioRss[],
+  hojeIso: string = getHojeDataIso()
+): { faltantes: number[]; emRevisao: number[] } {
+  if (!situacao) return { faltantes: [], emRevisao: [] };
+  const semanasEncerradas = [...new Set(calendario
+    .filter(c => c.turma_id === situacao.turmaId && c.semana_fim && c.semana_fim < hojeIso)
+    .map(c => Number(c.sequencia || c.semana || 0))
+    .filter(n => Number.isInteger(n) && n > 0))].sort((a,b) => a-b);
+  const validas = new Set(situacao.registrosEstudante.map(obterSemanaRssValidada)
+    .filter((n): n is number => n !== null));
+  const emRevisao = new Set(situacao.registrosEstudante.filter(r =>
+      String((r as any).status_revisao || '').toUpperCase() === 'PENDENTE_REVISAO')
+    .map(r => Number((r as any).semana_rss ?? r.semana))
+    .filter(n => Number.isInteger(n) && n > 0 && !validas.has(n)));
+  return {
+    faltantes: semanasEncerradas.filter(n => !validas.has(n) && !emRevisao.has(n)),
+    emRevisao: semanasEncerradas.filter(n => emRevisao.has(n)),
+  };
+}
+
 export type SituacaoRssOperacional = 'EM_DIA' | 'RECENTE_PENDENTE' | 'HISTORICO_INCOMPLETO' | 'EM_REVISAO' | 'AGUARDANDO_CALENDARIO';
 /**
  * Situação recente (para atenção) separada do histórico acumulado.
