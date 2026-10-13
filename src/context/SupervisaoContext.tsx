@@ -2274,24 +2274,24 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     motivoSubstituicao?: string
   ) => {
     setSaveStatus('SALVANDO');
-    setLeiturasResponsaveis(prev =>
-      prev.map(l => {
-        if (l.leitura_id === leituraId || (l.data && l.data === leituraId)) {
-          return {
-            ...l,
-            status_realizacao: status,
-            responsaveis_efetivos:
-              responsaveisEfetivosIds !== undefined
-                ? responsaveisEfetivosIds
-                : (l.responsaveis_efetivos || l.responsaveis_previstos || []),
-            motivo_substituicao:
-              motivoSubstituicao !== undefined ? motivoSubstituicao : l.motivo_substituicao,
-          };
-        }
-        return l;
-      })
-    );
-    notifySaveSuccess();
+    const original = leiturasResponsaveis.find(l => l.leitura_id === leituraId);
+    if (!original || !original.leitura_id) {
+      handleSaveError(new Error('Leitura não encontrada na base oficial.'));
+      return;
+    }
+    const atualizado: LeituraResponsavel = {
+      ...original, status_realizacao: status,
+      responsaveis_efetivos: responsaveisEfetivosIds !== undefined
+        ? responsaveisEfetivosIds
+        : (original.responsaveis_efetivos || original.responsaveis_previstos || []),
+      motivo_substituicao: motivoSubstituicao !== undefined ? motivoSubstituicao : original.motivo_substituicao,
+    };
+    const lista = leiturasResponsaveis.map(l => l.leitura_id === leituraId ? atualizado : l);
+    setLeiturasResponsaveis(lista);
+    await persistirMudancaWeb('leituras_responsaveis', 'UPDATE', {
+      ...atualizado,
+      leitura_agenda_id: (atualizado as any).leitura_agenda_id || atualizado.leitura_id,
+    }, lista);
   };
 
   // ==========================================
