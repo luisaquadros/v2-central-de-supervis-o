@@ -1724,48 +1724,53 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     setSaveStatus('SALVANDO');
     const newPeriodoId = `p-${nome.replace('.', '-')}-${Date.now().toString(36)}`;
     const newPeriodo: Periodo = {
-      periodo_id: newPeriodoId,
-      nome,
-      data_inicio: dataInicio,
-      data_fim: dataFim,
-      status: 'PLANEJADO',
+      periodo_id: newPeriodoId, nome,
+      data_inicio: dataInicio, data_fim: dataFim, status: 'PLANEJADO',
     };
-
+    const turmasAntigas = copiarTurmasDePeriodoId
+      ? turmas.filter(t => t.periodo_id === copiarTurmasDePeriodoId) : [];
+    const idsNovos = new Map<string, string>();
+    const novasTurmas = turmasAntigas.map(t => {
+      const id = generateUuid();
+      idsNovos.set(t.turma_id, id);
+      return { ...t, turma_id: id, periodo_id: newPeriodoId, status: 'ATIVO' as const };
+    });
+    // Preserva vínculo de cada critério à turma correspondente no novo período.
+    const novosCriterios = criterios
+      .filter(c => c.periodo_id === copiarTurmasDePeriodoId)
+      .map(c => ({
+        ...c, criterio_id: generateUuid(), periodo_id: newPeriodoId,
+        turma_id: c.turma_id ? (idsNovos.get(c.turma_id) || c.turma_id) : c.turma_id,
+      }));
     if (isRunningInAppsScript()) {
       try {
         await salvarNovoPeriodoNoSheets({
-          nome,
-          data_inicio: dataInicio,
-          data_fim: dataFim,
-          copiarTurmasDePeriodoId,
+          nome, data_inicio: dataInicio, data_fim: dataFim, copiarTurmasDePeriodoId,
         });
-      } catch (err) {
-        handleSaveError(err);
+        await carregarDadosReais();
+        notifySaveSuccess(true);
+        return newPeriodoId;
+      } catch (erro) {
+        handleSaveError(erro);
+        throw erro;
       }
     }
-
-    setPeriodos(prev => [...prev, newPeriodo]);
-
-    if (copiarTurmasDePeriodoId) {
-      const turmasAntigas = turmas.filter(t => t.periodo_id === copiarTurmasDePeriodoId);
-      const novasTurmas: Turma[] = turmasAntigas.map(t => ({
-        ...t,
-        turma_id: generateUuid(),
-        periodo_id: newPeriodoId,
-        status: 'ATIVO',
-      }));
-      setTurmas(prev => [...prev, ...novasTurmas]);
-
-      const criteriosAntigos = criterios.filter(c => c.periodo_id === copiarTurmasDePeriodoId);
-      const novosCriterios: CriterioAvaliacao[] = criteriosAntigos.map(c => ({
-        ...c,
-        criterio_id: generateUuid(),
-        periodo_id: newPeriodoId,
-      }));
-      setCriterios(prev => [...prev, ...novosCriterios]);
+    // Não apenas alterar React e indicar sucesso: registrar cada nova entidade
+    // no Sheets ou na fila offline antes de expor o novo período na interface.
+    await persistirMudancaWeb('periodos', 'INSERT', newPeriodo, [...periodos, newPeriodo]);
+    let turmasSnapshot = [...turmas];
+    for (const turma of novasTurmas) {
+      turmasSnapshot = [...turmasSnapshot, turma];
+      await persistirMudancaWeb('turmas', 'INSERT', turma, turmasSnapshot);
     }
-
-    notifySaveSuccess();
+    let criteriosSnapshot = [...criterios];
+    for (const criterio of novosCriterios) {
+      criteriosSnapshot = [...criteriosSnapshot, criterio];
+      await persistirMudancaWeb('criterios_avaliacao', 'INSERT', criterio, criteriosSnapshot);
+    }
+    setPeriodos(prev => [...prev, newPeriodo]);
+    if (novasTurmas.length) setTurmas(prev => [...prev, ...novasTurmas]);
+    if (novosCriterios.length) setCriterios(prev => [...prev, ...novosCriterios]);
     return newPeriodoId;
   };
 
@@ -1790,6 +1795,7 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         return res;
       } catch (err) {
         handleSaveError(err);
+        throw err; // Não importar somente em memória depois de falha no GAS
       }
     }
 
@@ -1801,15 +1807,18 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       const cleanRa = item.identificador_academico.trim();
       if (!cleanNome) return;
 
-      const existingAluno = alunos.find(
-        a => a.identificador_academico.toLowerCase() === cleanRa.toLowerCase()
+      // Conferir também o próprio lote: duas linhas com o mesmo RA
+      // não podem criar duas fichas independentes.
+      const existingAluno = [...alunos, ...alunosCriados].find(
+        a => cleanRa.length > 0 &&
+          a.identificador_academico.toLowerCase() === cleanRa.toLowerCase()
       );
 
       let targetAlunoId: string;
 
       if (existingAluno) {
         targetAlunoId = existingAluno.aluno_id;
-        const jaMatriculado = matriculas.some(
+        const jaMatriculado = [...matriculas, ...matriculasCriadas].some(
           m => m.aluno_id === targetAlunoId && m.turma_id === turmaId
         );
         if (jaMatriculado) {
@@ -1821,7 +1830,7 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         alunosCriados.push({
           aluno_id: targetAlunoId,
           nome: cleanNome,
-          identificador_academico: cleanRa || `RA${Date.now()}`,
+          identificador_academico: cleanRa || `RA-PENDENTE-${targetAlunoId}`,
           status: 'ATIVO',
         });
       }
@@ -1836,10 +1845,20 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       adicionados++;
     });
 
-    if (alunosCriados.length > 0) setAlunos(prev => [...prev, ...alunosCriados]);
-    if (matriculasCriadas.length > 0) setMatriculas(prev => [...prev, ...matriculasCriadas]);
-
-    notifySaveSuccess();
+    // Importação controlada: grava alunos antes de vincular matrículas;
+    // não confirma lote apenas em memória nem duplica registros já existentes.
+    let alunosSnapshot = [...alunos];
+    for (const aluno of alunosCriados) {
+      alunosSnapshot = [...alunosSnapshot, aluno];
+      await persistirMudancaWeb('alunos', 'INSERT', aluno, alunosSnapshot);
+    }
+    let matriculasSnapshot = [...matriculas];
+    for (const matricula of matriculasCriadas) {
+      matriculasSnapshot = [...matriculasSnapshot, matricula];
+      await persistirMudancaWeb('matriculas', 'INSERT', matricula, matriculasSnapshot);
+    }
+    if (alunosCriados.length) setAlunos(prev => [...prev, ...alunosCriados]);
+    if (matriculasCriadas.length) setMatriculas(prev => [...prev, ...matriculasCriadas]);
     return { adicionados, duplicados };
   };
 
