@@ -19,7 +19,7 @@ import {
   AlertCircle,
 } from 'lucide-react';
 import { useSupervisao } from '../context/SupervisaoContext';
-import { calcularMetricasCronogramaRss } from '../services/supervisaoOperacionalService';
+import { calcularMetricasCronogramaRss, getHojeDataIso } from '../services/supervisaoOperacionalService';
 
 interface HojeViewProps {
   onOpenTurma: (turmaId: string) => void;
@@ -74,7 +74,7 @@ export const HojeView: React.FC<HojeViewProps> = ({
 
   // Cálculos consolidados da base
   const totalAlunosAtivos = alunos.filter(a => a.status === 'ATIVO').length;
-  const hojeStr = new Date().toISOString().split('T')[0];
+  const hojeStr = getHojeDataIso();
 
   // RSS & Cronograma Semanal: Calculado canonicamente com filtragem estrita por turma_id
   const metricasCronograma = React.useMemo(() => {

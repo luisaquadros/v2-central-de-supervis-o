@@ -56,13 +56,12 @@ export const PrimeiraConexaoView: React.FC = () => {
               Primeira inicialização necessária:
             </p>
             <p>
-              Nenhum dado local persistente foi encontrado no cache do seu navegador (IndexedDB).
-              Para começar a trabalhar, conecte sua conta Google autorizada para validar e carregar
-              a base oficial de turmas, matrículas, calendários RSS e critérios acadêmicos.
+              Para acessar informações acadêmicas, entre com a conta Google autorizada na planilha oficial.
+              Os dados do dispositivo não serão exibidos enquanto você não estiver autenticada.
             </p>
             <p className="text-[11px] text-slate-400">
-              Após esta primeira leitura, uma cópia de trabalho persistente será salva no seu dispositivo
-              e o sistema continuará funcionando mesmo após atualizações ou recompilações.
+              O sistema guarda uma cópia de trabalho no dispositivo e sinaliza alterações que aguardam envio.
+              Antes de encerrar a supervisão, confirme o indicador de sincronização remota.
             </p>
           </div>
 

@@ -74,10 +74,6 @@ function saveTokenToSession(token: string) {
         sessionStorage.setItem(SESSION_TOKEN_KEY, token);
         sessionStorage.setItem(SESSION_EXPIRY_KEY, String(expiresAt));
       } catch {}
-      try {
-        localStorage.setItem(SESSION_TOKEN_KEY, token);
-        localStorage.setItem(SESSION_EXPIRY_KEY, String(expiresAt));
-      } catch {}
     }
   } catch (e) {
     // ignore
@@ -93,12 +89,6 @@ function getStoredTokenFromSession(): string | null {
         token = sessionStorage.getItem(SESSION_TOKEN_KEY);
         expStr = sessionStorage.getItem(SESSION_EXPIRY_KEY);
       } catch {}
-      if (!token) {
-        try {
-          token = localStorage.getItem(SESSION_TOKEN_KEY);
-          expStr = localStorage.getItem(SESSION_EXPIRY_KEY);
-        } catch {}
-      }
       if (token && expStr) {
         const exp = Number(expStr);
         if (Date.now() < exp) {
@@ -227,6 +217,39 @@ function parseSheetRowsToObjects<T>(rows: any[][]): T[] {
       }
     });
     return obj as T;
+  });
+}
+
+/**
+ * Compatibilidade com os cabeçalhos REAIS da planilha 2026.2.
+ * As propriedades canônicas originais são mantidas; os aliases servem
+ * apenas para componentes legados até migração completa do front-end.
+ */
+export function normalizarLinhasDaAba(tabela: string, rows: Record<string, any>[]): Record<string, any>[] {
+  return rows.map(item => {
+    const r = { ...item };
+    if (tabela === 'entregas') {
+      r.tipo_documento = r.tipo_documento ?? r.tipo_entrega ?? '';
+      r.status_entrega = r.status_entrega ?? r.status ?? '';
+      r.data_entrega = r.data_entrega ?? r.data_envio ?? '';
+    } else if (tabela === 'registros_supervisao') {
+      r.data_hora = r.data_hora ?? r.data ?? '';
+      r.texto = r.texto ?? r.descricao ?? '';
+    } else if (tabela === 'feedbacks') {
+      r.data_hora = r.data_hora ?? r.data ?? '';
+    } else if (tabela === 'grupo_integrantes') {
+      r.integrante_id = r.integrante_id ?? r.grupo_integrante_id ?? '';
+    } else if (tabela === 'leituras_responsaveis') {
+      r.leitura_id = r.leitura_id ?? r.leitura_agenda_id ?? '';
+      r.data = r.data ?? r.data_discussao ?? '';
+    } else if (tabela === 'registros_semanais') {
+      r.semana = r.semana ?? r.semana_rss ?? r.encontro_numero ?? '';
+      r.observacao = r.observacao ?? r.limitacoes ?? '';
+    } else if (tabela === 'regras_rss') {
+      r.regra_id = r.regra_id ?? r.regra_rss_id ?? '';
+      r.total_esperado = r.total_esperado ?? r.total_previsto ?? '';
+    }
+    return r;
   });
 }
 
@@ -359,7 +382,7 @@ export async function carregarDadosDaPlanilhaOficial(): Promise<ResultadoLeitura
       matchedTables.forEach((m, idx) => {
         const vr = valueRanges[idx];
         const rows = vr?.values || [];
-        tableDataMap[m.canonicalName] = parseSheetRowsToObjects(rows);
+        tableDataMap[m.canonicalName] = normalizarLinhasDaAba(m.canonicalName, parseSheetRowsToObjects(rows));
       });
     } else {
       // Fallback resiliente: lê individualmente cada aba que existe
@@ -373,7 +396,7 @@ export async function carregarDadosDaPlanilhaOficial(): Promise<ResultadoLeitura
             });
             if (singleRes.ok) {
               const singleData = await singleRes.json();
-              tableDataMap[m.canonicalName] = parseSheetRowsToObjects(singleData.values || []);
+              tableDataMap[m.canonicalName] = normalizarLinhasDaAba(m.canonicalName, parseSheetRowsToObjects(singleData.values || []));
             }
           } catch (e) {
             console.warn(`Erro ao ler aba ${m.realSheetName}:`, e);
@@ -437,6 +460,8 @@ export async function gravarRegistroNaPlanilhaOficial(
 
   // Obtém o nome real exato da aba na planilha (com acentos e formatação correta)
   const realSheetName = await resolverNomeRealAba(token, tabela);
+  const abas = await obterTitulosReaisDasAbas(token);
+  if (!abas.includes(realSheetName)) throw new Error(`Tabela ${tabela} não existe na base oficial.`);
 
   // 1. Obtém o cabeçalho e dados existentes da tabela para verificação de duplicidade
   const tableDataUrl = `https://sheets.googleapis.com/v4/spreadsheets/${OFFICIAL_SPREADSHEET_ID}/values/${encodeURIComponent(formatarRangeSheet(realSheetName, 'A1:ZZ'))}`;
@@ -454,13 +479,28 @@ export async function gravarRegistroNaPlanilhaOficial(
 
   const tableDataJson = await tableDataRes.json();
   const allRows: any[][] = tableDataJson.values || [];
-  const headers: string[] = allRows[0] || Object.keys(registro);
+  const headers: string[] = allRows[0] || [];
+  if (!headers.length) throw new Error(`Aba ${realSheetName} não possui cabeçalho válido.`);
+
+  // Adaptação à estrutura real das tabelas normalizadas.
+  // Não altera cabeçalhos da planilha e não inventa um segundo banco.
+  const adaptado: Record<string, any> = { ...registro };
+  if (tabela === 'registros_supervisao') {
+    adaptado.data = registro.data ?? registro.data_hora;
+    adaptado.descricao = registro.descricao ?? registro.texto;
+  }
+  if (tabela === 'entregas') {
+    adaptado.tipo_entrega = registro.tipo_entrega ?? registro.tipo_documento;
+    adaptado.status = registro.status ?? registro.status_entrega;
+    adaptado.data_envio = registro.data_envio ?? registro.data_entrega;
+  }
+
 
   // 2. Monta a linha conforme a ordem exata dos cabeçalhos reais
   const rowValues = headers.map(h => {
     const cleanHeader = h.trim();
     const lowerHeader = cleanHeader.toLowerCase();
-    const val = registro[cleanHeader] !== undefined ? registro[cleanHeader] : registro[lowerHeader];
+    const val = adaptado[cleanHeader] !== undefined ? adaptado[cleanHeader] : adaptado[lowerHeader];
     if (val === undefined || val === null) return '';
     if (typeof val === 'boolean') return val ? 'TRUE' : 'FALSE';
     return String(val);
@@ -516,10 +556,18 @@ export async function gravarRegistroNaPlanilhaOficial(
     }
   }
 
-  // 4. Se a linha já existe, executa UPDATE (PUT) evitando duplicação
+  // 4. Se a linha já existe, atualiza preservando colunas não presentes
+  // no payload (especialmente dados importados e trilhas de auditoria).
   if (existingRowIndex > 0) {
+    const linhaAnterior = allRows[existingRowIndex - 1] || [];
+    headers.forEach((header, col) => {
+      if (!Object.prototype.hasOwnProperty.call(adaptado, header.trim()) &&
+          !Object.prototype.hasOwnProperty.call(adaptado, header.trim().toLowerCase())) {
+        rowValues[col] = linhaAnterior[col] ?? '';
+      }
+    });
     const updateRange = formatarRangeSheet(realSheetName, `A${existingRowIndex}`);
-    const updateUrl = `https://sheets.googleapis.com/v4/spreadsheets/${OFFICIAL_SPREADSHEET_ID}/values/${encodeURIComponent(updateRange)}?valueInputOption=USER_ENTERED`;
+    const updateUrl = `https://sheets.googleapis.com/v4/spreadsheets/${OFFICIAL_SPREADSHEET_ID}/values/${encodeURIComponent(updateRange)}?valueInputOption=RAW`;
     const updateRes = await fetch(updateUrl, {
       method: 'PUT',
       headers: {
@@ -543,9 +591,13 @@ export async function gravarRegistroNaPlanilhaOficial(
     return true;
   }
 
+  if (!headers.some(h => Object.prototype.hasOwnProperty.call(adaptado, h.trim()))) {
+    throw new Error(`Registro incompatível com cabeçalhos da tabela ${tabela}; escrita bloqueada.`);
+  }
+
   // 5. Caso não exista, executa o APPEND seguro
-  const appendRange = formatarRangeSheet(realSheetName, 'A1:append');
-  const appendUrl = `https://sheets.googleapis.com/v4/spreadsheets/${OFFICIAL_SPREADSHEET_ID}/values/${encodeURIComponent(appendRange)}?valueInputOption=USER_ENTERED`;
+  const appendRange = formatarRangeSheet(realSheetName, 'A1:ZZ');
+  const appendUrl = `https://sheets.googleapis.com/v4/spreadsheets/${OFFICIAL_SPREADSHEET_ID}/values/${encodeURIComponent(appendRange)}?valueInputOption=RAW`;
   const appendRes = await fetch(appendUrl, {
     method: 'POST',
     headers: {
@@ -566,5 +618,48 @@ export async function gravarRegistroNaPlanilhaOficial(
     throw new Error(err?.error?.message || `Falha ao gravar na tabela ${realSheetName}`);
   }
 
+  return true;
+}
+
+/**
+ * Exclui uma linha somente após localizar inequivocamente sua chave na planilha.
+ * Exige que a linha pertença à tabela oficial; não exclui linhas de cabeçalho.
+ */
+export async function removerRegistroDaPlanilhaOficial(
+  tabela: string,
+  registro: Record<string, any>
+): Promise<boolean> {
+  const token = await getAccessToken();
+  if (!token) throw new Error('Não autenticado com Google Workspace.');
+  const metaUrl = `https://sheets.googleapis.com/v4/spreadsheets/${OFFICIAL_SPREADSHEET_ID}?fields=sheets.properties(sheetId,title)`;
+  const metaResponse = await fetch(metaUrl, { headers: { Authorization: `Bearer ${token}` } });
+  if (!metaResponse.ok) throw new Error('Não foi possível identificar a aba para exclusão.');
+  const metadata = await metaResponse.json();
+  const sheet = (metadata.sheets || []).find((item: any) => item.properties?.title === tabela)?.properties;
+  if (!sheet || !Number.isInteger(sheet.sheetId)) throw new Error(`Aba ${tabela} não localizada; exclusão cancelada.`);
+
+  const range = formatarRangeSheet(tabela, 'A1:ZZ');
+  const res = await fetch(
+    `https://sheets.googleapis.com/v4/spreadsheets/${OFFICIAL_SPREADSHEET_ID}/values/${encodeURIComponent(range)}`,
+    { headers: { Authorization: `Bearer ${token}` } }
+  );
+  if (!res.ok) throw new Error(`Falha na leitura de ${tabela} antes da exclusão.`);
+  const rows: any[][] = (await res.json()).values || [];
+  const headers = (rows[0] || []).map((h: any) => String(h).trim());
+  const pk = headers[0];
+  if (!pk || !pk.endsWith('_id') || !registro[pk]) {
+    throw new Error(`Chave primária inválida para excluir em ${tabela}.`);
+  }
+  const rowIndexes = rows.map((row, i) => i > 0 && String(row[0] || '') === String(registro[pk]) ? i : -1).filter(i => i > 0);
+  if (rowIndexes.length !== 1) throw new Error('Exclusão bloqueada: chave ausente ou duplicada.');
+  const rowIndex = rowIndexes[0];
+  const deleteRes = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${OFFICIAL_SPREADSHEET_ID}:batchUpdate`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ requests: [{
+      deleteDimension: { range: { sheetId: sheet.sheetId, dimension: 'ROWS', startIndex: rowIndex, endIndex: rowIndex + 1 } }
+    }] }),
+  });
+  if (!deleteRes.ok) throw new Error(`Exclusão em ${tabela} não confirmada pelo Google Sheets.`);
   return true;
 }
