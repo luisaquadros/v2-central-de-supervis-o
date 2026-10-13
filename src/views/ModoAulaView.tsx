@@ -19,7 +19,7 @@ import {
 } from 'lucide-react';
 import { useSupervisao } from '../context/SupervisaoContext';
 import { ItemFilaSupervisao } from '../types';
-import { calcularMetricasCronogramaRss } from '../services/supervisaoOperacionalService';
+import { calcularMetricasCronogramaRss, getHojeDataIso } from '../services/supervisaoOperacionalService';
 
 interface ModoAulaViewProps {
   turmaId: string;
@@ -62,7 +62,7 @@ export const ModoAulaView: React.FC<ModoAulaViewProps> = ({
 
   const turma = turmas.find(t => t.turma_id === turmaId);
   const alunosDaTurma = getAlunosDaTurma(turmaId);
-  const hojeStr = new Date().toISOString().split('T')[0];
+  const hojeStr = getHojeDataIso();
 
   // Identifica Clínica Ampliada pelo modelo relacional / grupos de prática (sem substring)
   const isClinicaAmpliada = isTurmaClinicaAmpliada(turmaId);
@@ -70,7 +70,7 @@ export const ModoAulaView: React.FC<ModoAulaViewProps> = ({
 
   // Leitura do encontro vinculada à turma e data (sem fallback por índice)
   const leitura = leiturasResponsaveis.find(l => l.turma_id === turmaId && (l.data || '') >= hojeStr) ||
-    leiturasResponsaveis.find(l => l.turma_id === turmaId) ||
+    [...leiturasResponsaveis].filter(l => l.turma_id === turmaId).sort((a,b)=>String(b.data||'').localeCompare(String(a.data||'')))[0] ||
     null;
 
   // Semana de prática e RSS esperados da turma (sem fallbacks hardcoded, filtragem estrita por turma_id)
@@ -250,7 +250,7 @@ export const ModoAulaView: React.FC<ModoAulaViewProps> = ({
                 Leitura do Encontro: "{leitura.tema || leitura.titulo || 'Sem título'}"
               </span>
               <span className="text-slate-500">
-                Responsáveis: <strong className="text-indigo-800">{leitura.responsavel_nome || leitura.responsavel_id || 'Turma em geral'}</strong>
+                Responsáveis: <strong className="text-indigo-800">{(leitura.tipo === 'LEITURA_RECOMENDADA' ? 'Leitura coletiva, sem responsável' : (leitura.responsavel_nome || leitura.responsavel_id || 'A confirmar'))}</strong>
               </span>
             </div>
           </div>
@@ -263,7 +263,7 @@ export const ModoAulaView: React.FC<ModoAulaViewProps> = ({
       )}
 
       {/* Internal Navigation Sub-tabs */}
-      <div className="flex border-b border-slate-200 bg-white rounded-xl p-1.5 gap-1 shadow-2xs">
+      <div className="flex border-b border-slate-200 bg-white rounded-xl p-1.5 gap-1 shadow-2xs overflow-x-auto max-w-full [-webkit-overflow-scrolling:touch]">
         <button
           onClick={() => setSubTab('CHAMADA')}
           className={`flex-1 py-2 px-3 rounded-lg text-xs font-bold transition-colors cursor-pointer flex items-center justify-center gap-2 ${
@@ -316,7 +316,7 @@ export const ModoAulaView: React.FC<ModoAulaViewProps> = ({
             <span className="text-xs font-mono font-bold text-slate-500">{alunosDaTurma.length} matriculados</span>
           </div>
 
-          <div className="divide-y divide-slate-100 border border-slate-200 rounded-xl overflow-hidden">
+          <div className="divide-y divide-slate-100 border border-slate-200 rounded-xl max-h-[65dvh] min-h-0 overflow-y-auto overscroll-contain touch-pan-y [-webkit-overflow-scrolling:touch]">
             {alunosDaTurma.map(({ matricula, aluno }) => {
               const freq = getFrequenciaHoje(matricula.matricula_id);
               const statusFreq = freq ? freq.status : 'SEM_REGISTRO';
