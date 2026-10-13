@@ -519,7 +519,7 @@ export async function gravarRegistroNaPlanilhaOficial(
   // 4. Se a linha já existe, executa UPDATE (PUT) evitando duplicação
   if (existingRowIndex > 0) {
     const updateRange = formatarRangeSheet(realSheetName, `A${existingRowIndex}`);
-    const updateUrl = `https://sheets.googleapis.com/v4/spreadsheets/${OFFICIAL_SPREADSHEET_ID}/values/${encodeURIComponent(updateRange)}?valueInputOption=USER_ENTERED`;
+    const updateUrl = `https://sheets.googleapis.com/v4/spreadsheets/${OFFICIAL_SPREADSHEET_ID}/values/${encodeURIComponent(updateRange)}?valueInputOption=RAW`;
     const updateRes = await fetch(updateUrl, {
       method: 'PUT',
       headers: {
@@ -545,7 +545,7 @@ export async function gravarRegistroNaPlanilhaOficial(
 
   // 5. Caso não exista, executa o APPEND seguro
   const appendRange = formatarRangeSheet(realSheetName, 'A1:append');
-  const appendUrl = `https://sheets.googleapis.com/v4/spreadsheets/${OFFICIAL_SPREADSHEET_ID}/values/${encodeURIComponent(appendRange)}?valueInputOption=USER_ENTERED`;
+  const appendUrl = `https://sheets.googleapis.com/v4/spreadsheets/${OFFICIAL_SPREADSHEET_ID}/values/${encodeURIComponent(appendRange)}?valueInputOption=RAW`;
   const appendRes = await fetch(appendUrl, {
     method: 'POST',
     headers: {
