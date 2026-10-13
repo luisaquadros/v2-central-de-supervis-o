@@ -42,6 +42,7 @@ import {
   MapeamentoFonte,
   AuditoriaBase,
   EncontroTurma,
+  PreparacaoAula,
 } from '../types';
 
 export const OFFICIAL_SPREADSHEET_ID = '1DwhmASMStNtT_L2YinG-jkP9vYVv5ETdc-azYqSSIc4';
@@ -80,6 +81,7 @@ export interface DadosIniciaisGas {
   feedbacksOficiais?: Feedback[];
   registrosSupervisao?: RegistroSupervisao[];
   encontrosTurma?: EncontroTurma[];
+  preparacoesAula?: PreparacaoAula[];
   sincronizacao?: Sincronizacao[];
   // Documentação e Contrato da Base Oficial
   dicionarioDados?: DicionarioDado[];
