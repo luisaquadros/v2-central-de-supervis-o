@@ -112,7 +112,7 @@ try {
     frequencia_id: 'f-1', matricula_id: 'm-1',
     data_aula: '2026-10-13', status: 'PRESENTE', atraso: true,
   });
-  assert.equal(requiredWrite('PUT').body.values[0][3], 'ATRASO', 'Não perder atraso na persistência');
+  assert.equal(updatedValue('D'), 'ATRASO', 'Não perder atraso na persistência');
 
   // 4c. Encerramento da aula deve possuir caminho de gravação real.
   calls = [];
@@ -149,7 +149,7 @@ try {
   await gravarRegistroNaPlanilhaOficial('grupo_integrantes', {
     integrante_id: 'gi1', status: 'INATIVO',
   });
-  assert.equal(requiredWrite('PUT').body.values[0][3], 'INATIVO');
+  assert.equal(updatedValue('D'), 'INATIVO');
   assert(!calls.some(c => c.init.method === 'POST'));
 
   // 4f. Identidade da leitura também protege exclusões.
@@ -237,7 +237,7 @@ try {
   await gravarRegistroNaPlanilhaOficial('avaliacoes', {
     avaliacao_id:'av-01',matricula_id:'mat-01',criterio_id:'PROVA',nota:'0'
   });
-  assert.equal(requiredWrite('PUT').body.values[0][3], 0, 'nota zero é um lançamento válido');
+  assert.equal(updatedValue('D'), 0, 'nota zero é um lançamento válido');
 
   calls = [];
   sheetRows = [['avaliacao_id', 'matricula_id', 'criterio_id', 'nota']];
