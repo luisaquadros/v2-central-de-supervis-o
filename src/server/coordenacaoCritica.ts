@@ -10,6 +10,7 @@ export const TABELAS_CRITICAS = new Set([
   // Cadastro: migrado uma tabela por vez (cada linha abaixo é um passo reversível, ver docs/DOCUMENTO_MESTRE.md)
   'alunos','matriculas','turmas','horarios_turma',
   'periodos',
+  'disciplinas',
 ]);
 
 export type OperacaoCritica = 'INSERT' | 'UPDATE' | 'DELETE';
