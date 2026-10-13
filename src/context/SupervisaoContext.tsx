@@ -2114,41 +2114,23 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     observacao?: string
   ) => {
     setSaveStatus('SALVANDO');
-    const now = new Date().toISOString();
-    setEncontrosTurma(prev => {
-      const idx = prev.findIndex(e => e.turma_id === turmaId && e.data === data);
-      const updated: EncontroTurma = {
-        encontro_id: idx >= 0 ? prev[idx].encontro_id : generateUuid(),
-        turma_id: turmaId,
-        periodo_id: selectedPeriodoId,
-        data,
-        status: 'NAO_REALIZADO',
-        motivo_nao_realizado: motivo,
-        observacao: observacao || '',
-        atualizado_em: now,
-      };
-      if (idx >= 0) {
-        const copy = [...prev];
-        copy[idx] = updated;
-        return copy;
-      }
-      return [...prev, updated];
-    });
-
-    // Se havia estudo dirigido programado para esta data, registrar nota explicativa sem marcar como não cumprimento do aluno
-    setLeiturasResponsaveis(prev =>
-      prev.map(l => {
-        if (l.turma_id === turmaId && l.data === data) {
-          return {
-            ...l,
-            observacao: `Aula não realizada (${motivo})${observacao ? `: ${observacao}` : ''}`,
-          };
-        }
-        return l;
-      })
-    );
-
-    // Registra auditoria
+    const anterior = encontrosTurma.find(e => e.turma_id === turmaId && e.data === data);
+    const atualizado: EncontroTurma = {
+      ...anterior,
+      encontro_id: anterior?.encontro_id || generateUuid(),
+      turma_id: turmaId,
+      periodo_id: selectedPeriodoId,
+      data,
+      status: 'NAO_REALIZADO',
+      motivo_nao_realizado: motivo,
+      observacao: observacao || '',
+      atualizado_em: new Date().toISOString(),
+    };
+    const listaAtualizada = [...encontrosTurma.filter(e => !(e.turma_id === turmaId && e.data === data)), atualizado];
+    setEncontrosTurma(listaAtualizada);
+    // Não alterar realização do estudo dirigido sem confirmação da docente.
+    // As aulas canceladas não justificam automaticamente ausência de RSS/prática.
+    await persistirMudancaWeb('encontros_turma', anterior ? 'UPDATE' : 'INSERT', atualizado, listaAtualizada);
     await registrarAuditoria({
       acao: 'MARCAR_AULA_NAO_REALIZADA',
       entidade: 'encontros_turma',
@@ -2156,8 +2138,6 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       valor_novo: JSON.stringify({ motivo, observacao }),
       motivo: String(motivo),
     });
-
-    notifySaveSuccess();
   };
 
   const reagendarEncontro = async (
@@ -2228,6 +2208,31 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       );
     }
 
+    // Compartilha o cancelamento e o reagendamento com outros dispositivos.
+    const itemOriginal = encontrosTurma.find(e => e.turma_id === turmaId && e.data === dataOriginal);
+    const itemNovo = encontrosTurma.find(e => e.turma_id === turmaId && e.data === novaData);
+    const registroOriginal: EncontroTurma = {
+      ...itemOriginal, encontro_id: itemOriginal?.encontro_id || generateUuid(),
+      turma_id: turmaId, periodo_id: selectedPeriodoId, data: dataOriginal,
+      status: 'REAGENDADO', motivo_nao_realizado: motivo || 'Reagendamento',
+      data_reagendada: novaData, hora_reagendada: novoHorario, atualizado_em: now,
+    };
+    const registroNovo: EncontroTurma = {
+      ...itemNovo, encontro_id: itemNovo?.encontro_id || generateUuid(),
+      turma_id: turmaId, periodo_id: selectedPeriodoId, data: novaData,
+      status: 'PREVISTO', data_original: dataOriginal,
+      hora_inicio: novoHorario || horarioOriginal?.hora_inicio || '18:30',
+      hora_fim: horarioOriginal?.hora_fim || '21:12',
+      observacao: `Reagendado de ${dataOriginal}. Motivo: ${motivo || 'Reorganização acadêmica'}`,
+      atualizado_em: now,
+    };
+    const listaReagendada = [
+      ...encontrosTurma.filter(e => e.turma_id !== turmaId || (e.data !== dataOriginal && e.data !== novaData)),
+      registroOriginal, registroNovo
+    ];
+    await persistirMudancaWeb('encontros_turma', itemOriginal ? 'UPDATE' : 'INSERT', registroOriginal, listaReagendada);
+    await persistirMudancaWeb('encontros_turma', itemNovo ? 'UPDATE' : 'INSERT', registroNovo, listaReagendada);
+
     await registrarAuditoria({
       acao: 'REAGENDAR_SUPERVISAO',
       entidade: 'encontros_turma',
@@ -2237,12 +2242,14 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       motivo: motivo || 'Reagendamento de aula',
     });
 
-    notifySaveSuccess();
   };
 
   const reverterNaoRealizadoOuReagendado = async (turmaId: string, data: string) => {
-    setEncontrosTurma(prev => prev.filter(e => !(e.turma_id === turmaId && e.data === data)));
-    notifySaveSuccess();
+    const anterior = encontrosTurma.find(e => e.turma_id === turmaId && e.data === data);
+    if (!anterior) return;
+    const atualizados = encontrosTurma.filter(e => !(e.turma_id === turmaId && e.data === data));
+    setEncontrosTurma(atualizados);
+    await persistirMudancaWeb('encontros_turma', 'DELETE', anterior, atualizados);
   };
 
   // ==========================================
