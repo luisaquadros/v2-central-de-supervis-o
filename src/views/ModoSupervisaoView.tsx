@@ -1,5 +1,5 @@
 import { resolverResponsaveis } from '../services/aulaParticipants';
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   Search,
   AlertTriangle,
@@ -175,6 +175,19 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
   const [selectedMatriculaId, setSelectedMatriculaId] = useState<string>(() => {
     return alunosLista.length > 0 ? alunosLista[0].matricula.matricula_id : '';
   });
+
+  // Ao concluir a leitura assíncrona da planilha, a lista pode chegar depois
+  // de abrir a aula. Evita ficha vazia e seleção de matrícula de outra turma.
+  useEffect(() => {
+    if (alunosLista.length === 0) {
+      if (selectedMatriculaId) setSelectedMatriculaId('');
+      setMobileTab('LISTA');
+      return;
+    }
+    if (!alunosLista.some(item => item.matricula.matricula_id === selectedMatriculaId)) {
+      setSelectedMatriculaId(alunosLista[0].matricula.matricula_id);
+    }
+  }, [turmaId, alunosLista, selectedMatriculaId]);
 
   // Modals operacionais
   const [modalType, setModalType] = useState<
