@@ -27,11 +27,12 @@ export const MinhaFilaModal: React.FC<MinhaFilaModalProps> = ({ isOpen, onClose 
 
   if (!isOpen) return null;
 
-  const handleCriarItem = (e: React.FormEvent) => {
+  const handleCriarItem = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!novoTitulo.trim()) return;
 
-    addItemFilaProfessora({
+    try {
+      await addItemFilaProfessora({
       titulo: novoTitulo.trim(),
       duracao_minutos: novaDuracao,
       prioridade: novaPrioridade,
@@ -39,10 +40,12 @@ export const MinhaFilaModal: React.FC<MinhaFilaModalProps> = ({ isOpen, onClose 
       categoria: novaCategoria,
       turma_id: novaTurmaId || undefined,
       prazo: novoPrazo,
-    });
-
-    setNovoTitulo('');
-    setMostrandoForm(false);
+      });
+      setNovoTitulo('');
+      setMostrandoForm(false);
+    } catch (erro: any) {
+      window.alert(erro?.message || 'Falha ao salvar tarefa na planilha.');
+    }
   };
 
   const pendentes = filaProfessora.filter((i: any) => i.status !== 'CONCLUIDO');
@@ -197,7 +200,7 @@ export const MinhaFilaModal: React.FC<MinhaFilaModalProps> = ({ isOpen, onClose 
                   >
                     <div className="flex items-center gap-3">
                       <button
-                        onClick={() => toggleStatusFilaProfessora(item.id)}
+                        onClick={() => void toggleStatusFilaProfessora(item.id).catch(e => window.alert(e?.message || 'Falha ao atualizar tarefa.'))}
                         className="text-slate-400 hover:text-emerald-600 cursor-pointer transition-colors"
                       >
                         {isConcluido ? (
@@ -222,7 +225,7 @@ export const MinhaFilaModal: React.FC<MinhaFilaModalProps> = ({ isOpen, onClose 
                     </div>
 
                     <button
-                      onClick={() => deleteItemFilaProfessora(item.id)}
+                      onClick={() => void deleteItemFilaProfessora(item.id).catch(e => window.alert(e?.message || 'Falha ao excluir tarefa.'))}
                       className="p-1 text-slate-300 hover:text-red-600 transition-colors cursor-pointer"
                       title="Excluir"
                     >

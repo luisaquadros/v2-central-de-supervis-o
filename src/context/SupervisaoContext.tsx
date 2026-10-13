@@ -1,3 +1,4 @@
+import { chaveItemOperacional, prepararRegistroOperacional, combinarOperacionais, contarLegadosLocais, type TipoOperacional } from '../services/operacionaisSheetsService';
 import { resumirDocumentacaoOficial, documentosPendentesOficiais } from '../services/documentacaoAcademicaService';
 import { interpretarStatusEntrega } from '../services/normalizacaoAcademica';
 import { filtrarPendenciasResolvidas } from '../services/pendenciaResolutionService';
@@ -313,6 +314,8 @@ interface SupervisaoContextType {
 
   // Componentes de Apoio / Fila / Avaliação
   caixaEntrada: CaixaEntradaItem[];
+  itensOperacionaisLocaisPendentes: number;
+  importarItensOperacionaisLocais: () => Promise<number>;
   addCaixaEntradaItem: (item: any) => Promise<void>;
   confirmarCaixaEntradaItem: (id: string, updates?: any) => Promise<void>;
   descartarCaixaEntradaItem: (id: string) => Promise<void>;
@@ -631,7 +634,12 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     if (Array.isArray(data.matriculas)) setMatriculas(data.matriculas);
     if (Array.isArray(data.orientacoes)) setOrientacoes(data.orientacoes);
     if (Array.isArray(data.criterios)) setCriterios(data.criterios);
-    if (Array.isArray(data.configuracoes)) setConfiguracoes(data.configuracoes);
+    if (Array.isArray(data.configuracoes)) {
+      setConfiguracoes(data.configuracoes);
+      setCaixaEntrada(prev => combinarOperacionais(prev, data.configuracoes, 'CAIXA_ENTRADA'));
+      setFilaProfessora(prev => combinarOperacionais(prev, data.configuracoes, 'FILA_PROFESSORA'));
+      setFilaSupervisao(prev => combinarOperacionais(prev, data.configuracoes, 'FILA_SUPERVISAO'));
+    }
     if (Array.isArray(data.marcos)) setMarcosAcademicos(data.marcos);
     if (Array.isArray(data.pontosAcompanhamento)) setPontosAcompanhamento(data.pontosAcompanhamento);
     if (Array.isArray(data.frequencias)) setFrequencias(data.frequencias);
@@ -1941,37 +1949,103 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     return novaEntrega;
   };
 
+  const gravarItemOperacional = async <T extends {id: string}>(
+    tipo: TipoOperacional, item: T, excluido = false,
+  ): Promise<void> => {
+    const chave = chaveItemOperacional(tipo, item.id);
+    const existente = configuracoes.find(c => c.chave === chave);
+    const registro = prepararRegistroOperacional(tipo, item, selectedPeriodoId, existente, excluido);
+    await persistirMudancaWeb('configuracoes', existente ? 'UPDATE' : 'INSERT',
+      registro, [...configuracoes.filter(c => c.chave !== chave), registro]);
+    setConfiguracoes(prev => [...prev.filter(c => c.chave !== chave), registro]);
+  };
+
+  const itensOperacionaisLocaisPendentes =
+    contarLegadosLocais(caixaEntrada, configuracoes, 'CAIXA_ENTRADA') +
+    contarLegadosLocais(filaProfessora, configuracoes, 'FILA_PROFESSORA') +
+    contarLegadosLocais(filaSupervisao, configuracoes, 'FILA_SUPERVISAO');
+
+  const importarItensOperacionaisLocais = async (): Promise<number> => {
+    if (!await getAccessToken()) throw new Error('Conecte ao Google Sheets antes da importação.');
+    const grupos = [
+      ['CAIXA_ENTRADA', caixaEntrada],
+      ['FILA_PROFESSORA', filaProfessora],
+      ['FILA_SUPERVISAO', filaSupervisao],
+    ] as const;
+    const conhecidos = new Set(configuracoes.map(c => c.chave));
+    let count = 0;
+    for (const [tipo, items] of grupos) {
+      for (const item of items) {
+        const chave = chaveItemOperacional(tipo, item.id);
+        if (conhecidos.has(chave)) continue;
+        const registro = prepararRegistroOperacional(tipo, item, selectedPeriodoId);
+        const res = await salvarRegistroResiliente('configuracoes', 'INSERT', registro);
+        if (!res.gravadoOnline) throw new Error('Importação parcial: itens mantidos no dispositivo. Reconecte antes de continuar.');
+        setConfiguracoes(prev => [...prev.filter(c => c.chave !== chave), registro]);
+        conhecidos.add(chave);
+        count++;
+      }
+    }
+    return count;
+  };
+
   // Métodos de apoio / transição
   const addCaixaEntradaItem = async (item: any) => {
-    const novo = { id: gerarIdEstavel('cx'), criado_em: new Date().toISOString(), status: 'PENDENTE' as const, ...item };
+    const novo: CaixaEntradaItem = { ...item, id: gerarIdEstavel('cx'), criado_em: new Date().toISOString(), status: item.status || 'PENDENTE' };
+    await gravarItemOperacional('CAIXA_ENTRADA', novo);
     setCaixaEntrada(prev => [novo, ...prev]);
   };
   const confirmarCaixaEntradaItem = async (id: string, updates?: any) => {
-    setCaixaEntrada(prev => prev.map(i => i.id === id ? { ...i, status: 'CONFIRMADO' as const, ...(updates || {}) } : i));
+    const anterior = caixaEntrada.find(i => i.id === id);
+    if (!anterior) throw new Error('Item da caixa não encontrado.');
+    const atualizado: CaixaEntradaItem = { ...anterior, ...(updates || {}), status: 'CONFIRMADO', resolvido_em: new Date().toISOString() };
+    await gravarItemOperacional('CAIXA_ENTRADA', atualizado);
+    setCaixaEntrada(prev => prev.map(i => i.id === id ? atualizado : i));
   };
   const descartarCaixaEntradaItem = async (id: string) => {
-    setCaixaEntrada(prev => prev.map(i => i.id === id ? { ...i, status: 'DESCARTADO' as const } : i));
+    const anterior = caixaEntrada.find(i => i.id === id);
+    if (!anterior) throw new Error('Item da caixa não encontrado.');
+    const atualizado: CaixaEntradaItem = { ...anterior, status: 'DESCARTADO', resolvido_em: new Date().toISOString() };
+    await gravarItemOperacional('CAIXA_ENTRADA', atualizado);
+    setCaixaEntrada(prev => prev.map(i => i.id === id ? atualizado : i));
   };
-
   const addItemFilaProfessora = async (item: any) => {
-    const novo = { id: gerarIdEstavel('fp'), criado_em: new Date().toISOString(), status: 'PENDENTE' as const, ...item };
+    const novo: ItemFilaProfessora = { ...item, id: gerarIdEstavel('fp'), criado_em: new Date().toISOString(), status: item.status || 'PENDENTE' };
+    await gravarItemOperacional('FILA_PROFESSORA', novo);
     setFilaProfessora(prev => [novo, ...prev]);
   };
   const toggleStatusFilaProfessora = async (id: string) => {
-    setFilaProfessora(prev => prev.map(i => i.id === id ? { ...i, status: i.status === 'CONCLUIDO' ? 'PENDENTE' as const : 'CONCLUIDO' as const } : i));
+    const anterior = filaProfessora.find(i => i.id === id);
+    if (!anterior) throw new Error('Tarefa não encontrada.');
+    const atualizado: ItemFilaProfessora = { ...anterior, status: anterior.status === 'CONCLUIDO' ? 'PENDENTE' : 'CONCLUIDO' };
+    await gravarItemOperacional('FILA_PROFESSORA', atualizado);
+    setFilaProfessora(prev => prev.map(i => i.id === id ? atualizado : i));
   };
   const deleteItemFilaProfessora = async (id: string) => {
+    const anterior = filaProfessora.find(i => i.id === id);
+    if (!anterior) throw new Error('Tarefa não encontrada.');
+    await gravarItemOperacional('FILA_PROFESSORA', anterior, true);
     setFilaProfessora(prev => prev.filter(i => i.id !== id));
   };
 
   const addItemFilaSupervisao = async (item: any) => {
-    const novo = { id: gerarIdEstavel('fs'), criado_em: new Date().toISOString(), status: 'AGUARDANDO' as const, ordem: filaSupervisao.length + 1, ...item };
+    const novo: ItemFilaSupervisao = { ...item, id: gerarIdEstavel('fs'),
+      criado_em: new Date().toISOString(), status: item.status || 'AGUARDANDO',
+      ordem: filaSupervisao.length + 1 };
+    await gravarItemOperacional('FILA_SUPERVISAO', novo);
     setFilaSupervisao(prev => [...prev, novo]);
   };
-  const updateStatusFilaSupervisao = async (id: string, status: any) => {
-    setFilaSupervisao(prev => prev.map(i => i.id === id ? { ...i, status } : i));
+  const updateStatusFilaSupervisao = async (id: string, status: ItemFilaSupervisao['status']) => {
+    const anterior = filaSupervisao.find(i => i.id === id);
+    if (!anterior) throw new Error('Item da supervisão não encontrado.');
+    const atualizado: ItemFilaSupervisao = { ...anterior, status };
+    await gravarItemOperacional('FILA_SUPERVISAO', atualizado);
+    setFilaSupervisao(prev => prev.map(i => i.id === id ? atualizado : i));
   };
   const removerItemFilaSupervisao = async (id: string) => {
+    const anterior = filaSupervisao.find(i => i.id === id);
+    if (!anterior) throw new Error('Item da supervisão não encontrado.');
+    await gravarItemOperacional('FILA_SUPERVISAO', anterior, true);
     setFilaSupervisao(prev => prev.filter(i => i.id !== id));
   };
 
@@ -2971,6 +3045,8 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         getAlunosDaTurma,
         // Componentes de apoio / filas / avaliação
         caixaEntrada,
+        itensOperacionaisLocaisPendentes,
+        importarItensOperacionaisLocais,
         addCaixaEntradaItem,
         confirmarCaixaEntradaItem,
         descartarCaixaEntradaItem,

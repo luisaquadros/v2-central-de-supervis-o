@@ -77,7 +77,7 @@ export const CaixaEntradaGlobalModal: React.FC<CaixaEntradaGlobalModalProps> = (
         await addDocumento(targetMatriculaId, 'Termo de Compromisso', 'ENTREGUE', sugestao.observacao);
       } else {
         // Registra como item classificado na Caixa de Entrada do app
-        addCaixaEntradaItem({
+        await addCaixaEntradaItem({
           texto_original: textoLivre,
           status: 'CONFIRMADO',
           tipo_sugerido: sugestao.tipo,
@@ -103,19 +103,20 @@ export const CaixaEntradaGlobalModal: React.FC<CaixaEntradaGlobalModalProps> = (
     }
   };
 
-  const handleSalvarComoPendente = () => {
-    addCaixaEntradaItem({
+  const handleSalvarComoPendente = async () => {
+    setGravando(true);
+    try {
+    await addCaixaEntradaItem({
       texto_original: textoLivre,
       status: 'PENDENTE',
       motivo_pendente: 'Salvo manualmente na Caixa de Entrada para resolução posterior.',
       observacao: textoLivre,
       data_relacionada: new Date().toISOString().split('T')[0],
     });
-    setMensagemSucesso('Item enviado para a Caixa de Entrada Pendente.');
-    setTimeout(() => {
-      setMensagemSucesso(null);
-      onClose();
-    }, 1200);
+    setMensagemSucesso('Item registrado na Caixa de Entrada.');
+    setTimeout(() => { setMensagemSucesso(null); onClose(); }, 1200);
+    } catch (erro: any) { window.alert(erro?.message || 'Falha ao salvar anotação.'); }
+    finally { setGravando(false); }
   };
 
   const handleGravarManual = async (e: React.FormEvent) => {
@@ -138,7 +139,7 @@ export const CaixaEntradaGlobalModal: React.FC<CaixaEntradaGlobalModalProps> = (
       } else if (formTipo === 'ORIENTACAO' && targetMatriculaId) {
         await addOrientacao(targetMatriculaId, 'Geral', formObservacao, 'ABERTA');
       } else if (formTipo === 'TAREFA_PROFESSORA') {
-        addItemFilaProfessora({
+        await addItemFilaProfessora({
           titulo: formObservacao,
           categoria: 'Geral',
           duracao_minutos: 15,
@@ -149,7 +150,7 @@ export const CaixaEntradaGlobalModal: React.FC<CaixaEntradaGlobalModalProps> = (
           prazo: formData,
         });
       } else {
-        addCaixaEntradaItem({
+        await addCaixaEntradaItem({
           texto_original: formObservacao,
           status: 'CONFIRMADO',
           tipo_sugerido: formTipo,
