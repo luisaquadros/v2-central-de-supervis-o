@@ -647,8 +647,9 @@ export const TurmaDetalheView: React.FC<{
   turmaId: string;
   onVoltar: () => void;
   onIniciarSupervisao: (turmaId: string) => void;
+  onOpenPrepararAula?: (turmaId: string) => void;
   onOpenAluno: (matriculaId: string) => void;
-}> = ({ turmaId, onVoltar, onIniciarSupervisao, onOpenAluno }) => {
+}> = ({ turmaId, onVoltar, onIniciarSupervisao, onOpenPrepararAula, onOpenAluno }) => {
   const {
     turmas,
     disciplinas,
@@ -783,6 +784,12 @@ export const TurmaDetalheView: React.FC<{
             )}
           </button>
 
+          {onOpenPrepararAula && (
+            <button onClick={() => onOpenPrepararAula(turmaId)}
+              className="px-3 py-2 rounded-xl bg-indigo-50 border border-indigo-200 text-indigo-800 text-xs font-semibold hover:bg-indigo-100">
+              Preparar aula
+            </button>
+          )}
           <button
             onClick={() => onIniciarSupervisao(turmaId)}
             className="flex items-center justify-center gap-2 px-5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold shadow-sm transition-all cursor-pointer active:scale-98"
