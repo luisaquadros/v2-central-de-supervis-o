@@ -1807,15 +1807,18 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       const cleanRa = item.identificador_academico.trim();
       if (!cleanNome) return;
 
-      const existingAluno = alunos.find(
-        a => a.identificador_academico.toLowerCase() === cleanRa.toLowerCase()
+      // Conferir também o próprio lote: duas linhas com o mesmo RA
+      // não podem criar duas fichas independentes.
+      const existingAluno = [...alunos, ...alunosCriados].find(
+        a => cleanRa.length > 0 &&
+          a.identificador_academico.toLowerCase() === cleanRa.toLowerCase()
       );
 
       let targetAlunoId: string;
 
       if (existingAluno) {
         targetAlunoId = existingAluno.aluno_id;
-        const jaMatriculado = matriculas.some(
+        const jaMatriculado = [...matriculas, ...matriculasCriadas].some(
           m => m.aluno_id === targetAlunoId && m.turma_id === turmaId
         );
         if (jaMatriculado) {
@@ -1827,7 +1830,7 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         alunosCriados.push({
           aluno_id: targetAlunoId,
           nome: cleanNome,
-          identificador_academico: cleanRa || `RA${Date.now()}`,
+          identificador_academico: cleanRa || `RA-PENDENTE-${targetAlunoId}`,
           status: 'ATIVO',
         });
       }
