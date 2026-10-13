@@ -51,6 +51,7 @@ export const TABELAS_NORMALIZADAS = [
   'registros_supervisao',
   'encontros_turma',
   'preparacoes_aula',
+  'avaliacoes_completas',
   'sincronizacao',
   // Documentação e Contrato da Base Oficial
   'dicionario_dados',
@@ -259,7 +260,10 @@ export function normalizarDataAcademica(value: unknown): string {
 export function normalizarLinhasDaAba(tabela: string, rows: Record<string, any>[]): Record<string, any>[] {
   return rows.map(item => {
     const r = { ...item };
-    if (tabela === 'entregas') {
+    if (tabela === 'avaliacoes_completas') {
+    adaptado.notas_criterios_json = JSON.stringify(registro.notas_criterios || []);
+  }
+  if (tabela === 'entregas') {
       r.tipo_documento = r.tipo_documento ?? r.tipo_entrega ?? '';
       r.status_entrega = r.status_entrega ?? r.status ?? '';
       r.data_entrega = r.data_entrega ?? r.data_envio ?? '';
@@ -281,6 +285,11 @@ export function normalizarLinhasDaAba(tabela: string, rows: Record<string, any>[
       r.data_prazo = normalizarDataAcademica(r.data_prazo);
     } else if (tabela === 'turmas_origem') {
       r.ativo = String(r.ativo ?? '').trim().toUpperCase() === 'TRUE' || r.ativo === true || r.ativo === 1;
+    } else if (tabela === 'avaliacoes_completas') {
+      try { r.notas_criterios = r.notas_criterios_json ? JSON.parse(String(r.notas_criterios_json)) : []; }
+      catch { r.notas_criterios = []; }
+      r.nota_final = Number(String(r.nota_final ?? 0).replace(',', '.')) || 0;
+      r.nota_maxima = Number(String(r.nota_maxima ?? 10).replace(',', '.')) || 10;
     } else if (tabela === 'avaliacoes') {
       // A planilha acadêmica usa vírgula decimal, não ponto.
       const raw = String(r.nota ?? '').trim().replace(/\s/g, '').replace(',', '.');
@@ -507,6 +516,7 @@ export async function carregarDadosDaPlanilhaOficial(): Promise<ResultadoLeitura
     registrosSupervisao: tableDataMap['registros_supervisao'] || [],
     encontrosTurma: tableDataMap['encontros_turma'] || [],
     preparacoesAula: tableDataMap['preparacoes_aula'] || [],
+    avaliacoesCompletas: tableDataMap['avaliacoes_completas'] || [],
     sincronizacao: tableDataMap['sincronizacao'] || [],
     dicionarioDados: tableDataMap['dicionario_dados'] || [],
     contratoApp: tableDataMap['contrato_app'] || [],
