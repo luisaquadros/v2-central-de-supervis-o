@@ -1,3 +1,4 @@
+import { resumirDocumentacaoOficial } from '../services/documentacaoAcademicaService';
 import React, { useState } from 'react';
 import {
   Users,
@@ -37,6 +38,7 @@ export const TurmasView: React.FC<TurmasViewProps> = ({
     turmasOrigem,
     orientacoes,
     documentos,
+    entregas,
     addTurma,
     updateTurma,
     toggleArchiveTurma,
@@ -171,9 +173,9 @@ export const TurmasView: React.FC<TurmasViewProps> = ({
             const horarios = horariosTurma.filter(h => h.turma_id === turma.turma_id && h.ativo);
             const origens = turmasOrigem.filter(o => o.turma_id === turma.turma_id && o.ativo);
 
-            const pendDocs = documentos.filter(
-              d => matIds.includes(d.matricula_id) && d.status === 'PENDENTE'
-            ).length;
+            const pendDocs = resumirDocumentacaoOficial(
+              entregas, documentos, new Set(matIds)
+            ).pendentes;
             const oriAbertas = orientacoes.filter(
               o => matIds.includes(o.matricula_id) && o.status === 'ABERTA'
             ).length;
