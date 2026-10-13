@@ -1,3 +1,4 @@
+import { filtrarPendenciasResolvidas } from '../services/pendenciaResolutionService';
 import { selecionarRssDoEstudante } from '../services/rssVinculos';
 import { listarAlunosChamada } from '../services/aulaParticipants';
 import { useDurableLocalState } from '../hooks/useDurableLocalState';
@@ -304,6 +305,7 @@ interface SupervisaoContextType {
   getResumoAlunoSupervisao: (matriculaId: string) => AlunoResumoSupervisao | null;
   getSituacaoRssEstudante: (matriculaId: string) => SituacaoRssEstudante | null;
   getPendenciasCanonicas: (periodoId?: string) => ItemPendenciaOperacional[];
+  marcarPendenciaResolvida: (item: ItemPendenciaOperacional) => Promise<void>;
   getTurmasDoPeriodo: (periodoId?: string, incluirArquivadas?: boolean) => Turma[];
   getAlunosDaTurma: (turmaId: string) => { matricula: Matricula; aluno: Aluno }[];
 
@@ -2712,9 +2714,26 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     periodos,
   ]);
 
+  // Resoluções manuais auditáveis e compartilhadas na tabela configuracoes.
+  // A marcação é uma confirmação explícita da docente, não uma alteração da presença/RSS.
+  const marcarPendenciaResolvida = async (item: ItemPendenciaOperacional): Promise<void> => {
+    const chave = 'PENDENCIA_RESOLVIDA:' + item.id;
+    if (configuracoes.some(c => c.chave === chave && c.periodo_id === selectedPeriodoId)) return;
+    const novo: Configuracao = {
+      configuracao_id: generateUuid(),
+      chave,
+      valor: JSON.stringify({ resolvido_em: new Date().toISOString(), titulo: item.titulo, tipo: item.tipo }),
+      periodo_id: selectedPeriodoId,
+      turma_id: item.turma_id,
+    };
+    const lista = [...configuracoes, novo];
+    await persistirMudancaWeb('configuracoes', 'INSERT', novo, lista);
+    setConfiguracoes(lista);
+  };
+
   const getPendenciasCanonicas = useCallback((periodoId?: string): ItemPendenciaOperacional[] => {
     const pId = periodoId || selectedPeriodoId;
-    return gerarPendenciasCanonicas(
+    const pendencias = gerarPendenciasCanonicas(
       pId,
       turmas,
       matriculas,
@@ -2734,7 +2753,8 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       new Date(),
       gruposPratica,
       grupoIntegrantes
-    ).filter(item => item.tipo !== 'RSS_ATRASADO');
+    );
+    return filtrarPendenciasResolvidas(pendencias, configuracoes, pId);
   }, [
     selectedPeriodoId,
     turmas,
@@ -2753,7 +2773,8 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     calendarioRss,
     statusRssUnidades,
     gruposPratica,
-    grupoIntegrantes
+    grupoIntegrantes,
+    configuracoes
   ]);
 
   // A visão diária e a área de pendências usam UM ÚNICO cálculo de RSS.
@@ -2982,6 +3003,7 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         getNotificacoesDerivadas,
         getPendenciasOperacionais,
         getPendenciasCanonicas,
+    marcarPendenciaResolvida,
         resetDatabaseToSeed,
         exportDatabaseAsJson,
       }}

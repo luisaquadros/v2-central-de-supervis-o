@@ -36,6 +36,7 @@ export const PendenciasView: React.FC<PendenciasViewProps> = ({
     getStatusRssUnidade,
     getSituacaoRssEstudante,
     getPendenciasCanonicas,
+    marcarPendenciaResolvida,
     frequencias,
     caixaEntrada,
   } = useSupervisao();
@@ -47,6 +48,7 @@ export const PendenciasView: React.FC<PendenciasViewProps> = ({
     return 'OBJETIVA';
   });
   const [turmaFiltro, setTurmaFiltro] = useState<string>('TODAS');
+  const [resolvendoId, setResolvendoId] = useState<string | null>(null);
 
   const todasPendenciasCanonicas = getPendenciasCanonicas().filter(p => {
     if (turmaFiltro === 'TODAS') return true;
@@ -155,6 +157,31 @@ export const PendenciasView: React.FC<PendenciasViewProps> = ({
           </select>
         </div>
       </div>
+
+      <section className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 space-y-3" aria-label="Todas as pendências abertas">
+        <h2 className="text-base font-bold text-slate-900">Todas as pendências abertas ({todasPendenciasCanonicas.length})</h2>
+        <p className="text-xs text-slate-600">A lista reúne chamadas, RSS, documentação, prazos e orientações. Marcar como resolvida registra sua confirmação, mas não substitui a atualização do registro acadêmico correspondente.</p>
+        {todasPendenciasCanonicas.length === 0 ? <p className="text-sm text-slate-500">Nenhuma pendência aberta nesta seleção.</p> :
+          <div className="space-y-2">
+            {todasPendenciasCanonicas.map(item => <div key={item.id} className="border border-slate-200 rounded-xl p-3 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-slate-900">{item.titulo}</p>
+                <p className="text-xs text-slate-600 mt-1">{item.turma_nome || 'Geral'} · {item.descricao}</p>
+              </div>
+              <div className="flex gap-2 shrink-0">
+                {item.matricula_id && <button type="button" onClick={() => onOpenAluno(item.matricula_id!)} className="px-3 py-2 text-xs border border-slate-300 rounded-lg">Abrir ficha</button>}
+                <button type="button" disabled={resolvendoId === item.id} onClick={async () => {
+                  if (!window.confirm('Confirmar que esta pendência foi resolvida? Isso registra uma resolução administrativa, sem alterar a chamada, o RSS ou a documentação original.')) return;
+                  setResolvendoId(item.id);
+                  try { await marcarPendenciaResolvida(item); }
+                  catch { window.alert('Não foi possível salvar a resolução. Verifique a sincronização.'); }
+                  finally { setResolvendoId(null); }
+                }} className="min-h-[44px] px-3 py-2 bg-slate-900 text-white rounded-lg text-xs font-semibold disabled:opacity-50">Pendência resolvida</button>
+              </div>
+            </div>)}
+          </div>
+        }
+      </section>
 
       {/* 4 Categorias Conceituais */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
