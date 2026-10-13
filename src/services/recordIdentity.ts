@@ -7,7 +7,8 @@ export const PRIMARY_KEYS: Record<string, string> = {
   criterios_avaliacao: 'criterio_id', ocorrencias: 'ocorrencia_id', configuracoes: 'chave',
   frequencias: 'frequencia_id', pontos_acompanhamento: 'ponto_id', marcos_academicos: 'marco_id',
   entregas: 'entrega_id', feedbacks: 'feedback_id', registros_supervisao: 'registro_id',
-  grupos_pratica: 'grupo_id', grupo_integrantes: 'integrante_id',
+  grupos_pratica: 'grupo_id', grupo_integrantes: 'grupo_integrante_id',
+  leituras_responsaveis: 'leitura_agenda_id',
   encontros_turma: 'encontro_id', preparacoes_aula: 'preparacao_id',
   avaliacoes_completas: 'avaliacao_id',
 };
@@ -15,7 +16,11 @@ export function recordIdentity(table: string, row: Record<string, any>): string 
   if (table === 'frequencias' && row.matricula_id && row.data_aula)
     return JSON.stringify([String(row.matricula_id), String(row.data_aula)]);
   const key = PRIMARY_KEYS[table];
-  const value = key && row[key];
+  // A planilha conserva as chaves físicas; a UI usa aliases de leitura.
+  // Ambos identificam exatamente a mesma linha, sem criar IDs alternativos.
+  const value = key && (row[key] ??
+    (table === 'leituras_responsaveis' ? row.leitura_id :
+     table === 'grupo_integrantes' ? row.integrante_id : undefined));
   if (value === undefined || value === null || String(value).trim() === '')
     throw new Error(`Registro incompatível: chave ${key || table} ausente.`);
   return String(value).trim();
