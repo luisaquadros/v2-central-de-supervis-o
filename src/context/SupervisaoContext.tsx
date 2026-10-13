@@ -833,14 +833,36 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     setIsLoggingIn(true);
     setConnectionErrorMessage(null);
     try {
+      // Uma única janela de autenticação. Nunca chamar sincronizarAgora aqui:
+      // ela poderia abrir outro popup e iniciar uma segunda tentativa concorrente.
       const res = await googleSignIn();
-      if (res) {
-        setCurrentUser(res.user);
-        await sincronizarAgora();
+      if (!res) throw new Error('A autenticação não foi concluída.');
+      setCurrentUser(res.user);
+      setConnectionStatus('CARREGANDO');
+      const resultado = await Promise.race([
+        sincronizarDaBaseOficial(),
+        new Promise<never>((_, reject) => setTimeout(
+          () => reject(new Error('A conexão com a planilha excedeu 30 segundos. Verifique a conexão e tente novamente.')),
+          30000
+        )),
+      ]);
+      if (!resultado.sucesso || !resultado.dados) {
+        throw new Error(resultado.erro || 'Não foi possível validar o acesso à planilha oficial.');
       }
+      registrarSessaoAutorizada(res.user.uid);
+      setAcessoGoogleValidado(true);
+      aplicarDados(resultado.dados);
+      setHasLocalCache(true);
+      setConnectionStatus('CONECTADO');
+      // Alterações locais pendentes são mantidas; sincronização independente
+      // evita bloquear o acesso e nunca é tratada como sucesso implícito.
+      void processarFilaSincronizacao().catch(error => {
+        console.warn('Fila local pendente após autenticação:', error);
+      });
     } catch (err: any) {
       console.error('Erro de login Google:', err);
-      setConnectionErrorMessage(err?.message || 'Falha ao autenticar com Google');
+      setConnectionErrorMessage(err?.message || 'Falha ao autenticar com Google.');
+      setConnectionStatus('ERRO_CONEXAO');
     } finally {
       setIsLoggingIn(false);
     }
