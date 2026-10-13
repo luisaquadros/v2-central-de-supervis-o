@@ -643,29 +643,44 @@ export async function gravarRegistroNaPlanilhaOficial(
         rowValues[col] = linhaAnterior[col] ?? '';
       }
     });
-    const updateRange = formatarRangeSheet(realSheetName, `A${existingRowIndex}`);
-    const updateUrl = `https://sheets.googleapis.com/v4/spreadsheets/${OFFICIAL_SPREADSHEET_ID}/values/${encodeURIComponent(updateRange)}?valueInputOption=RAW`;
-    const updateRes = await fetchWithTimeout(updateUrl, {
-      method: 'PUT',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        values: [rowValues],
-      }),
+    // Atualize somente as colunas expressamente enviadas. Reescrever a linha
+    // inteira com um snapshot antigo poderia apagar alterações de outro dispositivo.
+    const indicesAlterados = headers
+      .map((header, index) => ({
+        header: header.trim(), index,
+        presente: Object.prototype.hasOwnProperty.call(adaptado, header.trim()) ||
+          Object.prototype.hasOwnProperty.call(adaptado, header.trim().toLowerCase()),
+      }))
+      .filter(col => col.presente);
+    if (indicesAlterados.length === 0) {
+      throw new Error('Atualização bloqueada: nenhuma coluna compatível informada.');
+    }
+    const toCol = (index: number): string => {
+      let n = index + 1;
+      let letters = '';
+      while (n > 0) { n--; letters = String.fromCharCode(65 + n % 26) + letters; n = Math.floor(n / 26); }
+      return letters;
+    };
+    const updates = indicesAlterados.map(col => ({
+      range: formatarRangeSheet(realSheetName, `${toCol(col.index)}${existingRowIndex}`),
+      values: [[rowValues[col.index]]],
+    }));
+    const patchUrl = `https://sheets.googleapis.com/v4/spreadsheets/${OFFICIAL_SPREADSHEET_ID}/values:batchUpdate`;
+    const patchRes = await fetchWithTimeout(patchUrl, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ valueInputOption: 'RAW', data: updates }),
     });
-
-    if (!updateRes.ok) {
-      if (updateRes.status === 401) {
+    if (!patchRes.ok) {
+      if (patchRes.status === 401) {
         clearAccessToken();
         throw new Error('Sessão expirada do Google. É necessário autenticar novamente.');
       }
-      const err = await updateRes.json().catch(() => null);
-      throw new Error(err?.error?.message || `Falha ao atualizar registro existente na tabela ${realSheetName}`);
+      const err = await patchRes.json().catch(() => null);
+      throw new Error(err?.error?.message || `Falha ao atualizar as colunas de ${realSheetName}`);
     }
-
     return true;
+
   }
 
   if (!headers.some(h => Object.prototype.hasOwnProperty.call(adaptado, h.trim()))) {
