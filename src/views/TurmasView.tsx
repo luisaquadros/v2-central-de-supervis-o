@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { useSupervisao, NovoHorarioInput, NovaOrigemInput } from '../context/SupervisaoContext';
 import { Turma } from '../types';
+import { classificarRssOperacional, getHojeDataIso } from '../services/supervisaoOperacionalService';
 
 interface TurmasViewProps {
   onSelectTurma: (turmaId: string) => void;
@@ -654,6 +655,12 @@ export const TurmaDetalheView: React.FC<{
     periodos,
     getAlunosDaTurma,
     getResumoAlunoSupervisao,
+    getSituacaoRssEstudante,
+    calendarioRss,
+    leiturasResponsaveis,
+    gruposPratica,
+    grupoIntegrantes,
+    encontrosTurma,
     horariosTurma,
     turmasOrigem,
     marcosAcademicos,
@@ -663,7 +670,7 @@ export const TurmaDetalheView: React.FC<{
     toggleArchiveTurma,
   } = useSupervisao();
 
-  const [activeTab, setActiveTab] = useState<'geral' | 'alunos' | 'frequencia' | 'pendencias' | 'avaliacao'>('geral');
+  const [activeTab, setActiveTab] = useState<'geral' | 'alunos' | 'rss' | 'leituras' | 'frequencia' | 'pendencias' | 'avaliacao'>('geral');
   const [modalEditarOpen, setModalEditarOpen] = useState(false);
 
   const turma = turmas.find(t => t.turma_id === turmaId);
@@ -672,6 +679,31 @@ export const TurmaDetalheView: React.FC<{
   const alunosTurma = getAlunosDaTurma(turmaId);
   const horarios = horariosTurma.filter(h => h.turma_id === turmaId && h.ativo);
   const origens = turmasOrigem.filter(o => o.turma_id === turmaId && o.ativo);
+  const leiturasTurma = leiturasResponsaveis
+    .filter(l => l.turma_id === turmaId)
+    .sort((a,b) => String(a.data||'').localeCompare(String(b.data||'')));
+  const gruposDestaTurma = gruposPratica.filter(g => g.turma_id === turmaId);
+  const classificacoesRss = alunosTurma.map(item => {
+    const situacao = getSituacaoRssEstudante(item.matricula.matricula_id);
+    const classificacao = classificarRssOperacional(situacao, calendarioRss, getHojeDataIso());
+    const vinculo = grupoIntegrantes.find(g => g.matricula_id === item.matricula.matricula_id &&
+      gruposDestaTurma.some(gr => gr.grupo_id === g.grupo_id));
+    return { ...item, situacao, classificacao, grupoId: vinculo?.grupo_id };
+  });
+  const resumoRss = {
+    dia: classificacoesRss.filter(x => x.classificacao.categoria === 'EM_DIA').length,
+    recente: classificacoesRss.filter(x => x.classificacao.categoria === 'RECENTE_PENDENTE').length,
+    historico: classificacoesRss.filter(x => x.classificacao.categoria === 'HISTORICO_INCOMPLETO').length,
+    revisao: classificacoesRss.filter(x => x.classificacao.categoria === 'EM_REVISAO').length,
+  };
+  const statusRotulo: Record<string,string> = {
+    EM_DIA: 'Todas as semanas entregues',
+    RECENTE_PENDENTE: 'Última semana pendente',
+    HISTORICO_INCOMPLETO: 'Em dia agora · histórico incompleto',
+    EM_REVISAO: 'Última semana em revisão',
+    AGUARDANDO_CALENDARIO: 'Aguardando calendário',
+  };
+
 
   const marcosTurma = marcosAcademicos.filter(
     m => m.turma_id === turmaId || (m.disciplina_id === turma?.disciplina_id && !m.turma_id)
@@ -769,6 +801,8 @@ export const TurmaDetalheView: React.FC<{
           {[
             { id: 'geral', label: 'Visão Geral' },
             { id: 'alunos', label: `Alunos (${alunosTurma.length})` },
+            { id: 'rss', label: 'Situação RSS' },
+            { id: 'leituras', label: `Leituras (${leiturasTurma.length})` },
             { id: 'frequencia', label: 'Frequência' },
             { id: 'pendencias', label: 'Pendências' },
             { id: 'avaliacao', label: 'Avaliação' },
@@ -938,6 +972,82 @@ export const TurmaDetalheView: React.FC<{
             })}
           </div>
         </div>
+      )}
+
+      {/* STATUS RSS: detalhamento por semana e responsabilidade coletiva do grupo */}
+      {activeTab === 'rss' && (
+        <section className="space-y-3">
+          <div className="bg-white rounded-xl border border-slate-200 p-4">
+            <h3 className="text-sm font-bold text-slate-900">RSS da turma · situação atual e histórico</h3>
+            <p className="text-xs text-slate-500 mt-1">
+              Semana corrente não gera atraso. Lacunas antigas permanecem aqui, sem criar novas notificações.
+              {gruposDestaTurma.length > 0 && ' Na Clínica Ampliada, uma entrega vale para todos os integrantes do grupo.'}
+            </p>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-3 text-xs">
+              <span className="bg-emerald-50 text-emerald-800 rounded-lg p-2">{resumoRss.dia} sem lacunas</span>
+              <span className="bg-amber-50 text-amber-800 rounded-lg p-2">{resumoRss.recente} pendência recente</span>
+              <span className="bg-slate-100 text-slate-700 rounded-lg p-2">{resumoRss.historico} histórico incompleto</span>
+              <span className="bg-indigo-50 text-indigo-800 rounded-lg p-2">{resumoRss.revisao} em revisão</span>
+            </div>
+          </div>
+          <div className="bg-white rounded-xl border border-slate-200 divide-y divide-slate-100">
+            {classificacoesRss.map(item => {
+              const group = gruposDestaTurma.find(g => g.grupo_id === item.grupoId);
+              const c = item.classificacao;
+              return <div key={item.matricula.matricula_id} className="p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+                <div>
+                  <div className="font-semibold text-slate-900">{item.aluno.nome}</div>
+                  {group && <div className="text-[11px] text-indigo-700">Entrega coletiva: {group.nome_grupo}</div>}
+                </div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className={`px-2 py-1 rounded font-semibold ${c.categoria === 'RECENTE_PENDENTE' ? 'bg-amber-100 text-amber-800' :
+                      c.categoria === 'HISTORICO_INCOMPLETO' ? 'bg-slate-100 text-slate-800' :
+                      c.categoria === 'EM_DIA' ? 'bg-emerald-100 text-emerald-800' : 'bg-indigo-100 text-indigo-800'}`}>
+                    {statusRotulo[c.categoria]}
+                  </span>
+                  <span className="text-slate-500">{item.situacao?.registrosRealizados ?? 0}/{item.situacao?.registrosEsperadosAteHoje ?? 0} validados</span>
+                  {c.faltamHistoricas > 0 && <span className="text-slate-500">{c.faltamHistoricas} semana(s) sem validação</span>}
+                  <button onClick={() => onOpenAluno(item.matricula.matricula_id)} className="text-indigo-700 underline">Ficha</button>
+                </div>
+              </div>;
+            })}
+          </div>
+        </section>
+      )}
+
+      {/* CRONOGRAMA DE LEITURAS: 57 itens importados da planilha oficial */}
+      {activeTab === 'leituras' && (
+        <section className="bg-white rounded-xl border border-slate-200 p-4 space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <h3 className="text-sm font-bold text-slate-900">Leituras programadas desta turma</h3>
+              <p className="text-xs text-slate-500">Todos devem ler. O responsável abre a discussão, quando houver estudo dirigido.</p>
+            </div>
+            <a href="https://docs.google.com/document/d/1PTt3kujI3KszP_P6MZAum-u5yQVY8k_R55rxsSRsDjA/edit"
+               target="_blank" rel="noopener noreferrer" className="text-xs text-indigo-700 font-semibold underline">
+               Guia completo de leituras
+            </a>
+          </div>
+          <div className="divide-y divide-slate-100">
+            {leiturasTurma.map(l => {
+              const dia = l.data || '';
+              const cancelamento = encontrosTurma.find(e => e.turma_id === turmaId && e.data === dia && e.status === 'NAO_REALIZADO');
+              return <div className="py-3 text-xs" key={l.leitura_id || dia}>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="font-mono text-slate-500">{dia ? dia.split('-').reverse().join('/') : 'Data a confirmar'}</span>
+                  <span className={l.tipo === 'LEITURA_RECOMENDADA' ? 'text-slate-500' : 'text-indigo-700'}>{l.tipo === 'LEITURA_RECOMENDADA' ? 'Leitura de apoio' : 'Estudo dirigido'}</span>
+                  {cancelamento && <span className="bg-amber-50 text-amber-800 rounded px-1.5 py-0.5">Aula cancelada · reagendamento a confirmar</span>}
+                </div>
+                <div className="font-semibold text-slate-900 mt-1">{l.tema || l.titulo || 'Leitura'}</div>
+                <div className="text-slate-600 mt-1">
+                  {l.tipo === 'LEITURA_RECOMENDADA' ? 'Leitura coletiva, sem apresentação individual' :
+                   `Responsável(is): ${l.responsavel_nome || l.responsaveis_texto || 'A confirmar'}`}
+                </div>
+              </div>;
+            })}
+            {leiturasTurma.length === 0 && <p className="text-slate-500 py-4">Nenhuma leitura programada na base oficial.</p>}
+          </div>
+        </section>
       )}
 
       {/* 3. ABA: FREQUÊNCIA */}
