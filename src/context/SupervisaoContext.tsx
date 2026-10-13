@@ -981,7 +981,7 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       setSaveStatusMessage('Reenviando alterações da fila segura...');
       const resFila = await processarFilaSincronizacao();
       const filaRestante = await carregarFilaSincronizacao();
-      const pendentes = filaRestante.filter(item => item.status !== 'CONCLUIDO');
+      const pendentes = filaRestante; // fila contém apenas alterações ainda não confirmadas
       if (resFila.erros === 0 && pendentes.length === 0) {
         setSaveStatus('SINCRONIZADO_SHEETS');
         setSaveStatusMessage('✓ Sincronizado no Google Sheets');
