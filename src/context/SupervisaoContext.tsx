@@ -1986,12 +1986,36 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     // NOTA: notas por critério são persistidas na tabela oficial 'avaliacoes'
     // pelo fluxo de correção. Este registro guarda o parecer e a devolutiva.
   };
+  /** Aprovação registrada na planilha antes de atualizar o estado da UI. */
   const aprovarDevolutiva = async (id: string) => {
-    setAvaliacoesCompletas(prev => prev.map(a => a.avaliacao_id === id ? { ...a, status: 'APROVADO_ENVIO', data_aprovacao: new Date().toISOString() } : a));
+    const anterior = avaliacoesCompletas.find(a => a.avaliacao_id === id);
+    if (!anterior) throw new Error('Avaliação não encontrada. Sincronize e tente novamente.');
+    if (anterior.status === 'ENVIADO') throw new Error('A devolutiva já consta como enviada; não é possível voltar à aprovação.');
+    const atualizado: AvaliacaoCompleta = {
+      ...anterior, status: 'APROVADO_ENVIO',
+      data_aprovacao: new Date().toISOString(), atualizado_em: new Date().toISOString(),
+    };
+    const lista = avaliacoesCompletas.map(a => a.avaliacao_id === id ? atualizado : a);
+    await persistirMudancaWeb('avaliacoes_completas', 'UPDATE', atualizado, lista);
+    setAvaliacoesCompletas(lista);
   };
-  const registrarEnvioDevolutiva = async (id: string, emailDestino?: string) => {
-    setAvaliacoesCompletas(prev => prev.map(a => a.avaliacao_id === id ? { ...a, status: 'ENVIADO', data_envio: new Date().toISOString(), ...(emailDestino ? { email_destino: emailDestino } : {}) } : a));
+  /** Confirmação manual de envio: não envia e-mail e não pode inventar uma confirmação. */
+  const registrarEnvioDevolutiva = async (id: string, _emailDestino?: string) => {
+    const anterior = avaliacoesCompletas.find(a => a.avaliacao_id === id);
+    if (!anterior) throw new Error('Avaliação não encontrada. Sincronize e tente novamente.');
+    if (anterior.status !== 'APROVADO_ENVIO' && anterior.status !== 'ENVIADO') {
+      throw new Error('A devolutiva precisa ser aprovada antes de registrar o envio.');
+    }
+    const atualizado: AvaliacaoCompleta = {
+      ...anterior, status: 'ENVIADO',
+      data_envio: anterior.data_envio || new Date().toISOString(),
+      atualizado_em: new Date().toISOString(),
+    };
+    const lista = avaliacoesCompletas.map(a => a.avaliacao_id === id ? atualizado : a);
+    await persistirMudancaWeb('avaliacoes_completas', 'UPDATE', atualizado, lista);
+    setAvaliacoesCompletas(lista);
   };
+
   const registrarAuditoria = async (
     acaoOrObj: any,
     entidade?: string,
