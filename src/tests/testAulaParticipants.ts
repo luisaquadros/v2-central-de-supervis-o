@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { listarAlunosChamada, separarResponsaveis, resolverResponsaveis } from '../services/aulaParticipants';
+import { listarAlunosChamada, diagnosticarChamada, separarResponsaveis, resolverResponsaveis } from '../services/aulaParticipants';
 import type { Aluno, Matricula } from '../types';
 const alunos=[{aluno_id:'a1',nome:'Ana',identificador_academico:'100',status:'ATIVO'},{aluno_id:'a2',nome:'Bruna',identificador_academico:'200',status:'ATIVO'},{aluno_id:'a3',nome:'Carla',identificador_academico:'300',status:'ATIVO'}] as Aluno[];
 const matriculas=[
@@ -8,6 +8,13 @@ const matriculas=[
  {matricula_id:'m3',aluno_id:'a3',turma_id:'t1',status:'CANCELADO'},
 ] as Matricula[];
 assert.deepEqual(listarAlunosChamada('t1',matriculas,alunos).map(x=>x.aluno.nome),['Ana','Bruna']);
+assert.equal(diagnosticarChamada('t1',matriculas,alunos).matriculasElegiveis,2);
+assert.equal(diagnosticarChamada('t1',matriculas,alunos).alunosLocalizados,2);
+assert.deepEqual(
+ listarAlunosChamada('t1',[{matricula_id:'m4',aluno_id:'100',turma_id:'t1',status:'MATRICULADO'} as Matricula],alunos).map(v=>v.aluno.nome),
+ ['Ana']
+);
+assert.equal(diagnosticarChamada('t1',[{matricula_id:'m5',aluno_id:'inexistente',turma_id:'t1',status:'MATRICULADO'} as Matricula],alunos).alunosLocalizados,0);
 assert.deepEqual(separarResponsaveis('["m1","m2"]'),['m1','m2']);
 assert.deepEqual(separarResponsaveis('Ana; Bruna'),['Ana','Bruna']);
 const dados={matriculas,alunos,grupos:[],integrantes:[]};
