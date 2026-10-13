@@ -20,6 +20,7 @@ const SHEETS: Record<string, number> = {
   orientacoes: 11,
   entregas: 12,
   frequencias: 13,
+  avaliacoes: 14,
 };
 
 globalThis.fetch = (async (url: string | URL | Request, init?: RequestInit) => {
@@ -141,7 +142,33 @@ try {
   await removerRegistroDaPlanilhaOficial('orientacoes', {orientacao_id:'already-deleted'});
   assert(!calls.some(c => c.init.method === 'POST'));
 
-  console.log('[PASS] 10 grupos de testes da API do Google Sheets.');
+  // Notas devem ser números da API, inclusive em planilha pt-BR.
+  // Textos continuam RAW, sem interpretar conteúdo como fórmula.
+  calls = [];
+  sheetRows = [['avaliacao_id', 'matricula_id', 'criterio_id', 'nota', 'observacao']];
+  await gravarRegistroNaPlanilhaOficial('avaliacoes', {
+    avaliacao_id:'av-01',matricula_id:'mat-01',criterio_id:'PROVA',nota:1.8,observacao:'=1+1'
+  });
+  const notaNova = requiredWrite('POST');
+  assert.equal(typeof notaNova.body.values[0][3], 'number');
+  assert.equal(notaNova.body.values[0][3], 1.8);
+  assert.equal(notaNova.body.values[0][4], '=1+1', 'comentário deve continuar sendo texto RAW');
+
+  calls = [];
+  sheetRows = [['avaliacao_id', 'matricula_id', 'criterio_id', 'nota'],['av-01','mat-01','PROVA','1,8']];
+  await gravarRegistroNaPlanilhaOficial('avaliacoes', {
+    avaliacao_id:'av-01',matricula_id:'mat-01',criterio_id:'PROVA',nota:'0'
+  });
+  assert.equal(requiredWrite('PUT').body.values[0][3], 0, 'nota zero é um lançamento válido');
+
+  calls = [];
+  sheetRows = [['avaliacao_id', 'matricula_id', 'criterio_id', 'nota']];
+  await assert.rejects(() => gravarRegistroNaPlanilhaOficial('avaliacoes', {
+    avaliacao_id:'av-02',matricula_id:'mat-02',criterio_id:'PROVA',nota:'=2+2'
+  }), /Nota inválida/);
+  assert(!calls.some(c => c.init.method === 'POST'));
+
+  console.log('[PASS] 11 grupos de testes da API do Google Sheets.');
 } finally {
   globalThis.fetch = originalFetch;
   clearAccessToken();
