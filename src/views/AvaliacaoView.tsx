@@ -22,6 +22,7 @@ import {
 import { useSupervisao } from '../context/SupervisaoContext';
 import { TipoInstrumento, StatusDevolutiva, AvaliacaoCompleta, CriterioAvaliacao } from '../types';
 import { FeedbackModal } from '../components/FeedbackModal';
+import { NotasParciaisModal } from '../components/NotasParciaisModal';
 
 export const AvaliacaoView: React.FC = () => {
   const {
@@ -100,6 +101,7 @@ export const AvaliacaoView: React.FC = () => {
   const [pontosDesenvolver, setPontosDesenvolver] = useState('');
   const [comentarioGeral, setComentarioGeral] = useState('');
   const [mostrarEvidencias, setMostrarEvidencias] = useState(false);
+  const [mostrarCadernoImportado, setMostrarCadernoImportado] = useState(false);
   const [modalFeedbackAvaliacao, setModalFeedbackAvaliacao] = useState<AvaliacaoCompleta | null>(null);
 
   // Alunos da turma selecionada
@@ -370,6 +372,18 @@ export const AvaliacaoView: React.FC = () => {
         </div>
       )}
 
+      {/* Caderno digitalizado: leitura opcional, sem alterar avaliações oficiais */}
+      <div className="flex justify-end">
+        <button type="button" onClick={() => setMostrarCadernoImportado(true)}
+          className="flex items-center gap-2 rounded-xl px-3 py-2.5 text-xs font-bold text-teal-900 bg-teal-50 hover:bg-teal-100 border border-teal-200"
+        >
+          <FileText className="w-4 h-4" /> Conferir notas e frequência do caderno
+        </button>
+      </div>
+      {mostrarCadernoImportado && <NotasParciaisModal
+        turmaNome={turmaAtual?.nome || ''}
+        onClose={() => setMostrarCadernoImportado(false)}
+      />}
       {/* Tabs Switch */}
       <div className="flex border-b border-slate-200 bg-white rounded-xl p-1.5 gap-1 shadow-2xs overflow-x-auto max-w-full">
         <button
