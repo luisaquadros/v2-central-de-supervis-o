@@ -37,6 +37,7 @@ interface ModoSupervisaoViewProps {
   turmaId: string;
   onEncerrar: () => void;
   onOpenFichaAluno: (matriculaId: string, initialTab?: string) => void;
+  onPrepararAula?: (turmaId: string) => void;
 }
 
 interface ExcecaoAluno {
@@ -51,6 +52,7 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
   turmaId,
   onEncerrar,
   onOpenFichaAluno,
+  onPrepararAula,
 }) => {
   const {
     turmas,
@@ -389,6 +391,10 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
 
         {/* Ações operacionais da aula: Não realizada, Reagendar, Encerrar */}
         <div className="flex items-center gap-2 flex-wrap">
+          {onPrepararAula && <button
+            onClick={() => onPrepararAula(turmaId)}
+            className="px-3 py-2 rounded-lg bg-indigo-200 text-slate-950 font-semibold text-xs hover:bg-indigo-100"
+          >Preparar aula</button>}
           <button
             onClick={() => setModalType('naoRealizada')}
             className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-amber-300 text-xs font-medium transition-colors cursor-pointer border border-slate-700"
