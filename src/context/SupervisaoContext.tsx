@@ -2397,9 +2397,7 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   }> => {
     setSaveStatus('SALVANDO');
     const now = new Date().toISOString();
-    const matriculasDaTurma = matriculas.filter(
-      m => m.turma_id === turmaId && m.status === 'MATRICULADO'
-    );
+    const matriculasDaTurma = listarAlunosChamada(turmaId, matriculas, alunos).map(item => item.matricula);
     const origensDaTurma = turmasOrigem.filter(o => o.turma_id === turmaId && o.ativo);
     const fallbackOrigem =
       origemIdPadrao || (origensDaTurma.length === 1 ? origensDaTurma[0].origem_id : '');
@@ -2414,9 +2412,7 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       const exc = excecoes.find(e => e.matriculaId === mat.matricula_id);
       const statusFinal: Frequencia['status'] = exc ? exc.status : 'PRESENTE';
       const justFinal = exc?.justificativa || '';
-      const origemFinal = mat.origem_id ||
-        turmasOrigem.find(o => o.turma_id === turmaId && o.codigo_externo === mat.codigo_origem)?.origem_id ||
-        fallbackOrigem;
+      const origemFinal = mat.origem_id || turmasOrigem.find(o => o.turma_id === turmaId && o.codigo_externo === mat.codigo_origem)?.origem_id || fallbackOrigem;
 
       const existente = frequencias.find(
         f => f.matricula_id === mat.matricula_id && f.data_aula === dataAula
@@ -2630,12 +2626,12 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     if (mat.origem_id) {
       return turmasOrigem.find(o => o.origem_id === mat.origem_id);
     }
-    // Não atribuir o primeiro código de outra turma do Docente Online.
     if (mat.codigo_origem) {
       return turmasOrigem.find(o => o.turma_id === mat.turma_id && o.codigo_externo === mat.codigo_origem);
     }
-    const candidatas = turmasOrigem.filter(o => o.turma_id === mat.turma_id && o.ativo);
-    return candidatas.length === 1 ? candidatas[0] : undefined;
+    // Nunca atribuir silenciosamente um código de Docente Online arbitrário.
+    const origens = turmasOrigem.filter(o => o.turma_id === mat.turma_id && o.ativo);
+    return origens.length === 1 ? origens[0] : undefined;
   };
 
   const setOrigemDoAluno = async (matriculaId: string, origemId: string): Promise<void> => {

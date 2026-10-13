@@ -419,15 +419,17 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
                 )}
                 {leiturasDaAula.length > 1 && (
                   <div className="mt-2 space-y-2">
-                    <p className="font-bold text-xs text-amber-900">{leiturasDaAula.length} leituras programadas:</p>
-                    {leiturasDaAula.map((leitura, index) => {
-                      const pessoas = resolverResponsaveis({
+                    <p className="font-bold text-xs text-amber-900">{leiturasDaAula.length} leituras programadas para hoje:</p>
+                    {leiturasDaAula.map((leitura, i) => {
+                      const responsaveis = resolverResponsaveis({
                         leitura, matriculas, alunos, grupos: gruposPratica, integrantes: grupoIntegrantes,
                       });
-                      return <div key={leitura.leitura_id || String(index)} className="rounded-lg border border-amber-200 bg-white/80 p-2 text-xs">
-                        <p className="font-semibold text-slate-900">{index + 1}. {leitura.tema || leitura.titulo || leitura.artigo_leitura || 'Leitura'}</p>
-                        <p className="text-slate-700 mt-1"><strong>Responsáveis:</strong> {pessoas.map(p => p.nome).join(', ') || 'Não identificados'}</p>
-                      </div>;
+                      return (
+                        <div key={leitura.leitura_id || String(i)} className="rounded-lg border border-amber-200 bg-white/80 p-2 text-xs">
+                          <p className="font-semibold text-slate-900">{i + 1}. {leitura.tema || leitura.titulo || leitura.artigo_leitura || 'Estudo dirigido'}</p>
+                          <p className="mt-1 text-slate-700"><strong>Responsáveis:</strong> {responsaveis.map(p => p.nome).join(', ') || 'Sem vínculo identificado na base'}</p>
+                        </div>
+                      );
                     })}
                   </div>
                 )}
