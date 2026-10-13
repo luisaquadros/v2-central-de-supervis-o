@@ -808,76 +808,35 @@ export function calcularMetricasCronogramaRss(
     };
   }
 
-  // Cenário B: Existem registros em calendario_rss para a turma
-  const sequenciasUnicas = Array.from(
-    new Set(calendarioDaTurma.map(c => Number(c.sequencia || c.semana || 0)).filter(s => s > 0))
-  ).sort((a, b) => a - b);
-
-  const totalSemanas = situacaoTurma?.rss_total_previsto
-    ? Number(situacaoTurma.rss_total_previsto)
-    : (sequenciasUnicas.length > 0 ? Math.max(...sequenciasUnicas) : 12);
-
-  // 1. Identifica semana explicitamente marcada como ATUAL na base
-  const itemMarcadoAtual = calendarioDaTurma.find(c => c.status_calendario === 'ATUAL');
-
-  // 2. Identifica semana pelo intervalo de datas
-  const itemPorData = calendarioDaTurma.find(
-    c => c.semana_inicio && c.semana_fim && hojeIso >= c.semana_inicio && hojeIso <= c.semana_fim
-  );
-
-  // 3. Sequências concluídas por data calendário (semana_fim < hojeIso) ou status CONCLUIDA
-  const seqsEncerradasPorDataOuStatus = new Set(
-    calendarioDaTurma
-      .filter(c => c.status_calendario === 'CONCLUIDA' || (c.semana_fim && c.semana_fim < hojeIso))
-      .map(c => Number(c.sequencia || c.semana || 0))
-      .filter(s => s > 0)
-  );
-
-  let semanaAtual: number;
-  let semanasEncerradas: number;
-  let conflito = false;
-  let avisoInconsistencia: string | null = null;
-
-  // Priorização dos dados oficiais materializados da semana atual:
-  // 1) Marcador explícito na tabela situacao_atual_turmas
-  // 2) Marcador explícito ATUAL em calendario_rss
-  // 3) Intervalo de datas atual em calendario_rss
-  // 4) Projeção a partir de semanas encerradas
-  if (situacaoTurma?.aula_cronograma_atual !== undefined && situacaoTurma.aula_cronograma_atual !== '') {
-    semanaAtual = Number(situacaoTurma.aula_cronograma_atual);
-  } else if (itemMarcadoAtual) {
-    semanaAtual = Number(itemMarcadoAtual.sequencia || itemMarcadoAtual.semana || 1);
-  } else if (itemPorData) {
-    semanaAtual = Number(itemPorData.sequencia || itemPorData.semana || 1);
-  } else if (seqsEncerradasPorDataOuStatus.size > 0) {
-    semanaAtual = Math.min(totalSemanas, seqsEncerradasPorDataOuStatus.size + 1);
-  } else {
-    semanaAtual = 1;
+  // Cronograma de prática: deriva a semana das datas das 12 janelas oficiais.
+  // "aula_cronograma_atual" pertence à supervisão presencial e NÃO
+  // é uma semana de prática/RSS. Estados textuais da planilha podem estar
+  // materializados em outro momento; datas sempre prevalecem.
+  const semanas = calendarioDaTurma
+    .map(c => ({
+      seq: Number(c.sequencia || c.semana || 0),
+      inicio: c.semana_inicio || '',
+      fim: c.semana_fim || '',
+    }))
+    .filter(c => c.seq > 0 && /^\d{4}-\d{2}-\d{2}$/.test(c.inicio) && /^\d{4}-\d{2}-\d{2}$/.test(c.fim))
+    .sort((a, b) => a.seq - b.seq);
+  if (semanas.length === 0) {
+    return {
+      semanaAtual: null, totalSemanas: null, semanasEncerradas: null,
+      semanaTexto: '—', semanasEncerradasTexto: '—',
+      temDados: false, conflitoIdentificado: true,
+      avisoInconsistencia: 'Datas de prática não disponíveis no calendário oficial.',
+      fonte: 'sem_dados',
+    };
   }
-
-  // Determinação de semanas encerradas:
-  if (situacaoTurma?.rss_esperados_ate_hoje !== undefined && situacaoTurma.rss_esperados_ate_hoje !== '') {
-    semanasEncerradas = Number(situacaoTurma.rss_esperados_ate_hoje);
-  } else {
-    semanasEncerradas = seqsEncerradasPorDataOuStatus.size;
-  }
-
-  // Detecção de conflito: se datas no passado indicam semanas encerradas >= semana atual (ex: datas somam 10, mas semana atual é 5)
-  if (seqsEncerradasPorDataOuStatus.size >= semanaAtual) {
-    conflito = true;
-    avisoInconsistencia = `Conflito de datas na base: datas anteriores somam ${seqsEncerradasPorDataOuStatus.size} semanas passadas, mas o cronograma acadêmico está ativo na Semana ${semanaAtual}.`;
-    semanasEncerradas = Math.max(0, semanaAtual - 1);
-  }
-
-  // Garantia rigorosa da invariante acadêmica: semanasEncerradas NUNCA pode ser >= semanaAtual
-  if (semanasEncerradas >= semanaAtual) {
-    conflito = true;
-    if (!avisoInconsistencia) {
-      avisoInconsistencia = `Inconsistência na base: semanas encerradas (${semanasEncerradas}) >= semana atual de prática (${semanaAtual}).`;
-    }
-    semanasEncerradas = Math.max(0, semanaAtual - 1);
-  }
-
+  const totalSemanas = Math.max(...semanas.map(s => s.seq));
+  const encerradas = semanas.filter(s => s.fim < hojeIso);
+  const atual = semanas.find(s => s.inicio <= hojeIso && s.fim >= hojeIso);
+  const primeiraFutura = semanas.find(s => s.inicio > hojeIso);
+  const semanaAtual = atual?.seq ?? primeiraFutura?.seq ?? totalSemanas;
+  const semanasEncerradas = encerradas.length;
+  const conflito = Boolean(situacaoTurma?.aula_cronograma_atual &&
+    Number(situacaoTurma.aula_cronograma_atual) !== semanaAtual);
   return {
     semanaAtual,
     totalSemanas,
@@ -886,7 +845,9 @@ export function calcularMetricasCronogramaRss(
     semanasEncerradasTexto: `${semanasEncerradas}`,
     temDados: true,
     conflitoIdentificado: conflito,
-    avisoInconsistencia,
+    avisoInconsistencia: conflito
+      ? 'Número da aula de supervisão difere da semana de prática; prevalece o calendário de prática.'
+      : null,
     fonte: 'calendario_rss',
   };
 }
@@ -1001,6 +962,37 @@ export function obterSituacaoRssEstudante(
   };
 }
 
+export type SituacaoRssOperacional = 'EM_DIA' | 'RECENTE_PENDENTE' | 'HISTORICO_INCOMPLETO' | 'EM_REVISAO' | 'AGUARDANDO_CALENDARIO';
+/**
+ * Situação recente (para atenção) separada do histórico acumulado.
+ * Nunca reabre notificação por um RSS antigo; mantém a lacuna visível
+ * no histórico da turma. Apenas a semana encerrada mais recentemente
+ * pode gerar uma pendência operacional, e somente enquanto ainda é
+ * a última semana encerrada.
+ */
+export function classificarRssOperacional(
+  situacao: SituacaoRssEstudante | null,
+  calendario: CalendarioRss[],
+  hojeIso: string = getHojeDataIso()
+): { categoria: SituacaoRssOperacional; faltamHistoricas: number; ultimaSemanaFechada: number | null } {
+  if (!situacao) return { categoria: 'AGUARDANDO_CALENDARIO', faltamHistoricas: 0, ultimaSemanaFechada: null };
+  const encerradas = calendario
+    .filter(c => c.turma_id === situacao.turmaId && c.semana_fim && c.semana_fim < hojeIso)
+    .map(c => Number(c.sequencia || c.semana || 0)).filter(n => n > 0);
+  if (encerradas.length === 0) return { categoria: 'EM_DIA', faltamHistoricas: 0, ultimaSemanaFechada: null };
+  const recebidas = new Set(situacao.registrosEstudante.map(obterSemanaRssValidada).filter((n): n is number => n !== null));
+  const faltamHistoricas = encerradas.filter(n => !recebidas.has(n)).length;
+  const ultima = Math.max(...encerradas);
+  const ultimaEmRevisao = situacao.registrosEstudante.some(r =>
+    Number((r as any).semana_rss ?? r.semana) === ultima &&
+    String((r as any).status_revisao || '') === 'PENDENTE_REVISAO'
+  );
+  if (faltamHistoricas === 0) return { categoria: 'EM_DIA', faltamHistoricas: 0, ultimaSemanaFechada: ultima };
+  if (recebidas.has(ultima)) return { categoria: 'HISTORICO_INCOMPLETO', faltamHistoricas, ultimaSemanaFechada: ultima };
+  if (ultimaEmRevisao) return { categoria: 'EM_REVISAO', faltamHistoricas, ultimaSemanaFechada: ultima };
+  return { categoria: 'RECENTE_PENDENTE', faltamHistoricas, ultimaSemanaFechada: ultima };
+}
+
 /**
  * Coleção Canônica de Pendências Operacionais
  * Unifica todos os contadores e listas do app (Sidebar, Pendências, Dashboard, Aluno, Turma)
@@ -1088,7 +1080,8 @@ export function gerarPendenciasCanonicas(
       m.matricula_id, m.turma_id, registrosSemanais, statusRss,
       regraTurma, situacaoTurma, calTurma, grupoId
     );
-    if (!sitRss.estaAtrasado) return;
+    const situacaoOperacional = classificarRssOperacional(sitRss, calendarioRss, hojeIso);
+    if (situacaoOperacional.categoria !== 'RECENTE_PENDENTE') return;
     const al = alunos.find(a => a.aluno_id === m.aluno_id);
     const grupo = grupoId ? gruposPratica.find(g => g.grupo_id === grupoId) : undefined;
     const nomeUnidade = grupo ? (grupo.nome_grupo || 'Grupo de prática') : (al?.nome || 'Estudante');
@@ -1096,7 +1089,7 @@ export function gerarPendenciasCanonicas(
       id: grupoId ? `pend-rss-grupo-${grupoId}` : `pend-rss-${m.matricula_id}`,
       tipo: 'RSS_ATRASADO',
       titulo: `RSS em Atraso: ${nomeUnidade}`,
-      descricao: `${grupoId ? 'Pendência coletiva do grupo. ' : ''}Registros validados: ${sitRss.registrosRealizados} de ${sitRss.registrosEsperadosAteHoje} esperados até hoje (${sitRss.totalPrevistoNoPeriodo} previstos)`,
+      descricao: `${grupoId ? 'Pendência coletiva do grupo. ' : ''}Semana ${situacaoOperacional.ultimaSemanaFechada} não confirmada. Registros validados: ${sitRss.registrosRealizados} de ${sitRss.registrosEsperadosAteHoje} esperados até hoje (${sitRss.totalPrevistoNoPeriodo} previstos)`,
       turma_id: m.turma_id,
       turma_nome: turma?.nome,
       matricula_id: m.matricula_id,
