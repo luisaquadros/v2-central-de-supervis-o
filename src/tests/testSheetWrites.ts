@@ -159,6 +159,18 @@ try {
   await removerRegistroDaPlanilhaOficial('leituras_responsaveis', {leitura_id:'LEIT-001'});
   assert.equal(requiredWrite('POST').body.requests[0].deleteDimension.range.startIndex,1);
 
+  // 4g. Exclusão de frequência continua identificada por frequencia_id,
+  // não pela chave composta usada exclusivamente no upsert.
+  calls = [];
+  sheetRows = [
+    ['frequencia_id','matricula_id','data_aula','status'],
+    ['f-123','m1','2026-10-13','ATRASO'],
+  ];
+  await removerRegistroDaPlanilhaOficial('frequencias', {
+    frequencia_id:'f-123',matricula_id:'m1',data_aula:'2026-10-13'
+  });
+  assert.equal(requiredWrite('POST').body.requests[0].deleteDimension.range.startIndex,1);
+
   // 5. DELETE deve excluir apenas uma linha identificada inequivocamente.
   calls = [];
   sheetRows = [['orientacao_id', 'matricula_id'], ['ori-1', 'm-1']];
