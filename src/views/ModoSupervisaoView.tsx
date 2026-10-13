@@ -1,3 +1,4 @@
+import { resolverResponsaveis } from '../services/aulaParticipants';
 import React, { useState, useMemo } from 'react';
 import {
   Search,
@@ -98,105 +99,16 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
   }, [leiturasResponsaveis, turmaId, hojeIso, encontrosTurma]);
   const estudoDirigidoHoje = leiturasDaAula.find(l => l.reprogramada) || leiturasDaAula[0];
 
-  // Resolução dinâmica e robusta de responsáveis pelo estudo dirigido/leitura de hoje
-  const responsaveisEstudo = useMemo(() => {
-    if (!estudoDirigidoHoje) return [];
-
-    const list: { matriculaId: string; nome: string; papel?: string; tipo: 'TITULAR' | 'SUBSTITUTO' | 'GRUPO' }[] = [];
-
-    const parseIds = (val: any): string[] => {
-      if (!val) return [];
-      if (Array.isArray(val)) return val.map(v => String(v).trim());
-      if (typeof val === 'string') {
-        return val
-          .split(/[;,]/)
-          .map(s => s.trim())
-          .filter(Boolean);
-      }
-      return [String(val).trim()];
-    };
-
-    // A. Se tem grupo_id associado à leitura
-    if (estudoDirigidoHoje.grupo_id) {
-      const grupo = gruposPratica.find(g => g.grupo_id === estudoDirigidoHoje.grupo_id);
-      if (grupo) {
-        const ints = grupoIntegrantes.filter(gi => gi.grupo_id === grupo.grupo_id);
-        ints.forEach(gi => {
-          let mat = matriculas.find(m => m.matricula_id === gi.matricula_id || m.aluno_id === gi.aluno_id);
-          let al = alunos.find(a => a.aluno_id === gi.aluno_id || (mat && a.aluno_id === mat.aluno_id));
-          if (al) {
-            list.push({
-              matriculaId: mat?.matricula_id || gi.matricula_id || '',
-              nome: al.nome,
-              papel: gi.papel || 'Integrante',
-              tipo: 'GRUPO'
-            });
-          }
-        });
-      }
-    }
-
-    // B. Se tem responsaveis_previstos
-    const previstos = parseIds(estudoDirigidoHoje.responsaveis_previstos);
-    if (previstos.length > 0) {
-      previstos.forEach((pId: string) => {
-        if (list.some(item => item.matriculaId === pId)) return;
-        const mat = matriculas.find(m => m.matricula_id === pId);
-        const al = alunos.find(a => a.aluno_id === mat?.aluno_id || a.aluno_id === pId);
-        if (al) {
-          list.push({
-            matriculaId: pId,
-            nome: al.nome,
-            tipo: 'TITULAR'
-          });
-        }
-      });
-    }
-
-    // C. Se tem responsaveis_efetivos
-    const efetivos = parseIds(estudoDirigidoHoje.responsaveis_efetivos);
-    if (efetivos.length > 0) {
-      efetivos.forEach((eId: string) => {
-        const idx = list.findIndex(item => item.matriculaId === eId);
-        if (idx >= 0) {
-          list[idx].tipo = 'TITULAR';
-        } else {
-          const mat = matriculas.find(m => m.matricula_id === eId);
-          const al = alunos.find(a => a.aluno_id === mat?.aluno_id || a.aluno_id === eId);
-          if (al) {
-            list.push({
-              matriculaId: eId,
-              nome: al.nome,
-              tipo: 'SUBSTITUTO'
-            });
-          }
-        }
-      });
-    }
-
-    // D. Fallback individual
-    if (list.length === 0) {
-      if (estudoDirigidoHoje.responsavel_id) {
-        const mat = matriculas.find(m => m.matricula_id === estudoDirigidoHoje.responsavel_id);
-        const al = alunos.find(a => a.aluno_id === mat?.aluno_id || a.aluno_id === estudoDirigidoHoje.responsavel_id);
-        if (al) {
-          list.push({
-            matriculaId: estudoDirigidoHoje.responsavel_id,
-            nome: al.nome,
-            tipo: 'TITULAR'
-          });
-        }
-      } else if (estudoDirigidoHoje.responsavel_nome) {
-        list.push({
-          matriculaId: estudoDirigidoHoje.responsavel_id || '',
-          nome: estudoDirigidoHoje.responsavel_nome,
-          tipo: 'TITULAR'
-        });
-      }
-    }
-
-    return list;
-  }, [estudoDirigidoHoje, gruposPratica, grupoIntegrantes, matriculas, alunos]);
+  // Uma única fonte para múltiplos apresentadores, IDs e textos da planilha.
+  const responsaveisEstudo = useMemo(() => estudoDirigidoHoje
+    ? resolverResponsaveis({
+        leitura: estudoDirigidoHoje,
+        matriculas,
+        alunos,
+        grupos: gruposPratica,
+        integrantes: grupoIntegrantes,
+      })
+    : [], [estudoDirigidoHoje, matriculas, alunos, gruposPratica, grupoIntegrantes]);
 
   const nomeGrupoEstudo = useMemo(() => {
     if (!estudoDirigidoHoje || !estudoDirigidoHoje.grupo_id) return null;
