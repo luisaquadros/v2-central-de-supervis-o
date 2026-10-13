@@ -35,7 +35,7 @@ export function diagnosticarCentralControle(
   const alunoById=new Map(alunos.map(a=>[a.aluno_id,a]));
   matriculas.forEach(m=>{
     const a=alunoById.get(m.aluno_id);
-    const email=fmt(a?.email);
+    const email=fmt((a as unknown as {email?:string})?.email);
     if(email)byEmail.set(email,[...(byEmail.get(email)||[]),m.matricula_id]);
   });
   const matriculaById=new Map(matriculas.map(m=>[m.matricula_id,m]));
