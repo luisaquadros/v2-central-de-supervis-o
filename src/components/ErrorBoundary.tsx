@@ -26,6 +26,7 @@ export class ErrorBoundary extends Component<Props, State> {
 
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     console.error('ErrorBoundary capturou erro de runtime:', error, errorInfo);
+    window.dispatchEvent(new Event('cs:ui-error'));
     this.setState({ errorInfo });
   }
 
@@ -56,7 +57,7 @@ export class ErrorBoundary extends Component<Props, State> {
 
           {this.state.error && (
             <div className="p-3 bg-red-50 border border-red-100 rounded-xl font-mono text-[11px] text-red-800 break-all">
-              {this.state.error.message || 'Erro inesperado'}
+              Ocorreu uma falha nesta seção. Tente novamente ou acesse outra área.
             </div>
           )}
 
