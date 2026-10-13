@@ -2,6 +2,8 @@ import { initializeApp, getApps, getApp } from 'firebase/app';
 import {
   getAuth,
   signInWithPopup,
+  setPersistence,
+  browserLocalPersistence,
   GoogleAuthProvider,
   onAuthStateChanged,
   User,
@@ -70,7 +72,8 @@ const SESSION_EXPIRY_KEY = 'cs_google_access_token_exp';
 function saveTokenToSession(token: string) {
   try {
     if (typeof window !== 'undefined') {
-      const expiresAt = Date.now() + 55 * 60 * 1000; // 55 minutos
+      const expiresAt = Date.now() + 55 * 60 * 1000; // Token OAuth não dura 6h.
+      expiryInMemory = expiresAt;
       try {
         sessionStorage.setItem(SESSION_TOKEN_KEY, token);
         sessionStorage.setItem(SESSION_EXPIRY_KEY, String(expiresAt));
@@ -123,6 +126,8 @@ function clearSessionToken() {
 }
 
 let inMemoryAccessToken: string | null = getStoredTokenFromSession();
+let expiryInMemory = 0;
+try { expiryInMemory = Number(sessionStorage.getItem(SESSION_EXPIRY_KEY) || 0); } catch {}
 let isSigningIn = false;
 
 export const initAuth = (
@@ -147,6 +152,7 @@ export const initAuth = (
 export const googleSignIn = async (): Promise<{ user: User; accessToken: string } | null> => {
   try {
     isSigningIn = true;
+    await setPersistence(auth, browserLocalPersistence);
     const result = await signInWithPopup(auth, provider);
     const credential = GoogleAuthProvider.credentialFromResult(result);
     if (!credential?.accessToken) {
@@ -164,7 +170,11 @@ export const googleSignIn = async (): Promise<{ user: User; accessToken: string 
 };
 
 export const getAccessToken = async (): Promise<string | null> => {
-  if (inMemoryAccessToken) return inMemoryAccessToken;
+  if (inMemoryAccessToken) {
+    if (Date.now() < expiryInMemory) return inMemoryAccessToken;
+    inMemoryAccessToken = null;
+    clearSessionToken();
+  }
   const stored = getStoredTokenFromSession();
   if (stored) {
     inMemoryAccessToken = stored;
@@ -181,6 +191,7 @@ export const setMockToken = (token: string | null) => {
 
 export const clearAccessToken = () => {
   inMemoryAccessToken = null;
+  expiryInMemory = 0;
   clearSessionToken();
 };
 
