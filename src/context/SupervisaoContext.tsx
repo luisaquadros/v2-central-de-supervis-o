@@ -78,7 +78,7 @@ import {
   subscribeSyncStatus,
   SyncStatusState,
 } from '../services/syncService';
-import { salvarTabelaUnicaNoIndexedDb, carregarFilaSincronizacao } from '../services/indexedDbService';
+import { salvarTabelaUnicaNoIndexedDb, carregarFilaSincronizacao, garantirCacheDoUsuario } from '../services/indexedDbService';
 import {
   initialPeriodos,
   initialDisciplinas,
@@ -692,9 +692,17 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         if (lerSessaoAutorizada(user.uid)) {
           setAcessoGoogleValidado(true);
         }
-        // Ao autenticar, primeiro esvazia alterações locais pendentes e depois busca o estado atualizado
-        processarFilaSincronizacao()
-          .catch(() => {})
+        // Cache local é do navegador: na troca de conta, apaga a cópia das tabelas (se não houver pendências de outra conta).
+        garantirCacheDoUsuario(user.uid)
+          .then(estado => {
+            if (estado === 'PENDENTES_DE_OUTRA_CONTA') {
+              setConnectionErrorMessage('Há alterações pendentes de outra conta neste aparelho. Entre com a conta original para enviá-las antes de trocar de usuária.');
+              return Promise.reject(new Error('PENDENTES_DE_OUTRA_CONTA'));
+            }
+            if (estado === 'LIMPO') { setHasLocalCache(false); }
+          })
+          .then(() => processarFilaSincronizacao())
+          .catch(e => { if (e instanceof Error && e.message === 'PENDENTES_DE_OUTRA_CONTA') throw e; })
           .then(() => sincronizarDaBaseOficial())
           .then(res => {
             if (!isMounted) return;
@@ -705,7 +713,8 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
               setHasLocalCache(true);
               setConnectionStatus('CONECTADO');
             }
-          });
+          })
+          .catch(() => { /* pendências de outra conta já sinalizadas; falhas de rede seguem o fluxo de reconexão */ });
       },
       () => {
         if (!isMounted) return;

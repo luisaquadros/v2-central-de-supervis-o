@@ -147,6 +147,34 @@ export async function invalidarTabelaNoIndexedDb(tabela: string, motivo: string)
   }
 }
 
+const CHAVE_UID_CACHE = 'cs_cache_uid';
+/** Apaga a cópia local das tabelas e os metadados; NUNCA a fila de alterações pendentes. */
+export async function limparTabelasDoCache(): Promise<void> {
+  const db = await openDatabase();
+  await new Promise<void>((resolve, reject) => {
+    const tx = db.transaction([STORE_TABELAS, STORE_META], 'readwrite');
+    tx.objectStore(STORE_TABELAS).clear(); tx.objectStore(STORE_META).clear();
+    tx.oncomplete = () => { db.close(); resolve(); };
+    tx.onerror = () => { db.close(); reject(tx.error); };
+  });
+}
+/**
+ * O cache pertence ao NAVEGADOR, não à conta. Na troca de usuário a cópia local das tabelas (que pode conter
+ * dados que a nova conta não pode ver) é apagada. Se houver alterações pendentes da conta anterior, nada é apagado
+ * e a troca é sinalizada: elas não devem ser enviadas com a identidade de outra pessoa.
+ */
+export async function garantirCacheDoUsuario(uid: string): Promise<'MESMO' | 'LIMPO' | 'PENDENTES_DE_OUTRA_CONTA'> {
+  let anterior: string | null = null;
+  try { anterior = localStorage.getItem(CHAVE_UID_CACHE); } catch { /* sem localStorage */ }
+  if (anterior === uid) return 'MESMO';
+  if (anterior) {
+    if ((await carregarFilaSincronizacao()).length > 0) return 'PENDENTES_DE_OUTRA_CONTA';
+    await limparTabelasDoCache();
+  }
+  try { localStorage.setItem(CHAVE_UID_CACHE, uid); } catch { /* ignora */ }
+  return anterior ? 'LIMPO' : 'MESMO';
+}
+
 /**
  * Salva múltiplas tabelas normalizadas no cache persistente do IndexedDB
  */

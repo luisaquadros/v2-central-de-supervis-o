@@ -1,7 +1,8 @@
 import { ResumoRssSemEnvio } from '../components/ResumoRssSemEnvio';
 import { ResumoDocumentosTurma } from '../components/ResumoDocumentosTurma';
 import { diagnosticarChamada } from '../services/aulaParticipants';
-import { temSupervisaoHorarioAlternativo, geraRegistroAutomatico, ROTULO_HORARIO_ALTERNATIVO } from '../services/condicoesMatricula';
+import { temSupervisaoHorarioAlternativo, ROTULO_HORARIO_ALTERNATIVO } from '../services/condicoesMatricula';
+import { prepararEncerramentoChamada, naoRegistrados } from '../services/chamadaService';
 import { resolverResponsaveis } from '../services/aulaParticipants';
 import React, { useState, useMemo, useEffect } from 'react';
 import {
@@ -263,39 +264,30 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
     });
   };
 
-  // Salvar chamada por exceção
-  const handleSalvarChamada = async () => {
+  // Encerrar chamada (D1): primeiro a prévia; a gravação só acontece após a confirmação explícita.
+  const [previaAberta, setPreviaAberta] = useState(false);
+  const [encerrando, setEncerrando] = useState(false);
+  const previa = prepararEncerramentoChamada(alunosLista, excecoes);
+  const abrirPrevia = () => {
     if (chamadaIncompleta) {
-      setChamadaSalvaMsg({ texto: 'Chamada não salva: lista de alunos incompleta. Confira a sincronização da turma.', tipo: 'local' });
+      setChamadaSalvaMsg({ texto: 'Chamada não encerrada: lista de alunos incompleta. Confira a sincronização da turma.', tipo: 'local' });
       return;
     }
-    // Matrícula em horário alternativo só entra na chamada se a professora marcou algo explicitamente.
-    const excecoesArray = alunosLista.filter(item => geraRegistroAutomatico(item.matricula, !!excecoes[item.matricula.matricula_id])).map(item => {
-      const exc = excecoes[item.matricula.matricula_id];
-      const faltou = exc?.faltou ?? false;
-      let status: Frequencia['status'] = 'PRESENTE';
-      if (faltou) {
-        status = exc?.justificativa ? 'JUSTIFICATIVA_PENDENTE' : 'FALTA_SEM_JUSTIFICATIVA';
-      }
-      return {
-        matriculaId: item.matricula.matricula_id,
-        status,
-        justificativa: exc?.justificativa,
-        atraso: exc?.atraso,
-        celular: exc?.celular,
-        observacao: exc?.observacao,
-      };
-    });
-
-    const res = await salvarChamadaPorExcecao(turmaId, hojeIso, excecoesArray);
-    const faltasCount = excecoesArray.filter(e => e.status !== 'PRESENTE').length;
-    const presentesCount = excecoesArray.length - faltasCount;
-    setChamadaSalvaMsg({
-      texto: `${res.statusTexto} — ${presentesCount} presentes, ${faltasCount} falta(s).`,
-      tipo: res.sincronizadoRemoto ? 'remoto' : 'local',
-      tokenExpirado: res.tokenExpirado,
-    });
-    setTimeout(() => setChamadaSalvaMsg(null), 6000);
+    setPreviaAberta(true);
+  };
+  const handleSalvarChamada = async () => {
+    if (encerrando) return; // evita cliques repetidos e registros duplicados
+    setEncerrando(true);
+    try {
+      const res = await salvarChamadaPorExcecao(turmaId, hojeIso, previa.registros);
+      setPreviaAberta(false);
+      setChamadaSalvaMsg({
+        texto: `${res.statusTexto} — ${previa.presentes.length} presentes, ${previa.faltas.length} falta(s).`,
+        tipo: res.sincronizadoRemoto ? 'remoto' : 'local',
+        tokenExpirado: res.tokenExpirado,
+      });
+      setTimeout(() => setChamadaSalvaMsg(null), 6000);
+    } finally { setEncerrando(false); }
   };
 
   // Contagem instantânea em memória
@@ -303,7 +295,7 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
   const faltasCount = excecoesDaTurma.filter(e => e.faltou).length;
   const coletivos = alunosLista.filter(item => !temSupervisaoHorarioAlternativo(item.matricula));
   const alternativos = alunosLista.length - coletivos.length;
-  const presentesCount = coletivos.length - coletivos.filter(item => excecoes[item.matricula.matricula_id]?.faltou).length;
+  const semMarcacao = naoRegistrados(alunosLista, excecoes).filter(i => !temSupervisaoHorarioAlternativo(i.matricula)).length;
   const atrasosCount = excecoesDaTurma.filter(e => e.atraso).length;
   const celularCount = excecoesDaTurma.filter(e => e.celular).length;
 
@@ -622,6 +614,39 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
       )}
 
       {/* FEEDBACK DE CHAMADA SALVA */}
+      {previaAberta && (
+        <div className="fixed inset-0 z-[120] bg-slate-950/60 flex items-end sm:items-center justify-center p-0 sm:p-4" role="dialog" aria-modal="true" aria-labelledby="titulo-previa-chamada" data-testid="previa-chamada">
+          <div className="bg-white w-full sm:max-w-xl max-h-[92vh] flex flex-col rounded-t-2xl sm:rounded-2xl shadow-xl">
+            <div className="p-4 border-b border-slate-200">
+              <h2 id="titulo-previa-chamada" className="text-base font-bold text-slate-900">Encerrar a chamada?</h2>
+              <p className="text-xs text-slate-600 mt-1">Confira quem será registrado. Quem não foi marcado entra como <b>presente</b> somente se você confirmar aqui.</p>
+            </div>
+            <div className="p-4 space-y-3 overflow-y-auto text-xs">
+              <section>
+                <h3 className="font-bold text-emerald-800">Serão registrados como presentes ({previa.presentes.length})</h3>
+                <p className="text-slate-700 leading-relaxed">{previa.presentes.length ? previa.presentes.map(i => i.aluno.nome + (previa.atrasos.includes(i) ? ' (atraso)' : '')).join(', ') : 'Ninguém.'}</p>
+              </section>
+              <section>
+                <h3 className="font-bold text-red-800">Faltas e justificativas ({previa.faltas.length})</h3>
+                <p className="text-slate-700 leading-relaxed">{previa.faltas.length ? previa.faltas.map(f => `${f.item.aluno.nome} — ${f.status === 'JUSTIFICATIVA_PENDENTE' ? 'justificativa a avaliar' : 'sem justificativa'}`).join('; ') : 'Nenhuma.'}</p>
+              </section>
+              {previa.semRegistro.length > 0 && (
+                <section>
+                  <h3 className="font-bold text-indigo-800">{ROTULO_HORARIO_ALTERNATIVO}: nada será registrado ({previa.semRegistro.length})</h3>
+                  <p className="text-slate-700 leading-relaxed">{previa.semRegistro.map(i => i.aluno.nome).join(', ')}</p>
+                </section>
+              )}
+            </div>
+            <div className="p-4 border-t border-slate-200 flex flex-col-reverse sm:flex-row gap-2 sm:justify-end">
+              <button type="button" onClick={() => setPreviaAberta(false)} disabled={encerrando} className="min-h-[48px] px-4 rounded-xl border border-slate-300 text-slate-800 font-semibold">Voltar e ajustar</button>
+              <button type="button" autoFocus onClick={() => void handleSalvarChamada()} disabled={encerrando} className="min-h-[48px] px-4 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold disabled:opacity-60">
+                {encerrando ? 'Gravando…' : 'Confirmar e encerrar chamada'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {chamadaSalvaMsg && (
         <div
           className={`text-white text-xs px-4 py-2.5 flex items-center justify-between shadow-xs shrink-0 ${
@@ -690,7 +715,7 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
                 <span className="font-bold text-slate-900 text-xs">Chamada por Exceção</span>
               </div>
               <p className="text-[11px] text-slate-500 mt-0.5">
-                <span className="text-emerald-700 font-semibold">{presentesCount} presentes</span> ·{' '}
+                <span className="text-slate-700 font-semibold" title="Quem não foi marcado só é registrado como presente ao encerrar a chamada, depois da sua confirmação.">{semMarcacao} sem marcação (não registrados)</span> ·{' '}
                 <span className={faltasCount > 0 ? 'text-red-700 font-semibold' : 'text-slate-400'}>
                   {faltasCount} falta(s)
                 </span>
@@ -701,13 +726,13 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
             </div>
 
             <button
-              onClick={handleSalvarChamada}
+              onClick={abrirPrevia}
               disabled={saveStatus === 'SALVANDO' || chamadaIncompleta}
               className="min-h-[44px] px-4 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 active:scale-98 text-white font-bold text-xs flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer"
-              title="Gravar chamada da aula com as exceções marcadas"
+              title="Revisar quem será considerado presente e encerrar a chamada"
             >
               <Save className="w-4 h-4" />
-              <span>Salvar Chamada</span>
+              <span>Encerrar chamada</span>
             </button>
           </div>
 
