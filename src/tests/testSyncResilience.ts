@@ -13,6 +13,15 @@ globalThis.fetch = (async (url: any, init?: RequestInit) => {
   if (!init?.method) return ok({values: rows});
   const body = JSON.parse(String(init.body));
   if (init.method === 'POST' && u.includes(':append?')) { rows.push(body.values[0]); writes++; return ok({}); }
+  if (init.method === 'POST' && u.includes('/values:batchUpdate')) {
+    for (const change of body.data as {range:string;values:any[][]}[]) {
+      const col = change.range.match(/!([A-Z]+)\d+$/)?.[1];
+      if (!col) throw new Error('Invalid update range');
+      const index = [...col].reduce((acc,char)=>acc*26+char.charCodeAt(0)-64,0)-1;
+      rows[1][index] = change.values[0][0];
+    }
+    writes++; return ok({});
+  }
   if (init.method === 'PUT') { rows[1] = body.values[0]; writes++; return ok({}); }
   throw new Error('Unexpected write');
 }) as typeof fetch;
