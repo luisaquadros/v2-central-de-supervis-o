@@ -39,6 +39,23 @@ export interface SyncQueueItem {
   tentativas: number;
   erro?: string | null;
   versao_conflito?: Record<string, any>;
+  /** Campos a gravar numa atualização (protege colunas calculadas da planilha). */
+  campos?: string[];
+  /** Ordem de criação: a fila é reenviada exatamente nesta ordem. */
+  seq?: number;
+}
+
+export interface AlteracaoLocal {
+  tabela: string;
+  tipo: SyncQueueOpTipo;
+  payload: Record<string, any>;
+  campos?: string[];
+}
+
+let ultimoSeq = 0;
+function proximoSeq(): number {
+  ultimoSeq = Math.max(ultimoSeq + 1, Date.now() * 1000);
+  return ultimoSeq;
 }
 
 const DB_NAME = 'CentralSupervisao_DB_v1';
@@ -168,21 +185,6 @@ export async function salvarTabelasNoIndexedDb(dadosTabelas: Record<string, any[
 }
 
 /**
- * Salva ou atualiza uma única tabela normalizada no IndexedDB
- */
-export async function salvarTabelaUnicaNoIndexedDb(tabela: string, rows: any[]): Promise<void> {
-  const db = await openDatabase();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction([STORE_TABELAS], 'readwrite');
-    const store = tx.objectStore(STORE_TABELAS);
-    store.put(rows, tabela);
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
-    tx.onabort = () => reject(tx.error);
-  });
-}
-
-/**
  * Carrega todas as tabelas normalizadas armazenadas no IndexedDB
  * Valida a compatibilidade de schema: descarta e remove de forma controlada apenas tabelas incompatíveis
  */
@@ -262,33 +264,6 @@ export async function carregarMetaSincronizacao(): Promise<SyncMeta | null> {
 }
 
 /**
- * Enfileira uma alteração local não sincronizada (syncQueue)
- */
-export async function enfileirarAlteracaoLocal(item: {
-  id: string;
-  tabela: string;
-  tipo: SyncQueueOpTipo;
-  payload: Record<string, any>;
-}): Promise<SyncQueueItem> {
-  const db = await openDatabase();
-  const queueItem: SyncQueueItem = {
-    ...item,
-    criado_em: new Date().toISOString(),
-    status: 'PENDENTE',
-    tentativas: 0,
-    erro: null,
-  };
-
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction([STORE_QUEUE], 'readwrite');
-    const store = tx.objectStore(STORE_QUEUE);
-    store.put(queueItem);
-    tx.oncomplete = () => resolve(queueItem);
-    tx.onerror = () => reject(tx.error);
-  });
-}
-
-/**
  * Obtém todos os itens da fila de sincronização
  */
 export async function carregarFilaSincronizacao(): Promise<SyncQueueItem[]> {
@@ -341,42 +316,63 @@ export async function removerItemFilaConfirmado(id: string): Promise<void> {
   });
 }
 
-/** Commit cache and outbox together: a reported local save must survive reload. */
-export async function salvarAlteracaoAtomica(
-  tabela: string, tipo: SyncQueueOpTipo, payload: Record<string, any>
-): Promise<SyncQueueItem> {
+/**
+ * Grava várias alterações no cache e na fila numa única transação
+ * (ex.: chamada inteira da turma): ou tudo fica salvo no aparelho, ou nada.
+ */
+export async function salvarAlteracoesAtomicas(alteracoes: AlteracaoLocal[]): Promise<SyncQueueItem[]> {
+  if (alteracoes.length === 0) return [];
   const db = await openDatabase();
-  const identity = recordIdentity(tabela, payload);
-  const item: SyncQueueItem = {
-    id: crypto.randomUUID(), tabela, tipo, payload,
+  const itens: SyncQueueItem[] = alteracoes.map(a => ({
+    id: crypto.randomUUID(), tabela: a.tabela, tipo: a.tipo, payload: a.payload,
     criado_em: new Date().toISOString(), status: 'PENDENTE', tentativas: 0,
-  };
+    seq: proximoSeq(), ...(a.campos ? { campos: [...a.campos] } : {}),
+  }));
   return new Promise((resolve, reject) => {
     const tx = db.transaction([STORE_TABELAS, STORE_QUEUE], 'readwrite');
     const tables = tx.objectStore(STORE_TABELAS);
     const queue = tx.objectStore(STORE_QUEUE);
-    const req = tables.get(tabela);
-    req.onsuccess = () => {
-      const rows: any[] = req.result || [];
-      const matches = (r: any) => {
-        try { return recordIdentity(tabela, r) === identity; } catch { return false; }
-      };
-      const old = rows.find(matches);
-      tables.put(tipo === 'DELETE' ? rows.filter(r => !matches(r)) :
-        [...rows.filter(r => !matches(r)), { ...old, ...payload }], tabela);
-      // Coalesce pending versions of this record while holding the sync lock.
-      const pending = queue.getAll();
-      pending.onsuccess = () => {
-        for (const prior of pending.result as SyncQueueItem[]) {
-          if (prior.tabela === tabela && matches(prior.payload)) {
-            if (tipo !== 'DELETE' && prior.tipo !== 'DELETE') item.payload = { ...prior.payload, ...item.payload };
-            queue.delete(prior.id);
+    const tabelasNoCache = new Map<string, any[]>();
+    const nomes = [...new Set(itens.map(i => i.tabela))];
+    let carregadas = 0;
+    nomes.forEach(nome => {
+      const req = tables.get(nome);
+      req.onsuccess = () => {
+        tabelasNoCache.set(nome, req.result || []);
+        if (++carregadas < nomes.length) return;
+        const pendingReq = queue.getAll();
+        pendingReq.onsuccess = () => {
+          const anteriores = pendingReq.result as SyncQueueItem[];
+          for (const item of itens) {
+            const identity = recordIdentity(item.tabela, item.payload);
+            const matches = (r: any) => {
+              try { return recordIdentity(item.tabela, r) === identity; } catch { return false; }
+            };
+            const rows = tabelasNoCache.get(item.tabela)!;
+            const old = rows.find(matches);
+            tabelasNoCache.set(item.tabela, item.tipo === 'DELETE'
+              ? rows.filter(r => !matches(r))
+              : [...rows.filter(r => !matches(r)), { ...old, ...item.payload }]);
+            // Coalesce pending versions of this record while holding the sync lock.
+            for (const prior of anteriores) {
+              if (prior.tabela !== item.tabela || prior.status === 'SINCRONIZADO' || !matches(prior.payload)) continue;
+              if (item.tipo !== 'DELETE' && prior.tipo !== 'DELETE') {
+                item.payload = { ...prior.payload, ...item.payload };
+                if (prior.campos && item.campos) item.campos = [...new Set([...prior.campos, ...item.campos])];
+                else delete item.campos;
+                if (prior.tipo === 'INSERT') item.tipo = 'INSERT';
+              }
+              queue.delete(prior.id);
+              prior.status = 'SINCRONIZADO';
+            }
+            anteriores.push(item);
+            queue.put(item);
           }
-        }
-        queue.put(item);
+          tabelasNoCache.forEach((rows, nome) => tables.put(rows, nome));
+        };
       };
-    };
-    tx.oncomplete = () => { db.close(); resolve(item); };
+    });
+    tx.oncomplete = () => { db.close(); resolve(itens); };
     tx.onerror = tx.onabort = () => { db.close(); reject(tx.error || new Error('Falha ao salvar no dispositivo.')); };
   });
 }

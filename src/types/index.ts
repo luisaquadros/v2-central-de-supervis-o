@@ -29,8 +29,9 @@ export interface Turma {
 export interface Aluno {
   aluno_id: string;
   nome: string;
-  identificador_academico: string; // Ex: 'RA202601'
-  status: 'ATIVO' | 'TRANCADO' | 'CONCLUIDO';
+  identificador_academico: string; // Ex: 'RA202601' (vazio na base atual)
+  status: 'ATIVO' | 'TRANCADO' | 'CONCLUIDO' | string;
+  email?: string;
 }
 
 export interface Matricula {
@@ -64,15 +65,6 @@ export interface RegistroSemanal {
   observacao: string;
 }
 
-export interface Documento {
-  aluno_id?: string; // Compatibilidade de leitura com identificadores legados; prioridade sempre à matrícula.
-  documento_id: string;
-  matricula_id: string;
-  tipo: 'TCLE' | 'Termo de Compromisso' | 'Ficha de Matrícula' | 'Relatório de Atendimento' | 'Declaração da Instituição' | string;
-  status: 'ENTREGUE' | 'PENDENTE' | 'EM_ANALISE';
-  data_entrega: string;
-  observacao: string;
-}
 
 export interface Avaliacao {
   aluno_id?: string; // Compatibilidade de leitura com identificadores legados; prioridade sempre à matrícula.
@@ -182,6 +174,12 @@ export interface SituacaoAtualTurma {
 
 export interface LeituraResponsavel {
   leitura_id?: string;
+  leitura_agenda_id?: string;
+  titulo?: string;
+  tipo?: 'ESTUDO_DIRIGIDO' | 'LEITURA_RECOMENDADA' | string;
+  responsaveis_texto?: string;
+  responsavel_tipo?: 'ALUNO' | 'ALUNOS' | 'SEM_RESPONSAVEL' | 'TURMA_TODA' | 'MONITORA' | string;
+  status_temporal?: string;
   turma_id?: string;
   data?: string;
   tema?: string;
@@ -191,20 +189,13 @@ export interface LeituraResponsavel {
   responsavel_nome?: string;
   aluno_id?: string;
   responsaveis_previstos?: string[]; // IDs de matrícula previstos
-  status_realizacao?: 'PLANEJADO' | 'REALIZADO' | 'PARCIAL' | 'NAO_REALIZADO' | 'SUBSTITUICAO';
+  status_realizacao?: 'PLANEJADO' | 'REALIZADO' | 'PARCIAL' | 'NAO_REALIZADO' | 'SUBSTITUICAO' | '';
   responsaveis_efetivos?: string[]; // IDs de matrícula que apresentaram
   motivo_substituicao?: string;
   observacao?: string;
   [key: string]: any;
 }
 
-export interface RegraPrazo {
-  prazo_id?: string;
-  tipo?: string;
-  dias_tolerancia?: number;
-  descricao?: string;
-  [key: string]: any;
-}
 
 export interface GrupoPratica {
   grupo_id: string;
@@ -223,11 +214,21 @@ export interface GrupoIntegrante {
   [key: string]: any;
 }
 
+export type SituacaoEntrega = 'ENTREGUE' | 'A_CONFERIR' | 'PENDENTE' | 'NAO_SE_APLICA';
+
 export interface Entrega {
   entrega_id?: string;
+  periodo_id?: string;
+  turma_id?: string;
   matricula_id?: string;
   tipo_documento?: string;
+  tipo_entrega?: string;
+  /** Texto original da planilha (ex.: "A conferir"). */
+  status?: string;
   status_entrega?: string;
+  /** Situação padronizada a partir do status. */
+  situacao?: SituacaoEntrega;
+  prazo?: string;
   data_entrega?: string;
   observacao?: string;
   [key: string]: any;
@@ -235,73 +236,27 @@ export interface Entrega {
 
 export interface Feedback {
   feedback_id: string;
+  periodo_id?: string;
+  turma_id?: string;
+  escopo?: string;
   matricula_id?: string;
+  grupo_id?: string;
   aluno_id?: string;
-  data_hora?: string;
-  texto?: string;
-  [key: string]: any;
-}
-
-export interface RegistroSupervisao {
-  registro_id?: string;
-  orientacao_id?: string;
-  matricula_id?: string;
+  data?: string;
   data_hora?: string;
   categoria?: string;
   texto?: string;
-  status?: string;
+  incluir_na_devolutiva?: boolean | string;
+  criado_em?: string;
+  atualizado_em?: string;
   [key: string]: any;
 }
 
-export interface Sincronizacao {
-  sincronizacao_id?: string;
-  tabela?: string;
-  ultima_atualizacao?: string;
-  versao?: string;
-  status?: string;
-  [key: string]: any;
-}
 
-// -----------------------------------------------------------------------------
-// DOCUMENTAÇÃO E CONTRATO OFICIAL DA BASE
-// -----------------------------------------------------------------------------
 
-export interface DicionarioDado {
-  tabela?: string;
-  campo?: string;
-  tipo?: string;
-  descricao?: string;
-  obrigatorio?: boolean;
-  origem?: string;
-  [key: string]: any;
-}
 
-export interface ContratoApp {
-  chave?: string;
-  modulo?: string;
-  descricao?: string;
-  regra?: string;
-  tipo?: string;
-  [key: string]: any;
-}
 
-export interface MapeamentoFonte {
-  tabela_destino?: string;
-  campo_destino?: string;
-  aba_origem?: string;
-  coluna_origem?: string;
-  regra_transformacao?: string;
-  [key: string]: any;
-}
 
-export interface AuditoriaBase {
-  auditoria_id?: string;
-  timestamp?: string;
-  usuario?: string;
-  acao?: string;
-  detalhes?: string;
-  [key: string]: any;
-}
 
 export interface Ocorrencia {
   aluno_id?: string; // Compatibilidade de leitura com identificadores legados; prioridade sempre à matrícula.
@@ -331,6 +286,7 @@ export interface TurmaOrigem {
 }
 
 export interface Frequencia {
+  [key: string]: any;
   aluno_id?: string; // Compatibilidade de leitura com identificadores legados; prioridade sempre à matrícula.
   frequencia_id: string;
   matricula_id: string;
@@ -348,7 +304,8 @@ export interface Frequencia {
 export interface HorarioTurma {
   horario_id: string;
   turma_id: string;
-  dia_semana: number; // 0=Domingo, 1=Segunda, 2=Terça, 3=Quarta, 4=Quinta, 5=Sexta, 6=Sábado
+  /** 0=Domingo … 6=Sábado (a planilha usa "TERCA", "QUINTA"…, convertido na leitura). */
+  dia_semana: number | null;
   hora_inicio: string; // '08:20'
   hora_fim: string; // '11:00'
   data_inicio: string;
@@ -372,14 +329,16 @@ export interface PontoAcompanhamento {
 }
 
 export interface MarcoAcademico {
+  [key: string]: any;
   marco_id: string;
   periodo_id: string;
   disciplina_id?: string;
   turma_id?: string;
   nome: string; // Ex: 'Final dos atendimentos'
-  tipo: 'PROVA' | 'ENTREGA' | 'RELATORIO' | 'ENCERRAMENTO_ATENDIMENTOS' | 'DEVOLUTIVA' | 'OUTRO';
+  tipo: string;
   data_prazo: string;
-  status: 'PENDENTE' | 'CONCLUIDO';
+  /** Calculado por fórmula na planilha (CONCLUIDO quando a data passa). */
+  status: 'PENDENTE' | 'CONCLUIDO' | 'HOJE' | string;
   observacao?: string;
 }
 
@@ -422,18 +381,6 @@ export interface AlunoResumoSupervisao {
 // Central de Avaliação e Instrumentos
 export type TipoInstrumento = 'NOTA_SIMPLES' | 'ATIVIDADE_SIMPLES' | 'RUBRICA' | 'HIBRIDA';
 
-export interface InstrumentoAvaliacao {
-  instrumento_id: string;
-  turma_id?: string;
-  disciplina_id?: string;
-  periodo_id?: string;
-  nome: string;
-  tipo: TipoInstrumento;
-  nota_maxima: number;
-  peso?: number;
-  data_limite?: string;
-  descricao?: string;
-}
 
 export type StatusDevolutiva =
   | 'NAO_INICIADA'
@@ -476,58 +423,13 @@ export interface AvaliacaoCompleta {
   atualizado_em: string;
 }
 
-// Caixa de Entrada Global e Registro Rápido
-export interface CaixaEntradaItem {
-  id: string;
-  texto_original: string;
-  criado_em: string;
-  status: 'PENDENTE' | 'CLASSIFICADO' | 'CONFIRMADO' | 'DESCARTADO';
-  tipo_sugerido?: string;
-  aluno_id?: string;
-  matricula_id?: string;
-  grupo_id?: string;
-  turma_id?: string;
-  data_relacionada?: string;
-  observacao?: string;
-  canal?: string;
-  confianca_ia?: number;
-  motivo_pendente?: string;
-  resolvido_em?: string;
-}
 
-// Fila da Professora ("Minha Fila")
-export interface ItemFilaProfessora {
-  id: string;
-  titulo: string;
-  duracao_minutos: 5 | 15 | 30 | number;
-  prioridade: 'ALTA' | 'MEDIA' | 'BAIXA';
-  status: 'PENDENTE' | 'EM_ANDAMENTO' | 'CONCLUIDO';
-  turma_id?: string;
-  matricula_id?: string;
-  grupo_id?: string;
-  categoria: string; // Ex: 'RSS', 'Documentos', 'Orientação', 'Avaliação', 'Geral'
-  prazo?: string;
-  observacao?: string;
-  criado_em: string;
-}
 
-// Fila de Supervisão (Modo Aula)
-export interface ItemFilaSupervisao {
-  id: string;
-  turma_id: string;
-  alvo_tipo: 'ALUNO' | 'GRUPO' | 'TURMA';
-  alvo_id: string;
-  nome_alvo: string;
-  assunto: string;
-  status: 'AGUARDANDO' | 'EM_DISCUSSAO' | 'ORIENTACAO_REGISTRADA' | 'CONCLUIDO';
-  ordem: number;
-  criado_em: string;
-}
 
 // -----------------------------------------------------------------------------
 // GESTÃO OPERACIONAL DE ENCONTROS, AULAS NÃO REALIZADAS E REAGENDAMENTOS
 // -----------------------------------------------------------------------------
-export type StatusEncontro = 'PREVISTO' | 'REALIZADO' | 'NAO_REALIZADO' | 'REAGENDADO';
+export type StatusEncontro = 'PREVISTO' | 'REALIZADO' | 'NAO_REALIZADO' | 'REAGENDADO' | string;
 export type MotivoNaoRealizado =
   | 'Feriado'
   | 'Recesso acadêmico'
@@ -552,45 +454,22 @@ export interface EncontroTurma {
   total_presentes?: number;
   total_faltas?: number;
   leitura_id?: string;
+  fonte?: string;
   criado_em?: string;
   atualizado_em?: string;
 }
 
-export interface NotificacaoDerivada {
-  id: string;
-  titulo: string;
-  mensagem: string;
-  categoria: 'REQUER_ACAO' | 'INFORMATIVO';
-  tipo:
-    | 'CHAMADA_PENDENTE'
-    | 'PRAZO_HOJE'
-    | 'PRAZO_VENCIDO'
-    | 'JUSTIFICATIVA_PENDENTE'
-    | 'ESTUDO_DIRIGIDO_PENDENTE'
-    | 'DOCUMENTO_PENDENTE'
-    | 'SUPERVISAO_HOJE'
-    | 'FERIADO'
-    | 'MARCO_PROXIMO';
-  turma_id?: string;
-  turma_nome?: string;
-  matricula_id?: string;
-  targetTab?: NavTab;
-  targetParam?: string;
-  criado_em?: string;
-}
 
 export interface ItemPendenciaOperacional {
   id: string;
   tipo:
     | 'CHAMADA'
     | 'JUSTIFICATIVA'
-    | 'REGISTRO_SEMANAL'
+    | 'RISCO_FALTAS'
     | 'DOCUMENTO'
-    | 'ORIENTACAO'
-    | 'PRAZO'
+    | 'DOCUMENTO_CONFERIR'
     | 'ESTUDO_DIRIGIDO'
-    | 'RSS_ATRASADO'
-    | 'FALTA_INJUSTIFICADA';
+    | 'DEVOLUTIVA';
   titulo: string;
   descricao: string;
   turma_id?: string;
@@ -601,45 +480,97 @@ export interface ItemPendenciaOperacional {
   urgencia: 'CRITICA' | 'ALTA' | 'MEDIA';
   targetTab: NavTab;
   targetParam?: string;
+  /** Dados para resolver o item direto na lista. */
+  dataAula?: string;
+  frequencia_id?: string;
+  entrega_ids?: string[];
+  leitura_id?: string;
+  avaliacao_id?: string;
+  quantidade?: number;
 }
 
-// Notificações Agregadas
-export interface NotificacaoAgregada {
-  id: string;
-  titulo: string;
-  mensagem: string;
-  tipo: 'AULA' | 'LEITURA' | 'PRAZO' | 'RSS' | 'ORIENTACAO' | 'DOCUMENTO' | 'FECHAMENTO';
-  nivel: 'INFO' | 'ATENCAO' | 'CRITICO';
-  turma_id?: string;
-  lida: boolean;
-  linkTab?: string;
-  linkParam?: string;
-  criado_em: string;
-}
 
-// Histórico de Auditoria do App
-export interface HistoricoAuditoria {
-  id: string;
-  timestamp: string;
-  usuario: string;
-  acao: string;
-  entidade: string;
-  entidade_id: string;
-  valor_anterior?: string;
-  valor_novo?: string;
-  motivo?: string;
-}
 
 // Navegação do aplicativo
 export type NavTab =
   | 'hoje'
-  | 'dashboard'
   | 'turmas'
   | 'alunos'
+  | 'pendencias'
   | 'avaliacao'
   | 'calendario'
-  | 'pendencias'
-  | 'frequencia'
-  | 'semestres'
-  | 'configuracoes';
+  | 'ajustes';
 
+
+// -----------------------------------------------------------------------------
+// TAREFAS DA PROFESSORA E CASOS PARA DISCUTIR (persistidos na planilha)
+// -----------------------------------------------------------------------------
+
+/** Lembrete/tarefa curta da professora (aba tarefas_professora). */
+export interface Tarefa {
+  id: string;
+  tarefa_id?: string;
+  titulo: string;
+  detalhe?: string;
+  categoria?: string;
+  prioridade: 'ALTA' | 'MEDIA' | 'BAIXA';
+  duracao_minutos: number;
+  status: 'PENDENTE' | 'CONCLUIDO';
+  turma_id?: string;
+  matricula_id?: string;
+  prazo?: string;
+  origem?: string;
+  criado_em: string;
+  atualizado_em?: string;
+}
+
+/** Linha da aba preparacoes_aula (casos para discutir e anotações de preparo). */
+export interface PreparacaoAula {
+  preparacao_id: string;
+  turma_id: string;
+  periodo_id?: string;
+  data_aula?: string;
+  tipo: 'CASO' | 'NOTA' | string;
+  texto: string;
+  status: 'AGUARDANDO' | 'DISCUTIDO' | string;
+  alvo_tipo?: 'ALUNO' | 'GRUPO' | 'TURMA' | string;
+  alvo_id?: string;
+  alvo_nome?: string;
+  ordem?: number | string;
+  criado_em?: string;
+  atualizado_em?: string;
+}
+
+/** Tudo o que o app lê da planilha (uma propriedade por aba). */
+export interface DadosBase {
+  periodos: Periodo[];
+  disciplinas: Disciplina[];
+  turmas: Turma[];
+  horarios: HorarioTurma[];
+  turmasOrigem: TurmaOrigem[];
+  alunos: Aluno[];
+  matriculas: Matricula[];
+  criterios: CriterioAvaliacao[];
+  orientacoes: Orientacao[];
+  configuracoes: Configuracao[];
+  marcos: MarcoAcademico[];
+  pontosAcompanhamento: PontoAcompanhamento[];
+  frequencias: Frequencia[];
+  registrosSemanais: RegistroSemanal[];
+  avaliacoes: Avaliacao[];
+  feedbacks: Feedback[];
+  feedbacksLegados: FeedbackAluno[];
+  ocorrencias: Ocorrencia[];
+  regrasRss: RegraRss[];
+  calendarioRss: CalendarioRss[];
+  statusRssUnidades: StatusRssUnidade[];
+  situacaoAtualTurmas: SituacaoAtualTurma[];
+  leiturasResponsaveis: LeituraResponsavel[];
+  gruposPratica: GrupoPratica[];
+  grupoIntegrantes: GrupoIntegrante[];
+  entregas: Entrega[];
+  encontros: EncontroTurma[];
+  avaliacoesCompletas: AvaliacaoCompleta[];
+  preparacoesAula: PreparacaoAula[];
+  tarefas: Tarefa[];
+}

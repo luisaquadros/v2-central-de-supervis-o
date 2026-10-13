@@ -1,28 +1,21 @@
 /**
- * CENTRAL DE SUPERVISÃO - CAMADA DE SINCRONIZAÇÃO E CONTROLE DE FILA (syncService)
+ * Sincronização entre o aparelho e a planilha oficial.
  *
- * Hierarquia estrita:
- * 1. Google Sheets = Fonte Oficial dos Dados
- * 2. IndexedDB = Cópia Persistente de Trabalho
- * 3. syncQueue = Fila Local de Alterações Não Sincronizadas
+ * 1. Google Sheets = fonte oficial.
+ * 2. IndexedDB = cópia de trabalho (o app abre na hora, mesmo sem internet).
+ * 3. Fila local = alterações ainda não confirmadas pela planilha.
  *
- * Comportamento:
- * - Abertura instantânea a partir do IndexedDB.
- * - Sincronização em background quando houver autenticação Google válida.
- * - Falha de conexão/OAuth preserva integralmente os dados locais.
- * - Gravação resiliente: quando offline/sem conexão, enfileira no syncQueue.
- * - Serialização local e entre abas; edição simultânea em dispositivos distintos ainda requer homologação.
- * - Replay seguro da fila após reconexão com remoção estrita somente após confirmação do Sheets.
+ * - Toda alteração é salva no aparelho e na fila na MESMA transação.
+ * - A fila é reenviada na ordem em que foi criada, em lotes por aba.
+ * - Um item só sai da fila depois que a planilha confirma a gravação.
+ * - Enquanto uma aba tem alterações pendentes, a leitura da planilha não a sobrescreve.
  */
-
 import {
   salvarTabelasNoIndexedDb,
-  salvarAlteracaoAtomica,
-  salvarTabelaUnicaNoIndexedDb,
+  salvarAlteracoesAtomicas,
   carregarTodasTabelasDoIndexedDb,
   salvarMetaSincronizacao,
   carregarMetaSincronizacao,
-  enfileirarAlteracaoLocal,
   carregarFilaSincronizacao,
   atualizarItemFila,
   removerItemFilaConfirmado,
@@ -32,13 +25,14 @@ import {
 } from './indexedDbService';
 import {
   carregarDadosDaPlanilhaOficial,
-  gravarRegistroNaPlanilhaOficial,
+  gravarLoteNaPlanilhaOficial,
   removerRegistroDaPlanilhaOficial,
   getAccessToken,
-  TABELAS_NORMALIZADAS,
 } from './googleSheetsService';
 import { validarEscritaTabela } from './safeWriteService';
-import { DadosIniciaisGas } from './gasService';
+import { normalizarLinhasDaAba } from './normalizacaoPlanilha';
+import { COLUNAS_DAS_ABAS_DO_APP, TABELAS_ESSENCIAIS, TABELAS_LIDAS, montarDadosBase } from './tabelas';
+import type { DadosBase } from '../types';
 
 export interface SyncStatusState {
   status: 'SINCRONIZADO' | 'LOCAL' | 'SINCRONIZANDO' | 'ERRO' | 'PARCIAL';
@@ -51,7 +45,9 @@ export interface SyncStatusState {
   tabelasStatus: Record<string, { ok: boolean; count: number; error?: string }>;
 }
 
-// Serialize reads and writes, including across tabs where Web Locks is available.
+const TAMANHO_MAX_LOTE = 200;
+
+// Serializa leituras e gravações, inclusive entre abas do navegador (Web Locks).
 let operationTail: Promise<unknown> = Promise.resolve();
 function exclusively<T>(work: () => Promise<T>): Promise<T> {
   const run = () => typeof navigator !== 'undefined' && navigator.locks
@@ -86,354 +82,250 @@ function notifySyncStatusChange(updates: Partial<SyncStatusState>) {
   syncStatusListeners.forEach(l => l(currentSyncState));
 }
 
-/**
- * 1. Inicializa o estado com o cache persistente do IndexedDB
- */
-export async function inicializarCacheLocal(): Promise<{
-  dados: DadosIniciaisGas | null;
-  meta: SyncMeta | null;
-  fila: SyncQueueItem[];
-}> {
+const estaPendente = (i: SyncQueueItem) => i.status === 'PENDENTE' || i.status === 'ERRO' || i.status === 'SINCRONIZANDO';
+
+function normalizarMapa(mapa: Record<string, any[]>): Record<string, any[]> {
+  const saida: Record<string, any[]> = {};
+  for (const [tabela, linhas] of Object.entries(mapa)) {
+    saida[tabela] = Array.isArray(linhas) ? normalizarLinhasDaAba(tabela, linhas) : [];
+  }
+  return saida;
+}
+
+/** 1. Abre o app com a cópia salva no aparelho. */
+export async function inicializarCacheLocal(): Promise<{ dados: DadosBase | null; meta: SyncMeta | null; fila: SyncQueueItem[] }> {
   try {
     const [tabelasMap, meta, fila] = await Promise.all([
       carregarTodasTabelasDoIndexedDb(),
       carregarMetaSincronizacao(),
       carregarFilaSincronizacao(),
     ]);
-
-    const pendentes = fila.filter(i => i.status === 'PENDENTE' || i.status === 'ERRO' || i.status === 'SINCRONIZANDO');
+    const pendentes = fila.filter(estaPendente);
     const conflitos = fila.filter(i => i.status === 'CONFLITO');
+    notifySyncStatusChange(meta ? {
+      status: meta.status === 'SINCRONIZANDO' ? 'LOCAL' : meta.status,
+      ultimaSincronizacao: meta.ultimaSincronizacao,
+      ultimaLeituraSucesso: meta.ultimaLeituraSucesso,
+      ultimaEscritaSucesso: meta.ultimaEscritaSucesso,
+      pendentesCount: pendentes.length,
+      conflitosCount: conflitos.length,
+      erros: meta.erros || [],
+      tabelasStatus: meta.tabelasStatus || {},
+    } : { status: 'LOCAL', pendentesCount: pendentes.length, conflitosCount: conflitos.length });
 
-    if (meta) {
-      currentSyncState = {
-        status: meta.status === 'SINCRONIZANDO' ? 'LOCAL' : meta.status,
-        ultimaSincronizacao: meta.ultimaSincronizacao,
-        ultimaLeituraSucesso: meta.ultimaLeituraSucesso,
-        ultimaEscritaSucesso: meta.ultimaEscritaSucesso,
-        pendentesCount: pendentes.length,
-        conflitosCount: conflitos.length,
-        erros: meta.erros || [],
-        tabelasStatus: meta.tabelasStatus || {},
-      };
-      notifySyncStatusChange({});
-    } else {
-      notifySyncStatusChange({
-        status: 'LOCAL',
-        pendentesCount: pendentes.length,
-        conflitosCount: conflitos.length,
-      });
-    }
-
-    if (!tabelasMap || Object.keys(tabelasMap).length === 0) {
-      return { dados: null, meta, fila };
-    }
-
-    const dadosTipados: DadosIniciaisGas = {
-      periodos: tabelasMap['periodos'] || [],
-      disciplinas: tabelasMap['disciplinas'] || [],
-      turmas: tabelasMap['turmas'] || [],
-      horarios: tabelasMap['horarios_turma'] || [],
-      turmasOrigem: tableDataOrEmpty(tabelasMap, 'turmas_origem'),
-      alunos: tabelasMap['alunos'] || [],
-      matriculas: tabelasMap['matriculas'] || [],
-      criterios: tabelasMap['criterios_avaliacao'] || [],
-      orientacoes: tabelasMap['orientacoes'] || [],
-      configuracoes: tabelasMap['configuracoes'] || [],
-      marcos: tabelasMap['marcos_academicos'] || [],
-      pontosAcompanhamento: tabelasMap['pontos_acompanhamento'] || [],
-      frequencias: tabelasMap['frequencias'] || [],
-      documentos: tabelasMap['documentos'] || [],
-      registrosSemanais: tabelasMap['registros_semanais'] || [],
-      avaliacoes: tabelasMap['avaliacoes'] || [],
-      feedbacks: tabelasMap['feedback_alunos'] || [],
-      ocorrencias: tabelasMap['ocorrencias'] || [],
-      regrasRss: tabelasMap['regras_rss'] || [],
-      calendarioRss: tabelasMap['calendario_rss'] || [],
-      statusRssUnidades: tabelasMap['status_rss_unidades'] || [],
-      situacaoAtualTurmas: tabelasMap['situacao_atual_turmas'] || [],
-      leiturasResponsaveis: tabelasMap['leituras_responsaveis'] || [],
-      regrasPrazo: tabelasMap['regras_prazo'] || [],
-      gruposPratica: tabelasMap['grupos_pratica'] || [],
-      grupoIntegrantes: tabelasMap['grupo_integrantes'] || [],
-      entregas: tabelasMap['entregas'] || [],
-      feedbacksOficiais: tabelasMap['feedbacks'] || [],
-      registrosSupervisao: tabelasMap['registros_supervisao'] || [],
-      sincronizacao: tabelasMap['sincronizacao'] || [],
-      dicionarioDados: tabelasMap['dicionario_dados'] || [],
-      contratoApp: tabelasMap['contrato_app'] || [],
-      mapeamentoFontes: tabelasMap['mapeamento_fontes'] || [],
-      auditoriaBase: tabelasMap['auditoria_base'] || [],
-    };
-
-    return { dados: dadosTipados, meta, fila };
-  } catch (err: any) {
+    if (!tabelasMap || Object.keys(tabelasMap).length === 0) return { dados: null, meta, fila };
+    // Normaliza também caches gravados por versões anteriores do app.
+    return { dados: montarDadosBase(normalizarMapa(tabelasMap)), meta, fila };
+  } catch (err) {
     console.error('Erro ao inicializar cache do IndexedDB:', err);
     return { dados: null, meta: null, fila: [] };
   }
 }
 
-function tableDataOrEmpty(map: Record<string, any[]>, key: string): any[] {
-  return map[key] || [];
-}
-
-/**
- * 2. Sincronização completa de leitura da base oficial (Google Sheets)
- * Respeita a regra canônica: NUNCA substituir dados locais válidos por arrays vazios
- */
-async function sincronizarDaBaseOficialInterna(): Promise<{
-  sucesso: boolean;
-  dados?: DadosIniciaisGas;
-  erro?: string;
-}> {
+/** 2. Lê a planilha inteira e atualiza a cópia do aparelho. */
+async function sincronizarDaBaseOficialInterna(): Promise<{ sucesso: boolean; dados?: DadosBase; erro?: string }> {
   notifySyncStatusChange({ status: 'SINCRONIZANDO' });
-
   try {
     const token = await getAccessToken();
     if (!token) {
       notifySyncStatusChange({
         status: currentSyncState.ultimaSincronizacao ? 'LOCAL' : 'ERRO',
-        erros: ['Autenticação necessária para sincronizar com Google Sheets.'],
+        erros: ['Conecte sua conta Google para sincronizar com a planilha.'],
       });
       return { sucesso: false, erro: 'Não autenticado no Google.' };
     }
 
-    // Alterações locais precisam ser confirmadas antes de aceitar o snapshot remoto.
-    // Caso permaneçam pendentes, a leitura não pode sobrescrever essas tabelas.
+    // Alterações locais são enviadas antes; o que continuar pendente não é sobrescrito.
     await processarFilaInterna();
-    const pendentesAntesDaLeitura = (await carregarFilaSincronizacao())
-      .filter(i => ['PENDENTE', 'ERRO', 'SINCRONIZANDO', 'CONFLITO'].includes(i.status));
-    const tabelasComEscritaPendente = new Set(pendentesAntesDaLeitura.map(i => i.tabela));
-
-    // Carrega o cache anterior do IndexedDB antes de buscar dados novos
+    const pendentes = (await carregarFilaSincronizacao()).filter(i => estaPendente(i) || i.status === 'CONFLITO');
+    const tabelasComPendencia = new Set(pendentes.map(i => i.tabela));
     const cacheAnterior = (await carregarTodasTabelasDoIndexedDb()) || {};
+    const leitura = await carregarDadosDaPlanilhaOficial();
 
-    // Executa a busca resiliente na planilha oficial
-    const resultado = await carregarDadosDaPlanilhaOficial();
-    const rawMap = (resultado as any)._rawMap || {};
-    const missingSheets = (resultado as any)._missingSheets || [];
-
-    // Falha segura: tabelas fundamentais devem vir de uma leitura autenticada,
-    // nunca apenas do cache, antes de liberar acesso à base acadêmica.
-    const essenciais = ['periodos', 'disciplinas', 'turmas', 'alunos', 'matriculas'];
-    const indisponiveis = essenciais.filter(tab => !Array.isArray(rawMap[tab]) || rawMap[tab].length === 0);
+    const indisponiveis = TABELAS_ESSENCIAIS.filter(t => !leitura.tabelas[t]?.length);
     if (indisponiveis.length > 0) {
-      const erro = `Falha ao validar tabelas essenciais da planilha: ${indisponiveis.join(', ')}.`;
+      const erro = `Não foi possível ler as abas essenciais da planilha: ${indisponiveis.join(', ')}.`;
       notifySyncStatusChange({ status: 'ERRO', erros: [erro] });
       return { sucesso: false, erro };
     }
 
-    const tabelasStatus: Record<string, { ok: boolean; count: number; error?: string }> = {};
+    const tabelasStatus: SyncStatusState['tabelasStatus'] = {};
     const erros: string[] = [];
+    const mapa: Record<string, any[]> = {};
 
-    // Mesclagem segura: atualiza apenas tabelas que retornaram linhas ou tabelas novas
-    const mapParaSalvar: Record<string, any[]> = { ...cacheAnterior };
-
-    TABELAS_NORMALIZADAS.forEach(tab => {
-      if (tabelasComEscritaPendente.has(tab)) {
-        tabelasStatus[tab] = {
-          ok: false,
-          count: (cacheAnterior[tab] || []).length,
-          error: 'Alterações locais aguardando confirmação; snapshot remoto não aplicado.',
-        };
-        erros.push(`Tabela ${tab} possui alterações locais pendentes de sincronização.`);
-        return;
-      }
-      const rows = rawMap[tab];
-      if (Array.isArray(rows) && rows.length > 0) {
-        mapParaSalvar[tab] = rows;
-        tabelasStatus[tab] = { ok: true, count: rows.length };
-      } else if (Array.isArray(rows) && rows.length === 0) {
-        // A successfully read empty table is authoritative (including remote deletions).
-        mapParaSalvar[tab] = [];
-        tabelasStatus[tab] = { ok: true, count: 0 };
+    for (const tabela of TABELAS_LIDAS) {
+      const anteriores = cacheAnterior[tabela] || [];
+      const remotas = leitura.tabelas[tabela];
+      if (tabelasComPendencia.has(tabela)) {
+        mapa[tabela] = anteriores;
+        tabelasStatus[tabela] = { ok: false, count: anteriores.length, error: 'Alterações deste aparelho aguardando envio.' };
+      } else if (Array.isArray(remotas)) {
+        mapa[tabela] = remotas;
+        tabelasStatus[tabela] = { ok: true, count: remotas.length };
+      } else if (leitura.ausentes.includes(tabela) && COLUNAS_DAS_ABAS_DO_APP[tabela]) {
+        // Aba do app ainda não criada: será criada na primeira gravação.
+        mapa[tabela] = anteriores;
+        tabelasStatus[tabela] = { ok: true, count: anteriores.length };
       } else {
-        // Tabela ausente ou não lida
-        if (cacheAnterior[tab] && cacheAnterior[tab].length > 0) {
-          tabelasStatus[tab] = {
-            ok: false,
-            count: cacheAnterior[tab].length,
-            error: 'Não lida nesta execução; dados locais anteriores preservados.',
-          };
-        } else {
-          tabelasStatus[tab] = { ok: false, count: 0, error: 'Aba não encontrada na planilha oficial' };
-        }
-        if (!missingSheets.includes(tab)) {
-          erros.push(`Tabela ${tab} não retornou dados.`);
-        }
+        mapa[tabela] = anteriores;
+        tabelasStatus[tabela] = { ok: false, count: anteriores.length, error: 'Não lida nesta sincronização.' };
+        erros.push(leitura.ausentes.includes(tabela)
+          ? `A aba "${tabela}" não existe na planilha.`
+          : `A aba "${tabela}" não pôde ser lida agora.`);
       }
-    });
-
-    if (missingSheets.length > 0) {
-      erros.push(`Abas ausentes na planilha: ${missingSheets.join(', ')}`);
     }
 
-    // Salva a cópia no cache persistente do IndexedDB
-    await salvarTabelasNoIndexedDb(mapParaSalvar);
-
-    const now = new Date().toISOString();
-    const novoStatus: SyncStatusState['status'] = erros.length > 0 ? 'PARCIAL' : 'SINCRONIZADO';
-
-    const novoMeta: SyncMeta = {
-      ultimaSincronizacao: now,
-      ultimaLeituraSucesso: now,
+    await salvarTabelasNoIndexedDb(mapa);
+    const agora = new Date().toISOString();
+    const status: SyncStatusState['status'] = erros.length > 0 ? 'PARCIAL' : 'SINCRONIZADO';
+    await salvarMetaSincronizacao({
+      ultimaSincronizacao: agora,
+      ultimaLeituraSucesso: agora,
       ultimaEscritaSucesso: currentSyncState.ultimaEscritaSucesso,
-      status: novoStatus,
-      erros,
-      tabelasStatus,
-    };
-
-    await salvarMetaSincronizacao(novoMeta);
-
-    notifySyncStatusChange({
-      status: novoStatus,
-      ultimaSincronizacao: now,
-      ultimaLeituraSucesso: now,
+      status,
       erros,
       tabelasStatus,
     });
-
-
-    // Monta o retorno garantindo que dados anteriores preservados constem na resposta
-    const dadosConsolidados: DadosIniciaisGas = {
-      periodos: mapParaSalvar['periodos'] || [],
-      disciplinas: mapParaSalvar['disciplinas'] || [],
-      turmas: mapParaSalvar['turmas'] || [],
-      horarios: mapParaSalvar['horarios_turma'] || [],
-      turmasOrigem: mapParaSalvar['turmas_origem'] || [],
-      alunos: mapParaSalvar['alunos'] || [],
-      matriculas: mapParaSalvar['matriculas'] || [],
-      criterios: mapParaSalvar['criterios_avaliacao'] || [],
-      orientacoes: mapParaSalvar['orientacoes'] || [],
-      configuracoes: mapParaSalvar['configuracoes'] || [],
-      marcos: mapParaSalvar['marcos_academicos'] || [],
-      pontosAcompanhamento: mapParaSalvar['pontos_acompanhamento'] || [],
-      frequencias: mapParaSalvar['frequencias'] || [],
-      documentos: mapParaSalvar['documentos'] || [],
-      registrosSemanais: mapParaSalvar['registros_semanais'] || [],
-      avaliacoes: mapParaSalvar['avaliacoes'] || [],
-      feedbacks: mapParaSalvar['feedback_alunos'] || [],
-      ocorrencias: mapParaSalvar['ocorrencias'] || [],
-      regrasRss: mapParaSalvar['regras_rss'] || [],
-      calendarioRss: mapParaSalvar['calendario_rss'] || [],
-      statusRssUnidades: mapParaSalvar['status_rss_unidades'] || [],
-      situacaoAtualTurmas: mapParaSalvar['situacao_atual_turmas'] || [],
-      leiturasResponsaveis: mapParaSalvar['leituras_responsaveis'] || [],
-      regrasPrazo: mapParaSalvar['regras_prazo'] || [],
-      gruposPratica: mapParaSalvar['grupos_pratica'] || [],
-      grupoIntegrantes: mapParaSalvar['grupo_integrantes'] || [],
-      entregas: mapParaSalvar['entregas'] || [],
-      feedbacksOficiais: mapParaSalvar['feedbacks'] || [],
-      registrosSupervisao: mapParaSalvar['registros_supervisao'] || [],
-      sincronizacao: mapParaSalvar['sincronizacao'] || [],
-      dicionarioDados: mapParaSalvar['dicionario_dados'] || [],
-      contratoApp: mapParaSalvar['contrato_app'] || [],
-      mapeamentoFontes: mapParaSalvar['mapeamento_fontes'] || [],
-      auditoriaBase: mapParaSalvar['auditoria_base'] || [],
-    };
-
-    return { sucesso: true, dados: dadosConsolidados };
+    notifySyncStatusChange({
+      status: pendentes.length > 0 ? 'LOCAL' : status,
+      ultimaSincronizacao: agora,
+      ultimaLeituraSucesso: agora,
+      erros,
+      tabelasStatus,
+      pendentesCount: pendentes.length,
+    });
+    return { sucesso: true, dados: montarDadosBase(mapa) };
   } catch (err: any) {
     console.error('Erro na sincronização da planilha oficial:', err);
     const msg = err?.message || 'Falha ao sincronizar com Google Sheets';
-
-    notifySyncStatusChange({
-      status: currentSyncState.ultimaSincronizacao ? 'LOCAL' : 'ERRO',
-      erros: [msg],
-    });
-
+    notifySyncStatusChange({ status: currentSyncState.ultimaSincronizacao ? 'LOCAL' : 'ERRO', erros: [msg] });
     return { sucesso: false, erro: msg };
   }
 }
 
+export interface AlteracaoResiliente {
+  tabela: string;
+  tipo: SyncQueueOpTipo;
+  registro: Record<string, any>;
+  /** Para atualizações: grava apenas estes campos na planilha. */
+  campos?: string[];
+}
+
 /**
- * 3. Gravação resiliente de alterações
- * Se online com token: grava diretamente no Google Sheets e atualiza cache
- * Se offline ou erro temporário: salva na fila syncQueue no IndexedDB
+ * 3. Salva alterações: primeiro no aparelho (garantido), depois tenta enviar à planilha.
+ * gravadoOnline = a planilha confirmou; enfileiradoOffline = ficou para a próxima conexão.
  */
-export function salvarRegistroResiliente(
-  tabela: string, tipo: SyncQueueOpTipo, registro: Record<string, any>,
-  _tabelaAtualizadaCompleta?: any[]
-): Promise<{ gravadoOnline: boolean; enfileiradoOffline: boolean; queueItem?: SyncQueueItem }> {
+export function salvarAlteracoesResilientes(
+  alteracoes: AlteracaoResiliente[]
+): Promise<{ gravadoOnline: boolean; enfileiradoOffline: boolean }> {
   return exclusively(async () => {
-    const validacao = validarEscritaTabela(tabela, registro);
-    if (!validacao.valido) throw new Error(validacao.motivo);
-    const item = await salvarAlteracaoAtomica(tabela, tipo, registro);
+    for (const a of alteracoes) {
+      const validacao = validarEscritaTabela(a.tabela, a.registro, a.tipo);
+      if (!validacao.valido) throw new Error(validacao.motivo);
+    }
+    const itens = await salvarAlteracoesAtomicas(
+      alteracoes.map(a => ({ tabela: a.tabela, tipo: a.tipo, payload: a.registro, campos: a.campos }))
+    );
     await processarFilaInterna();
-    const pending = (await carregarFilaSincronizacao()).some(i => i.id === item.id);
-    return { gravadoOnline: !pending, enfileiradoOffline: pending, queueItem: pending ? item : undefined };
+    const fila = await carregarFilaSincronizacao();
+    const pendente = itens.some(item => fila.some(f => f.id === item.id));
+    return { gravadoOnline: !pendente, enfileiradoOffline: pendente };
   });
+}
+
+/**
+ * Salva no aparelho (garantido, transação única) e envia à planilha em segundo plano.
+ * A tela não espera a internet: o selo de sincronização mostra quando a planilha confirmou.
+ */
+export async function salvarEEnviarEmSegundoPlano(alteracoes: AlteracaoResiliente[]): Promise<void> {
+  await exclusively(async () => {
+    for (const a of alteracoes) {
+      const validacao = validarEscritaTabela(a.tabela, a.registro, a.tipo);
+      if (!validacao.valido) throw new Error(validacao.motivo);
+    }
+    await salvarAlteracoesAtomicas(
+      alteracoes.map(a => ({ tabela: a.tabela, tipo: a.tipo, payload: a.registro, campos: a.campos }))
+    );
+    notifySyncStatusChange({ pendentesCount: currentSyncState.pendentesCount + alteracoes.length });
+  });
+  void processarFilaSincronizacao().catch(err => console.warn('Envio em segundo plano:', err));
+}
+
+export function salvarRegistroResiliente(
+  tabela: string, tipo: SyncQueueOpTipo, registro: Record<string, any>, campos?: string[]
+): Promise<{ gravadoOnline: boolean; enfileiradoOffline: boolean }> {
+  return salvarAlteracoesResilientes([{ tabela, tipo, registro, campos }]);
 }
 
 export function sincronizarDaBaseOficial() {
   return exclusively(sincronizarDaBaseOficialInterna);
 }
+
 export function processarFilaSincronizacao() {
   return exclusively(processarFilaInterna);
 }
 
-/**
- * 4. Processamento da fila de sincronização (syncQueue) com detecção de conflitos
- * Nunca remove o item antes da confirmação real no Google Sheets
- */
-async function processarFilaInterna(): Promise<{
-  processados: number;
-  erros: number;
-  conflitos: number;
-}> {
+/** Agrupa itens consecutivos da mesma aba (exceto exclusões) para gravar em lote. */
+function agruparEmLotes(itens: SyncQueueItem[]): SyncQueueItem[][] {
+  const lotes: SyncQueueItem[][] = [];
+  for (const item of itens) {
+    const atual = lotes[lotes.length - 1];
+    const cabe = atual && item.tipo !== 'DELETE' && atual[0].tipo !== 'DELETE'
+      && atual[0].tabela === item.tabela && atual.length < TAMANHO_MAX_LOTE;
+    if (cabe) atual.push(item);
+    else lotes.push([item]);
+  }
+  return lotes;
+}
+
+/** 4. Envia a fila à planilha, na ordem de criação. Para no primeiro erro para preservar a ordem. */
+async function processarFilaInterna(): Promise<{ processados: number; erros: number; conflitos: number }> {
   const fila = await carregarFilaSincronizacao();
-  const pendentes = fila.filter(i => i.status === 'PENDENTE' || i.status === 'ERRO' || i.status === 'SINCRONIZANDO');
+  const pendentes = fila
+    .filter(estaPendente)
+    .sort((a, b) => (a.seq ?? Date.parse(a.criado_em) * 1000) - (b.seq ?? Date.parse(b.criado_em) * 1000));
 
   if (pendentes.length === 0) {
     notifySyncStatusChange({ pendentesCount: 0 });
     return { processados: 0, erros: 0, conflitos: 0 };
   }
-
-  const token = await getAccessToken();
-  if (!token) {
+  if (!(await getAccessToken())) {
     notifySyncStatusChange({ status: 'LOCAL', pendentesCount: pendentes.length });
     return { processados: 0, erros: 0, conflitos: 0 };
   }
 
   let processados = 0;
   let erros = 0;
-  let conflitos = 0;
-
-  for (const item of pendentes) {
+  for (const lote of agruparEmLotes(pendentes)) {
     try {
-      await atualizarItemFila(item.id, { status: 'SINCRONIZANDO', tentativas: item.tentativas + 1 });
-
-      if (item.tipo === 'DELETE') {
-        await removerRegistroDaPlanilhaOficial(item.tabela, item.payload);
-      } else {
-        await gravarRegistroNaPlanilhaOficial(item.tabela, item.payload);
+      for (const item of lote) {
+        await atualizarItemFila(item.id, { status: 'SINCRONIZANDO', tentativas: item.tentativas + 1 });
       }
-
-      // Confirmação real recebida: remove do syncQueue
-      await removerItemFilaConfirmado(item.id);
-      processados++;
+      if (lote[0].tipo === 'DELETE') {
+        await removerRegistroDaPlanilhaOficial(lote[0].tabela, lote[0].payload);
+      } else {
+        await gravarLoteNaPlanilhaOficial(lote[0].tabela, lote.map(i => ({ registro: i.payload, campos: i.campos })));
+      }
+      for (const item of lote) await removerItemFilaConfirmado(item.id);
+      processados += lote.length;
     } catch (err: any) {
-      console.error(`Erro ao sincronizar item ${item.id} da fila:`, err);
-      erros++;
-      const is401 = err?.message?.includes('Sessão expirada') || err?.message?.includes('401');
-      await atualizarItemFila(item.id, {
-        status: 'ERRO',
-        erro: err?.message || 'Falha ao sincronizar com Google Sheets',
-      });
-      break; // Preserve operation order and avoid cascading requests after any failure.
+      console.error(`Erro ao sincronizar ${lote.length} item(ns) de ${lote[0].tabela}:`, err);
+      erros += lote.length;
+      for (const item of lote) {
+        await atualizarItemFila(item.id, { status: 'ERRO', erro: err?.message || 'Falha ao sincronizar com Google Sheets' });
+      }
+      notifySyncStatusChange({ erros: [err?.message || 'Falha ao enviar alterações para a planilha.'] });
+      break;
     }
   }
 
-  const filaAtualizada = await carregarFilaSincronizacao();
-  const pendentesRestantes = filaAtualizada.filter(i => i.status === 'PENDENTE' || i.status === 'ERRO' || i.status === 'SINCRONIZANDO');
-  const conflitosRestantes = filaAtualizada.filter(i => i.status === 'CONFLITO');
-
-  const now = new Date().toISOString();
+  const restantes = (await carregarFilaSincronizacao()).filter(estaPendente);
+  const agora = new Date().toISOString();
   notifySyncStatusChange({
-    pendentesCount: pendentesRestantes.length,
-    conflitosCount: conflitosRestantes.length,
-    ultimaEscritaSucesso: processados > 0 ? now : currentSyncState.ultimaEscritaSucesso,
-    status: pendentesRestantes.length > 0 ? 'LOCAL' : conflitosRestantes.length > 0 || currentSyncState.erros.length > 0 ? 'PARCIAL' : 'SINCRONIZADO',
+    pendentesCount: restantes.length,
+    ultimaEscritaSucesso: processados > 0 ? agora : currentSyncState.ultimaEscritaSucesso,
+    status: restantes.length > 0 ? 'LOCAL' : currentSyncState.status === 'SINCRONIZANDO' ? 'SINCRONIZANDO' : 'SINCRONIZADO',
+    ...(restantes.length === 0 && erros === 0 ? { erros: [] } : {}),
   });
-
-  return { processados, erros, conflitos };
+  return { processados, erros, conflitos: 0 };
 }

@@ -1,422 +1,160 @@
+/**
+ * Registros rápidos durante a supervisão. Todos aguardam a gravação no aparelho antes de fechar:
+ * se algo falhar, o texto continua na tela (nunca se perde em silêncio).
+ */
 import React, { useState } from 'react';
-import { X, Check, AlertCircle } from 'lucide-react';
 import { useSupervisao } from '../context/SupervisaoContext';
+import type { Ocorrencia, PontoAcompanhamento } from '../types';
+import { Botao, CLASSE_INPUT, Campo, Janela } from './ui';
 
-interface ModalWrapperProps {
-  title: string;
-  subtitle?: string;
-  onClose: () => void;
-  children: React.ReactNode;
+const CATEGORIAS = ['Clínica', 'Manejo', 'Técnica (TCC)', 'Ética', 'Registro/Relatório', 'Geral'];
+const FRASES_RAPIDAS = [
+  'Retomar na próxima supervisão.',
+  'Revisar a conceitualização do caso.',
+  'Definir metas terapêuticas com o paciente.',
+  'Atenção ao sigilo e aos registros.',
+  'Discutir encaminhamento.',
+  'Preparar a devolutiva com o paciente.',
+];
+
+function useSalvar(aoConcluir: () => void) {
+  const [salvando, setSalvando] = useState(false);
+  const executar = async (acao: () => Promise<void>) => {
+    setSalvando(true);
+    try {
+      await acao();
+      aoConcluir();
+    } catch {
+      // O aviso de erro global já foi mostrado; o formulário permanece aberto com o texto.
+    } finally {
+      setSalvando(false);
+    }
+  };
+  return { salvando, executar };
 }
 
-export const ModalWrapper: React.FC<ModalWrapperProps> = ({
-  title,
-  subtitle,
-  onClose,
-  children,
-}) => {
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs animate-in fade-in duration-150">
-      <div className="bg-white rounded-xl shadow-xl border border-slate-200 w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh]">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
-          <div>
-            <h3 className="text-sm font-bold text-slate-900">{title}</h3>
-            {subtitle && <p className="text-xs text-slate-500 mt-0.5">{subtitle}</p>}
-          </div>
-          <button
-            onClick={onClose}
-            className="p-1 rounded-md text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
-          >
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-        <div className="p-5 overflow-y-auto space-y-4 text-xs">{children}</div>
-      </div>
-    </div>
-  );
-};
-
-// 1. Modal Nova Orientação
 export const ModalNovaOrientacao: React.FC<{
   matriculaId: string;
   alunoNome: string;
+  grupo?: { grupo_id: string; nome_grupo?: string };
   onClose: () => void;
-  onSaved?: () => void;
-}> = ({ matriculaId, alunoNome, onClose, onSaved }) => {
-  const { addOrientacao } = useSupervisao();
+}> = ({ matriculaId, alunoNome, grupo, onClose }) => {
+  const { addOrientacao, addOrientacaoGrupo } = useSupervisao();
   const [categoria, setCategoria] = useState('Clínica');
   const [texto, setTexto] = useState('');
-  const [status, setStatus] = useState<'ABERTA' | 'CONCLUÍDA'>('ABERTA');
+  const [paraGrupo, setParaGrupo] = useState(false);
+  const [jaResolvida, setJaResolvida] = useState(false);
+  const { salvando, executar } = useSalvar(onClose);
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!texto.trim()) return;
-    addOrientacao(matriculaId, categoria, texto.trim(), status);
-    if (onSaved) onSaved();
-    onClose();
-  };
+  const salvar = () => executar(() => (paraGrupo && grupo
+    ? addOrientacaoGrupo(grupo.grupo_id, categoria, texto.trim())
+    : addOrientacao(matriculaId, categoria, texto.trim(), jaResolvida ? 'CONCLUÍDA' : 'ABERTA')));
 
   return (
-    <ModalWrapper
-      title="Nova Orientação"
-      subtitle={`Aluno(a): ${alunoNome}`}
-      onClose={onClose}
-    >
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <div>
-          <label className="font-semibold text-slate-700 block mb-1.5">Categoria</label>
-          <select
-            value={categoria}
-            onChange={e => setCategoria(e.target.value)}
-            className="w-full border border-slate-200 rounded-lg p-2.5 bg-slate-50 text-slate-800 focus:outline-none focus:ring-1 focus:ring-slate-900"
-          >
-            <option value="Clínica">Clínica</option>
-            <option value="Geral">Geral</option>
-            <option value="Ética">Ética</option>
-            <option value="Metodologia">Metodologia</option>
-            <option value="Relatório">Relatório</option>
-            <option value="Manejo">Manejo</option>
-          </select>
-        </div>
-
-        <div>
-          <label className="font-semibold text-slate-700 block mb-1.5">
-            Orientações Fornecidas
-          </label>
-          <textarea
-            required
-            rows={4}
-            value={texto}
-            onChange={e => setTexto(e.target.value)}
-            placeholder="Descreva a orientação dada ao estagiário..."
-            className="w-full border border-slate-200 rounded-lg p-2.5 bg-slate-50 text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-900"
-          />
-        </div>
-
-        <div>
-          <label className="font-semibold text-slate-700 block mb-1.5">Status Inicial</label>
-          <div className="grid grid-cols-2 gap-2">
-            <button
-              type="button"
-              onClick={() => setStatus('ABERTA')}
-              className={`py-2 px-3 rounded-lg border text-center font-medium transition-colors ${
-                status === 'ABERTA'
-                  ? 'border-amber-500 bg-amber-50 text-amber-900 font-semibold'
-                  : 'border-slate-200 bg-slate-50 text-slate-600'
-              }`}
-            >
-              Aberta (Em acompanhamento)
-            </button>
-            <button
-              type="button"
-              onClick={() => setStatus('CONCLUÍDA')}
-              className={`py-2 px-3 rounded-lg border text-center font-medium transition-colors ${
-                status === 'CONCLUÍDA'
-                  ? 'border-emerald-500 bg-emerald-50 text-emerald-900 font-semibold'
-                  : 'border-slate-200 bg-slate-50 text-slate-600'
-              }`}
-            >
-              Concluída (Resolvida)
-            </button>
+    <Janela titulo="Orientação" subtitulo={paraGrupo && grupo ? `Grupo: ${grupo.nome_grupo}` : alunoNome} aoFechar={onClose}
+      rodape={<>
+        <Botao onClick={onClose}>Cancelar</Botao>
+        <Botao variante="primario" onClick={salvar} disabled={salvando || !texto.trim()}>{salvando ? 'Salvando…' : 'Registrar'}</Botao>
+      </>}>
+      <div className="space-y-4">
+        {grupo && (
+          <div className="flex gap-2">
+            <Botao tamanho="sm" variante={!paraGrupo ? 'primario' : 'secundario'} onClick={() => setParaGrupo(false)}>Só {alunoNome.split(' ')[0]}</Botao>
+            <Botao tamanho="sm" variante={paraGrupo ? 'primario' : 'secundario'} onClick={() => setParaGrupo(true)}>Grupo inteiro</Botao>
           </div>
+        )}
+        <div className="flex flex-wrap gap-2">
+          {CATEGORIAS.map(c => (
+            <button key={c} onClick={() => setCategoria(c)}
+              className={`px-3 py-1.5 rounded-full border text-sm cursor-pointer ${categoria === c ? 'bg-slate-900 text-white border-slate-900' : 'bg-white border-slate-300 text-slate-700'}`}>
+              {c}
+            </button>
+          ))}
         </div>
-
-        <div className="pt-2 flex justify-end gap-2 border-t border-slate-100">
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-4 py-2 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-100 font-medium"
-          >
-            Cancelar
-          </button>
-          <button
-            type="submit"
-            className="px-4 py-2 rounded-lg bg-slate-900 text-white font-medium hover:bg-slate-800"
-          >
-            Salvar Orientação
-          </button>
+        <textarea autoFocus className={`${CLASSE_INPUT} h-32`} value={texto} onChange={e => setTexto(e.target.value)} placeholder="O que foi orientado…" />
+        <div className="flex flex-wrap gap-1.5">
+          {FRASES_RAPIDAS.map(f => (
+            <button key={f} onClick={() => setTexto(t => (t ? `${t.trim()} ${f}` : f))}
+              className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-sm text-slate-700 cursor-pointer">+ {f}</button>
+          ))}
         </div>
-      </form>
-    </ModalWrapper>
+        {!paraGrupo && (
+          <label className="flex items-center gap-2 text-sm text-slate-700">
+            <input type="checkbox" checked={jaResolvida} onChange={e => setJaResolvida(e.target.checked)} className="w-4 h-4" />
+            Já resolvida (não precisa retomar)
+          </label>
+        )}
+      </div>
+    </Janela>
   );
 };
 
-// 2. Modal Novo Feedback
-export const ModalNovoFeedback: React.FC<{
-  matriculaId: string;
-  alunoNome: string;
-  onClose: () => void;
-}> = ({ matriculaId, alunoNome, onClose }) => {
+export const ModalNovoFeedback: React.FC<{ matriculaId: string; alunoNome: string; onClose: () => void }> = ({ matriculaId, alunoNome, onClose }) => {
   const { addFeedback } = useSupervisao();
   const [texto, setTexto] = useState('');
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!texto.trim()) return;
-    addFeedback(matriculaId, texto.trim());
-    onClose();
-  };
-
+  const { salvando, executar } = useSalvar(onClose);
   return (
-    <ModalWrapper title="Registrar Feedback" subtitle={`Aluno(a): ${alunoNome}`} onClose={onClose}>
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <div>
-          <label className="font-semibold text-slate-700 block mb-1.5">
-            Feedback Formativo ao Aluno
-          </label>
-          <textarea
-            required
-            rows={4}
-            value={texto}
-            onChange={e => setTexto(e.target.value)}
-            placeholder="Registre apontamentos sobre desempenho, postura acadêmica, maturidade no estágio..."
-            className="w-full border border-slate-200 rounded-lg p-2.5 bg-slate-50 text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-900"
-          />
-        </div>
-
-        <div className="pt-2 flex justify-end gap-2 border-t border-slate-100">
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-4 py-2 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-100 font-medium"
-          >
-            Cancelar
-          </button>
-          <button
-            type="submit"
-            className="px-4 py-2 rounded-lg bg-slate-900 text-white font-medium hover:bg-slate-800"
-          >
-            Salvar Feedback
-          </button>
-        </div>
-      </form>
-    </ModalWrapper>
+    <Janela titulo="Feedback" subtitulo={alunoNome} aoFechar={onClose}
+      rodape={<>
+        <Botao onClick={onClose}>Cancelar</Botao>
+        <Botao variante="primario" onClick={() => executar(() => addFeedback(matriculaId, texto.trim()))} disabled={salvando || !texto.trim()}>{salvando ? 'Salvando…' : 'Registrar'}</Botao>
+      </>}>
+      <textarea autoFocus className={`${CLASSE_INPUT} h-36`} value={texto} onChange={e => setTexto(e.target.value)}
+        placeholder="Pontos fortes, o que desenvolver… (entra na devolutiva do semestre)" />
+    </Janela>
   );
 };
 
-// 3. Modal Registrar Ocorrência
-export const ModalRegistrarOcorrencia: React.FC<{
-  matriculaId: string;
-  alunoNome: string;
-  tipoInicial?: 'ATRASO' | 'USO_INADEQUADO_DISPOSITIVO' | 'OUTRO';
-  onClose: () => void;
-}> = ({ matriculaId, alunoNome, tipoInicial = 'ATRASO', onClose }) => {
+const TIPOS_OCORRENCIA: { id: Ocorrencia['tipo']; rotulo: string }[] = [
+  { id: 'ATRASO', rotulo: 'Atraso' },
+  { id: 'USO_INADEQUADO_DISPOSITIVO', rotulo: 'Celular' },
+  { id: 'OUTRO', rotulo: 'Outro' },
+];
+
+export const ModalRegistrarOcorrencia: React.FC<{ matriculaId: string; alunoNome: string; onClose: () => void }> = ({ matriculaId, alunoNome, onClose }) => {
   const { addOcorrencia } = useSupervisao();
-  const [tipo, setTipo] = useState<'ATRASO' | 'USO_INADEQUADO_DISPOSITIVO' | 'OUTRO'>(tipoInicial);
-  const [observacao, setObservacao] = useState('');
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!observacao.trim()) return;
-    addOcorrencia(matriculaId, tipo, observacao.trim());
-    onClose();
-  };
-
+  const [tipo, setTipo] = useState<Ocorrencia['tipo']>('OUTRO');
+  const [obs, setObs] = useState('');
+  const { salvando, executar } = useSalvar(onClose);
   return (
-    <ModalWrapper
-      title={tipo === 'ATRASO' ? 'Registrar Atraso' : 'Registrar Ocorrência'}
-      subtitle={`Aluno(a): ${alunoNome}`}
-      onClose={onClose}
-    >
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <div>
-          <label className="font-semibold text-slate-700 block mb-1.5">Tipo de Ocorrência</label>
-          <div className="grid grid-cols-3 gap-1.5">
-            <button
-              type="button"
-              onClick={() => setTipo('ATRASO')}
-              className={`py-2 px-2 rounded-lg border text-center font-medium transition-colors ${
-                tipo === 'ATRASO'
-                  ? 'border-amber-500 bg-amber-50 text-amber-900 font-semibold'
-                  : 'border-slate-200 bg-slate-50 text-slate-600'
-              }`}
-            >
-              Atraso
-            </button>
-            <button
-              type="button"
-              onClick={() => setTipo('USO_INADEQUADO_DISPOSITIVO')}
-              className={`py-2 px-2 rounded-lg border text-center font-medium transition-colors ${
-                tipo === 'USO_INADEQUADO_DISPOSITIVO'
-                  ? 'border-amber-500 bg-amber-50 text-amber-900 font-semibold'
-                  : 'border-slate-200 bg-slate-50 text-slate-600'
-              }`}
-            >
-              Dispositivo
-            </button>
-            <button
-              type="button"
-              onClick={() => setTipo('OUTRO')}
-              className={`py-2 px-2 rounded-lg border text-center font-medium transition-colors ${
-                tipo === 'OUTRO'
-                  ? 'border-amber-500 bg-amber-50 text-amber-900 font-semibold'
-                  : 'border-slate-200 bg-slate-50 text-slate-600'
-              }`}
-            >
-              Outro
-            </button>
-          </div>
+    <Janela titulo="Ocorrência" subtitulo={alunoNome} aoFechar={onClose} largura="sm"
+      rodape={<>
+        <Botao onClick={onClose}>Cancelar</Botao>
+        <Botao variante="primario" onClick={() => executar(() => addOcorrencia(matriculaId, tipo, obs.trim()))} disabled={salvando}>{salvando ? 'Salvando…' : 'Registrar'}</Botao>
+      </>}>
+      <div className="space-y-3">
+        <div className="flex gap-2">
+          {TIPOS_OCORRENCIA.map(t => <Botao key={t.id} tamanho="sm" variante={tipo === t.id ? 'primario' : 'secundario'} onClick={() => setTipo(t.id)}>{t.rotulo}</Botao>)}
         </div>
-
-        <div>
-          <label className="font-semibold text-slate-700 block mb-1.5">Detalhes / Observação</label>
-          <textarea
-            required
-            rows={3}
-            value={observacao}
-            onChange={e => setObservacao(e.target.value)}
-            placeholder={
-              tipo === 'ATRASO'
-                ? 'Ex: Chegou 20 minutos após o início da supervisão...'
-                : tipo === 'USO_INADEQUADO_DISPOSITIVO'
-                ? 'Ex: Utilizando redes sociais no tablet durante a discussão de caso...'
-                : 'Descreva a ocorrência...'
-            }
-            className="w-full border border-slate-200 rounded-lg p-2.5 bg-slate-50 text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-900"
-          />
-        </div>
-
-        <div className="pt-2 flex justify-end gap-2 border-t border-slate-100">
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-4 py-2 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-100 font-medium"
-          >
-            Cancelar
-          </button>
-          <button
-            type="submit"
-            className="px-4 py-2 rounded-lg bg-slate-900 text-white font-medium hover:bg-slate-800"
-          >
-            Salvar Ocorrência
-          </button>
-        </div>
-      </form>
-    </ModalWrapper>
+        <textarea className={`${CLASSE_INPUT} h-24`} value={obs} onChange={e => setObs(e.target.value)} placeholder="Descrição (opcional)" />
+      </div>
+    </Janela>
   );
 };
 
-// 4. Modal Novo Ponto de Acompanhamento (Exclusivamente Acadêmico)
-export const ModalNovoPontoAcompanhamento: React.FC<{
-  matriculaId: string;
-  alunoNome: string;
-  onClose: () => void;
-}> = ({ matriculaId, alunoNome, onClose }) => {
+export const ModalNovoPontoAcompanhamento: React.FC<{ matriculaId: string; alunoNome: string; onClose: () => void }> = ({ matriculaId, alunoNome, onClose }) => {
   const { addPontoAcompanhamento } = useSupervisao();
   const [texto, setTexto] = useState('');
-  const [prioridade, setPrioridade] = useState<'ALTA' | 'MEDIA' | 'BAIXA' | ''>('ALTA');
-
-  const sugestoes = [
-    'Melhorar objetividade dos registros semanais',
-    'Revisar formulação do caso clínico',
-    'Acompanhar manejo do contrato terapêutico',
-    'Melhorar participação nas supervisões coletivas',
-    'Revisar documentação e prazos de entrega',
-    'Acompanhar cumprimento das orientações anteriores',
-  ];
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!texto.trim()) return;
-    addPontoAcompanhamento(matriculaId, texto.trim(), prioridade);
-    onClose();
-  };
-
+  const [prioridade, setPrioridade] = useState<PontoAcompanhamento['prioridade']>('MEDIA');
+  const { salvando, executar } = useSalvar(onClose);
   return (
-    <ModalWrapper
-      title="Novo Ponto de Acompanhamento"
-      subtitle={`Aluno(a): ${alunoNome} (Acompanhamento formativo/acadêmico)`}
-      onClose={onClose}
-    >
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <div>
-          <label className="font-semibold text-slate-700 block mb-1.5">
-            Ponto a ser Acompanhado
-          </label>
-          <input
-            type="text"
-            required
-            value={texto}
-            onChange={e => setTexto(e.target.value)}
-            placeholder="Ex: Revisar fundamentação teórica nos registros..."
-            className="w-full border border-slate-200 rounded-lg p-2.5 bg-slate-50 text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-900"
-          />
+    <Janela titulo="Ponto de acompanhamento" subtitulo={`${alunoNome} · algo para observar nas próximas aulas`} aoFechar={onClose} largura="sm"
+      rodape={<>
+        <Botao onClick={onClose}>Cancelar</Botao>
+        <Botao variante="primario" onClick={() => executar(() => addPontoAcompanhamento(matriculaId, texto.trim(), prioridade))} disabled={salvando || !texto.trim()}>{salvando ? 'Salvando…' : 'Criar'}</Botao>
+      </>}>
+      <div className="space-y-3">
+        <Campo rotulo="O que acompanhar">
+          <input autoFocus className={CLASSE_INPUT} value={texto} onChange={e => setTexto(e.target.value)} placeholder="Ex.: revisar objetividade dos registros" />
+        </Campo>
+        <div className="flex gap-2">
+          {(['ALTA', 'MEDIA', 'BAIXA'] as const).map(p => (
+            <Botao key={p} tamanho="sm" variante={prioridade === p ? 'primario' : 'secundario'} onClick={() => setPrioridade(p)}>
+              {p === 'ALTA' ? 'Alta' : p === 'MEDIA' ? 'Média' : 'Baixa'}
+            </Botao>
+          ))}
         </div>
-
-        {/* Sugestões acadêmicas rápidas */}
-        <div>
-          <span className="text-[11px] text-slate-400 block mb-1.5 font-medium">
-            Sugestões rápidas:
-          </span>
-          <div className="flex flex-wrap gap-1.5">
-            {sugestoes.map((sug, i) => (
-              <button
-                key={i}
-                type="button"
-                onClick={() => setTexto(sug)}
-                className="text-[11px] bg-slate-100 hover:bg-slate-200 text-slate-700 px-2 py-1 rounded transition-colors text-left"
-              >
-                + {sug}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div>
-          <label className="font-semibold text-slate-700 block mb-1.5">Prioridade</label>
-          <div className="grid grid-cols-3 gap-2">
-            <button
-              type="button"
-              onClick={() => setPrioridade('ALTA')}
-              className={`py-2 px-2 rounded-lg border text-center font-medium transition-colors ${
-                prioridade === 'ALTA'
-                  ? 'border-amber-500 bg-amber-50 text-amber-900 font-semibold'
-                  : 'border-slate-200 bg-slate-50 text-slate-600'
-              }`}
-            >
-              Alta
-            </button>
-            <button
-              type="button"
-              onClick={() => setPrioridade('MEDIA')}
-              className={`py-2 px-2 rounded-lg border text-center font-medium transition-colors ${
-                prioridade === 'MEDIA'
-                  ? 'border-slate-400 bg-slate-100 text-slate-800 font-semibold'
-                  : 'border-slate-200 bg-slate-50 text-slate-600'
-              }`}
-            >
-              Média
-            </button>
-            <button
-              type="button"
-              onClick={() => setPrioridade('BAIXA')}
-              className={`py-2 px-2 rounded-lg border text-center font-medium transition-colors ${
-                prioridade === 'BAIXA'
-                  ? 'border-slate-400 bg-slate-100 text-slate-800 font-semibold'
-                  : 'border-slate-200 bg-slate-50 text-slate-600'
-              }`}
-            >
-              Baixa
-            </button>
-          </div>
-        </div>
-
-        <div className="pt-2 flex justify-end gap-2 border-t border-slate-100">
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-4 py-2 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-100 font-medium"
-          >
-            Cancelar
-          </button>
-          <button
-            type="submit"
-            className="px-4 py-2 rounded-lg bg-slate-900 text-white font-medium hover:bg-slate-800"
-          >
-            Adicionar Ponto
-          </button>
-        </div>
-      </form>
-    </ModalWrapper>
+      </div>
+    </Janela>
   );
 };

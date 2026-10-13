@@ -1,311 +1,116 @@
-import React, { useState } from 'react';
-import { Menu, X, Play, ArrowLeft, RefreshCw, AlertTriangle } from 'lucide-react';
+import React, { useEffect } from 'react';
+import { RefreshCw } from 'lucide-react';
 import { SupervisaoProvider, useSupervisao } from './context/SupervisaoContext';
-import { Sidebar } from './components/Sidebar';
-import { SyncIndicator } from './components/SyncIndicator';
-import { NotificationBell } from './components/NotificationBell';
+import { NavegacaoProvider, useNavegacao } from './context/NavegacaoContext';
+import { Sidebar, BarraSuperior } from './components/Sidebar';
+import { AvisosGlobais } from './components/AvisosGlobais';
 import { ViewErrorBoundary } from './components/ViewErrorBoundary';
+import { AnotarRapidoModal } from './components/AnotarRapidoModal';
+import { BuscaGlobalModal } from './components/BuscaGlobalModal';
+import { PrepararAulaModal } from './components/PrepararAulaModal';
 import { PrimeiraConexaoView } from './views/PrimeiraConexaoView';
-import { isRunningInAppsScript } from './services/gasService';
-import { NavTab } from './types';
-import { DashboardView } from './views/DashboardView';
 import { HojeView } from './views/HojeView';
-import { AvaliacaoView } from './views/AvaliacaoView';
-import { CalendarioView } from './views/CalendarioView';
-import { TurmasView, TurmaDetalheView } from './views/TurmasView';
-import { ModoSupervisaoView } from './views/ModoSupervisaoView';
+import { PendenciasView } from './views/PendenciasView';
+import { TurmasView } from './views/TurmasView';
+import { TurmaView } from './views/TurmaView';
 import { AlunosListView } from './views/AlunosListView';
 import { AlunoFichaView } from './views/AlunoFichaView';
-import { FrequenciaView } from './views/FrequenciaView';
-import { PendenciasView } from './views/PendenciasView';
-import { SemestresView } from './views/SemestresView';
-import { ConfiguracoesView } from './views/ConfiguracoesView';
+import { AvaliacaoView } from './views/AvaliacaoView';
+import { CalendarioView } from './views/CalendarioView';
+import { AjustesView } from './views/AjustesView';
+import { ModoSupervisaoView } from './views/ModoSupervisaoView';
 
-type AppView =
-  | { type: 'tab'; tab: NavTab; filterParam?: string }
-  | { type: 'turma-detalhe'; turmaId: string }
-  | { type: 'modo-supervisao'; turmaId: string }
-  | { type: 'aluno-ficha'; matriculaId: string; initialTab?: string; returnTo?: 'supervisao' | 'turma' | 'alunos' | 'dashboard' | 'pendencias'; returnTurmaId?: string };
+const Carregando: React.FC<{ texto: string }> = ({ texto }) => (
+  <div className="min-h-screen bg-slate-100 flex flex-col items-center justify-center gap-3 text-slate-700">
+    <RefreshCw className="w-8 h-8 animate-spin text-slate-500" />
+    <p className="font-semibold">{texto}</p>
+  </div>
+);
 
-const MainContent: React.FC = () => {
-  const {
-    periodos,
-    currentUser,
-    acessoGoogleValidado,
-    hasLocalCache,
-    connectionStatus,
-    syncStatusState,
-    sincronizarAgora,
-  } = useSupervisao();
+const Conteudo: React.FC = () => {
+  const { tela } = useNavegacao();
+  const chave = tela.tipo === 'aba' ? tela.aba : tela.tipo === 'turma' ? `turma-${tela.turmaId}`
+    : tela.tipo === 'aula' ? `aula-${tela.turmaId}-${tela.data}` : `aluno-${tela.matriculaId}`;
 
-  const [currentView, setCurrentView] = useState<AppView>({ type: 'tab', tab: 'hoje' });
-  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  return (
+    <ViewErrorBoundary key={chave} viewName={chave}>
+      {tela.tipo === 'aba' && tela.aba === 'hoje' && <HojeView />}
+      {tela.tipo === 'aba' && tela.aba === 'pendencias' && <PendenciasView />}
+      {tela.tipo === 'aba' && tela.aba === 'turmas' && <TurmasView />}
+      {tela.tipo === 'aba' && tela.aba === 'alunos' && <AlunosListView />}
+      {tela.tipo === 'aba' && tela.aba === 'avaliacao' && <AvaliacaoView />}
+      {tela.tipo === 'aba' && tela.aba === 'calendario' && <CalendarioView />}
+      {tela.tipo === 'aba' && tela.aba === 'ajustes' && <AjustesView />}
+      {tela.tipo === 'turma' && <TurmaView turmaId={tela.turmaId} abaInicial={tela.aba} />}
+      {tela.tipo === 'aluno' && <AlunoFichaView matriculaId={tela.matriculaId} initialTab={tela.aba} />}
+    </ViewErrorBoundary>
+  );
+};
 
-  // Navigation handlers
-  const handleSelectNavTab = (tab: NavTab) => {
-    setCurrentView({ type: 'tab', tab });
-  };
+const Janelas: React.FC = () => {
+  const { janelas, abrirBusca, abrirAnotar } = useNavegacao();
 
-  const handleOpenTurma = (turmaId: string) => {
-    setCurrentView({ type: 'turma-detalhe', turmaId });
-  };
-
-  const handleIniciarSupervisao = (turmaId: string) => {
-    setCurrentView({ type: 'modo-supervisao', turmaId });
-  };
-
-  const handleOpenAlunoFicha = (
-    matriculaId: string,
-    initialTab: string = 'resumo',
-    fromWhere?: 'supervisao' | 'turma' | 'alunos' | 'dashboard' | 'pendencias',
-    fromTurmaId?: string
-  ) => {
-    let returnTo = fromWhere;
-    let returnTurmaId = fromTurmaId;
-
-    if (!returnTo) {
-      if (currentView.type === 'modo-supervisao') {
-        returnTo = 'supervisao';
-        returnTurmaId = currentView.turmaId;
-      } else if (currentView.type === 'turma-detalhe') {
-        returnTo = 'turma';
-        returnTurmaId = currentView.turmaId;
-      } else if (currentView.type === 'tab' && currentView.tab === 'pendencias') {
-        returnTo = 'pendencias';
-      } else if (currentView.type === 'tab' && currentView.tab === 'dashboard') {
-        returnTo = 'dashboard';
-      } else {
-        returnTo = 'alunos';
+  // Atalhos: Ctrl/Cmd+K busca; "N" anota (fora de campos de texto).
+  useEffect(() => {
+    const atalho = (e: KeyboardEvent) => {
+      const alvo = e.target as HTMLElement;
+      const digitando = alvo?.tagName === 'INPUT' || alvo?.tagName === 'TEXTAREA' || alvo?.isContentEditable;
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        abrirBusca();
+      } else if (!digitando && !e.metaKey && !e.ctrlKey && e.key.toLowerCase() === 'n') {
+        e.preventDefault();
+        abrirAnotar();
       }
-    }
+    };
+    window.addEventListener('keydown', atalho);
+    return () => window.removeEventListener('keydown', atalho);
+  }, [abrirBusca, abrirAnotar]);
 
-    setCurrentView({
-      type: 'aluno-ficha',
-      matriculaId,
-      initialTab,
-      returnTo,
-      returnTurmaId,
-    });
-  };
+  return (
+    <>
+      {janelas.anotar.aberto && <AnotarRapidoModal />}
+      {janelas.busca && <BuscaGlobalModal />}
+      {janelas.preparar && <PrepararAulaModal turmaId={janelas.preparar.turmaId} data={janelas.preparar.data} />}
+    </>
+  );
+};
 
-  const handleVoltarDeAluno = () => {
-    if (currentView.type === 'aluno-ficha') {
-      if (currentView.returnTo === 'supervisao' && currentView.returnTurmaId) {
-        setCurrentView({ type: 'modo-supervisao', turmaId: currentView.returnTurmaId });
-      } else if (currentView.returnTo === 'turma' && currentView.returnTurmaId) {
-        setCurrentView({ type: 'turma-detalhe', turmaId: currentView.returnTurmaId });
-      } else if (currentView.returnTo === 'pendencias') {
-        setCurrentView({ type: 'tab', tab: 'pendencias' });
-      } else if (currentView.returnTo === 'dashboard') {
-        setCurrentView({ type: 'tab', tab: 'dashboard' });
-      } else {
-        setCurrentView({ type: 'tab', tab: 'alunos' });
-      }
-    } else {
-      setCurrentView({ type: 'tab', tab: 'dashboard' });
-    }
-  };
+const Aplicativo: React.FC = () => {
+  const { connectionStatus, authVerificado, currentUser, hasLocalCache, isLoggingIn } = useSupervisao();
+  const { tela } = useNavegacao();
 
-  // 1. Estado de carregamento inicial
-  if (connectionStatus === 'CARREGANDO' && !hasLocalCache && periodos.length === 0) {
+  if (connectionStatus === 'CARREGANDO' || !authVerificado) return <Carregando texto="Abrindo a Central…" />;
+  // Sem conta conectada, nada é exibido (dados de estudantes ficam protegidos).
+  if (!currentUser) return <PrimeiraConexaoView />;
+  if (!hasLocalCache) return isLoggingIn ? <Carregando texto="Lendo a planilha…" /> : <PrimeiraConexaoView />;
+
+  // Durante a aula a tela é inteira da chamada (sem menu lateral).
+  if (tela.tipo === 'aula') {
     return (
-      <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-6 text-white font-sans">
-        <RefreshCw className="w-8 h-8 animate-spin text-amber-400 mb-4" />
-        <h2 className="text-lg font-bold tracking-tight">Central de Supervisão Acadêmica</h2>
-        <p className="text-xs text-slate-400 mt-1">Carregando cache persistente e verificando base oficial...</p>
-      </div>
+      <>
+        <ViewErrorBoundary key={`aula-${tela.turmaId}-${tela.data}`} viewName="aula">
+          <ModoSupervisaoView turmaId={tela.turmaId} dataAula={tela.data} />
+        </ViewErrorBoundary>
+        <Janelas />
+        <AvisosGlobais />
+      </>
     );
   }
 
-  // 2. Proteção de dados acadêmicos: cache de dispositivo nunca libera telas sem login.
-  // Firebase preserva o login legítimo ao atualizar a página; Sheets mantém permissão por conta.
-  if (((!currentUser || !acessoGoogleValidado) && !isRunningInAppsScript()) || (!hasLocalCache && periodos.length === 0)) {
-    return <PrimeiraConexaoView />;
-  }
-
-  // If in Modo Supervisão, we hide the main sidebar to maximize screen space for the tablet landscape split-screen!
-  const isModoSupervisao = currentView.type === 'modo-supervisao';
-
   return (
-    <div className="flex h-screen bg-slate-100 overflow-hidden font-sans">
-      {/* Sidebar (hidden during Modo Supervisão for maximum tablet focus) */}
-      {!isModoSupervisao && (
-        <Sidebar
-          currentTab={currentView.type === 'tab' ? currentView.tab : 'dashboard'}
-          onSelectTab={handleSelectNavTab}
-          isOpenMobile={isMobileMenuOpen}
-          onCloseMobile={() => setIsMobileMenuOpen(false)}
-        />
-      )}
-
-      {/* Main Content Area */}
-      <main className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        {/* Persistent Global Header Bar */}
-        {!isModoSupervisao && (
-          <header className="bg-white border-b border-slate-200 px-4 py-2.5 flex items-center justify-between shrink-0 shadow-2xs">
-            <div className="flex items-center gap-3">
-              <div className="md:hidden flex items-center gap-2">
-                <button
-                  onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-                  className="p-1.5 rounded-lg border border-slate-200 text-slate-700"
-                >
-                  {isMobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
-                </button>
-                <span className="font-bold text-sm text-slate-900">Central de Supervisão</span>
-              </div>
-              <div className="hidden md:flex items-center gap-2 text-xs text-slate-500">
-                <span className="font-semibold text-slate-700">Central de Supervisão</span>
-                <span>•</span>
-                <span>Base Oficial Google Sheets</span>
-              </div>
-            </div>
-
-            {/* Persistent Global Sync Indicator, Notifications & Details */}
-            <div className="flex items-center gap-2">
-              <NotificationBell
-                onNavigate={(tab, param) => setCurrentView({ type: 'tab', tab, filterParam: param })}
-                onOpenSupervisao={turmaId => setCurrentView({ type: 'modo-supervisao', turmaId })}
-              />
-              <SyncIndicator />
-            </div>
-          </header>
-        )}
-
-        {/* Offline / Cache Fallback Notice Banner */}
-        {syncStatusState.status === 'LOCAL' && syncStatusState.erros.length > 0 && hasLocalCache && (
-          <div className="bg-amber-50 border-b border-amber-200 px-4 py-2 flex items-center justify-between text-xs text-amber-800">
-            <div className="flex items-center gap-2">
-              <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
-              <span>
-                Não foi possível atualizar a base oficial. Exibindo dados da última sincronização de{' '}
-                <strong>
-                  {syncStatusState.ultimaSincronizacao
-                    ? new Date(syncStatusState.ultimaSincronizacao).toLocaleString('pt-BR')
-                    : 'data recente'}
-                </strong>.
-              </span>
-            </div>
-            <button
-              onClick={() => sincronizarAgora()}
-              className="px-2.5 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded text-[11px] font-semibold cursor-pointer shrink-0 ml-2"
-            >
-              Sincronizar
-            </button>
+    <div className="flex h-dvh bg-slate-100 overflow-hidden">
+      <Sidebar />
+      <div className="flex-1 flex flex-col min-w-0">
+        <BarraSuperior />
+        <main className="flex-1 overflow-y-auto">
+          <div className="max-w-6xl mx-auto p-4 sm:p-6 pb-24">
+            <Conteudo />
           </div>
-        )}
-
-        {/* Viewport View Content with Resilience against White Screen */}
-        <div className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8">
-          <ViewErrorBoundary
-            key={
-              currentView.type === 'tab'
-                ? `tab-${currentView.tab}`
-                : currentView.type === 'turma-detalhe'
-                ? `turma-${currentView.turmaId}`
-                : currentView.type === 'modo-supervisao'
-                ? `supervisao-${currentView.turmaId}`
-                : `aluno-${currentView.matriculaId}`
-            }
-            viewName={
-              currentView.type === 'tab'
-                ? `da aba "${currentView.tab}"`
-                : currentView.type === 'turma-detalhe'
-                ? 'dos detalhes da turma'
-                : currentView.type === 'modo-supervisao'
-                ? 'do modo supervisão'
-                : 'da ficha do estudante'
-            }
-          >
-            {currentView.type === 'tab' && currentView.tab === 'hoje' && (
-              <HojeView
-                onOpenTurma={handleOpenTurma}
-                onIniciarSupervisao={handleIniciarSupervisao}
-                onNavigateToTab={(tab, param) => setCurrentView({ type: 'tab', tab, filterParam: param })}
-              />
-            )}
-
-            {currentView.type === 'tab' && currentView.tab === 'dashboard' && (
-              <DashboardView
-                onOpenTurma={handleOpenTurma}
-                onIniciarSupervisao={handleIniciarSupervisao}
-                onNavigateToTab={(tab, param) => setCurrentView({ type: 'tab', tab, filterParam: param })}
-              />
-            )}
-
-            {currentView.type === 'tab' && currentView.tab === 'avaliacao' && (
-              <AvaliacaoView />
-            )}
-
-            {currentView.type === 'tab' && currentView.tab === 'calendario' && (
-              <CalendarioView />
-            )}
-
-            {currentView.type === 'tab' && currentView.tab === 'turmas' && (
-              <TurmasView
-                onSelectTurma={handleOpenTurma}
-                onIniciarSupervisao={handleIniciarSupervisao}
-                onOpenAluno={matId => handleOpenAlunoFicha(matId, 'resumo', 'turma')}
-              />
-            )}
-
-            {currentView.type === 'tab' && currentView.tab === 'alunos' && (
-              <AlunosListView
-                onOpenAluno={matId => handleOpenAlunoFicha(matId, 'resumo', 'alunos')}
-              />
-            )}
-
-            {currentView.type === 'tab' && currentView.tab === 'frequencia' && (
-              <FrequenciaView
-                onOpenAluno={(matId, tab) => handleOpenAlunoFicha(matId, tab || 'frequencia', 'alunos')}
-                onOpenSupervisao={turmaId => setCurrentView({ type: 'modo-supervisao', turmaId })}
-                initialSubTab={(currentView.filterParam as any) || 'grade'}
-              />
-            )}
-
-            {currentView.type === 'tab' && currentView.tab === 'pendencias' && (
-              <PendenciasView
-                initialFilterType={currentView.filterParam}
-                onOpenAluno={(matId, tab) => handleOpenAlunoFicha(matId, tab || 'resumo', 'pendencias')}
-              />
-            )}
-
-            {currentView.type === 'tab' && currentView.tab === 'semestres' && <SemestresView />}
-
-            {currentView.type === 'tab' && currentView.tab === 'configuracoes' && (
-              <ConfiguracoesView />
-            )}
-
-            {currentView.type === 'turma-detalhe' && (
-              <TurmaDetalheView
-                turmaId={currentView.turmaId}
-                onVoltar={() => setCurrentView({ type: 'tab', tab: 'turmas' })}
-                onIniciarSupervisao={handleIniciarSupervisao}
-                onOpenAluno={matId =>
-                  handleOpenAlunoFicha(matId, 'resumo', 'turma', currentView.turmaId)
-                }
-              />
-            )}
-
-            {currentView.type === 'modo-supervisao' && (
-              <ModoSupervisaoView
-                turmaId={currentView.turmaId}
-                onEncerrar={() => setCurrentView({ type: 'turma-detalhe', turmaId: currentView.turmaId })}
-                onOpenFichaAluno={(matId, tab) =>
-                  handleOpenAlunoFicha(matId, tab || 'resumo', 'supervisao', currentView.turmaId)
-                }
-              />
-            )}
-
-            {currentView.type === 'aluno-ficha' && (
-              <AlunoFichaView
-                matriculaId={currentView.matriculaId}
-                initialTab={currentView.initialTab}
-                onVoltar={handleVoltarDeAluno}
-              />
-            )}
-          </ViewErrorBoundary>
-        </div>
-      </main>
+        </main>
+      </div>
+      <Janelas />
+      <AvisosGlobais />
     </div>
   );
 };
@@ -313,7 +118,9 @@ const MainContent: React.FC = () => {
 export default function App() {
   return (
     <SupervisaoProvider>
-      <MainContent />
+      <NavegacaoProvider>
+        <Aplicativo />
+      </NavegacaoProvider>
     </SupervisaoProvider>
   );
 }
