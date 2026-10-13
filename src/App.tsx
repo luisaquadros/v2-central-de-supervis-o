@@ -5,6 +5,7 @@ import { Sidebar } from './components/Sidebar';
 import { SyncIndicator } from './components/SyncIndicator';
 import { NotificationBell } from './components/NotificationBell';
 import { ThemeControl } from './components/ThemeControl';
+import { AppErrorMonitor } from './components/AppErrorMonitor';
 import { PrepararAulaModal } from './components/PrepararAulaModal';
 import { ErrorNotifier } from './components/ErrorNotifier';
 import { ViewErrorBoundary } from './components/ViewErrorBoundary';
@@ -169,6 +170,7 @@ const MainContent: React.FC = () => {
             {/* Persistent Global Sync Indicator, Notifications & Details */}
             <div className="flex items-center gap-2">
               <ThemeControl />
+              <AppErrorMonitor />
               <NotificationBell
                 onNavigate={(tab, param) => setCurrentView({ type: 'tab', tab, filterParam: param })}
                 onOpenSupervisao={turmaId => setCurrentView({ type: 'modo-supervisao', turmaId })}
