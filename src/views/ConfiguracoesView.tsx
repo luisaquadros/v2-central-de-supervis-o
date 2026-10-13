@@ -1,3 +1,4 @@
+import { lerCentralControleSomenteLeitura, type DiagnosticoCentralControle } from '../services/centralControleDiagnostico';
 import React, { useState } from 'react';
 import {
   Settings,
@@ -24,6 +25,9 @@ export const ConfiguracoesView: React.FC = () => {
     exportDatabaseAsJson,
     importarAlunosLote,
     turmas,
+    alunos,
+    matriculas,
+    entregas,
     connectionStatus,
     saveStatus,
     spreadsheetId,
@@ -38,6 +42,9 @@ export const ConfiguracoesView: React.FC = () => {
   const [copiedCodigo, setCopiedCodigo] = useState(false);
   const [confirmReset, setConfirmReset] = useState(false);
   const [importandoFila, setImportandoFila] = useState(false);
+  const [testandoConector,setTestandoConector] = useState(false);
+  const [conectorDiagnostico,setConectorDiagnostico] = useState<DiagnosticoCentralControle|null>(null);
+  const [conectorErro,setConectorErro] = useState<string|null>(null);
 
   // Import state
   const [selectedTurmaImport, setSelectedTurmaImport] = useState(
@@ -844,6 +851,27 @@ function importarAlunosLote(payload) {
               </a>
             </div>
           </div>
+
+          <section className="bg-white border border-slate-200 rounded-xl p-5 space-y-3">
+            <h3 className="text-sm font-bold text-slate-900">Central de Controle — diagnóstico de integração</h3>
+            <p className="text-xs text-slate-600">Consulta somente leitura da planilha original. Não copia, corrige ou sobrescreve alunos, documentos ou RSS.</p>
+            <button type="button" disabled={testandoConector} onClick={async()=>{
+              setTestandoConector(true);setConectorErro(null);
+              try { setConectorDiagnostico(await lerCentralControleSomenteLeitura(turmas,matriculas,alunos,entregas)); }
+              catch(e:any){setConectorErro(e?.message||'Falha na leitura da fonte original.');}
+              finally {setTestandoConector(false);}
+            }} className="min-h-[44px] px-4 py-2 rounded-lg bg-slate-900 text-white text-xs font-semibold disabled:opacity-50">
+              {testandoConector?'Comparando registros...':'Conferir integração sem alterar dados'}
+            </button>
+            {conectorErro&&<p role="alert" className="text-xs text-red-700">{conectorErro}</p>}
+            {conectorDiagnostico&&<div role="status" className="text-xs space-y-1 bg-slate-50 border border-slate-200 rounded-lg p-3">
+              <p><strong>Registros:</strong> {conectorDiagnostico.lidos} na fonte; {conectorDiagnostico.vinculados} vinculados.</p>
+              <p><strong>Exigem conferência:</strong> {conectorDiagnostico.naoVinculados} sem matrícula; {conectorDiagnostico.ambiguos} ambíguos; {conectorDiagnostico.turmasDesconhecidas} turmas não mapeadas.</p>
+              <p><strong>Diferenças documentais:</strong> {conectorDiagnostico.divergenciasDocumentais} status divergentes ou ausentes.</p>
+              <p><strong>IMPORTRANGE:</strong> {conectorDiagnostico.pendenteAutorizacaoRegistroSemanal?'autorização pendente na C3 da fonte':'nenhum erro #REF! detectado em C3'}.</p>
+              <p className="font-semibold text-amber-800">Importação automática bloqueada até homologar vínculos e diferenças.</p>
+            </div>}
+          </section>
 
           {/* Tabela Oficial configuracoes da Base */}
           <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs space-y-3">
