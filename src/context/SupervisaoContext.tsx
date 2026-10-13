@@ -1991,24 +1991,40 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
   // Métodos de apoio / transição
   const addCaixaEntradaItem = async (item: any) => {
-    const novo = { id: gerarIdEstavel('cx'), criado_em: new Date().toISOString(), status: 'PENDENTE' as const, ...item };
+    const novo: CaixaEntradaItem = { ...item, id: gerarIdEstavel('cx'), criado_em: new Date().toISOString(), status: item.status || 'PENDENTE' };
+    await gravarItemOperacional('CAIXA_ENTRADA', novo);
     setCaixaEntrada(prev => [novo, ...prev]);
   };
   const confirmarCaixaEntradaItem = async (id: string, updates?: any) => {
-    setCaixaEntrada(prev => prev.map(i => i.id === id ? { ...i, status: 'CONFIRMADO' as const, ...(updates || {}) } : i));
+    const anterior = caixaEntrada.find(i => i.id === id);
+    if (!anterior) throw new Error('Item da caixa não encontrado.');
+    const atualizado: CaixaEntradaItem = { ...anterior, ...(updates || {}), status: 'CONFIRMADO', resolvido_em: new Date().toISOString() };
+    await gravarItemOperacional('CAIXA_ENTRADA', atualizado);
+    setCaixaEntrada(prev => prev.map(i => i.id === id ? atualizado : i));
   };
   const descartarCaixaEntradaItem = async (id: string) => {
-    setCaixaEntrada(prev => prev.map(i => i.id === id ? { ...i, status: 'DESCARTADO' as const } : i));
+    const anterior = caixaEntrada.find(i => i.id === id);
+    if (!anterior) throw new Error('Item da caixa não encontrado.');
+    const atualizado: CaixaEntradaItem = { ...anterior, status: 'DESCARTADO', resolvido_em: new Date().toISOString() };
+    await gravarItemOperacional('CAIXA_ENTRADA', atualizado);
+    setCaixaEntrada(prev => prev.map(i => i.id === id ? atualizado : i));
   };
-
   const addItemFilaProfessora = async (item: any) => {
-    const novo = { id: gerarIdEstavel('fp'), criado_em: new Date().toISOString(), status: 'PENDENTE' as const, ...item };
+    const novo: ItemFilaProfessora = { ...item, id: gerarIdEstavel('fp'), criado_em: new Date().toISOString(), status: item.status || 'PENDENTE' };
+    await gravarItemOperacional('FILA_PROFESSORA', novo);
     setFilaProfessora(prev => [novo, ...prev]);
   };
   const toggleStatusFilaProfessora = async (id: string) => {
-    setFilaProfessora(prev => prev.map(i => i.id === id ? { ...i, status: i.status === 'CONCLUIDO' ? 'PENDENTE' as const : 'CONCLUIDO' as const } : i));
+    const anterior = filaProfessora.find(i => i.id === id);
+    if (!anterior) throw new Error('Tarefa não encontrada.');
+    const atualizado: ItemFilaProfessora = { ...anterior, status: anterior.status === 'CONCLUIDO' ? 'PENDENTE' : 'CONCLUIDO' };
+    await gravarItemOperacional('FILA_PROFESSORA', atualizado);
+    setFilaProfessora(prev => prev.map(i => i.id === id ? atualizado : i));
   };
   const deleteItemFilaProfessora = async (id: string) => {
+    const anterior = filaProfessora.find(i => i.id === id);
+    if (!anterior) throw new Error('Tarefa não encontrada.');
+    await gravarItemOperacional('FILA_PROFESSORA', anterior, true);
     setFilaProfessora(prev => prev.filter(i => i.id !== id));
   };
 
