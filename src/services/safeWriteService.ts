@@ -31,6 +31,7 @@ export const TABELAS_AUTORIZADAS_ESCRITA = [
   'entregas',
   'feedbacks',
   'registros_supervisao',
+  'encontros_turma',
   'grupos_pratica',
   'grupo_integrantes',
 ] as const;
