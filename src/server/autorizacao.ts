@@ -4,10 +4,12 @@
  * O e-mail enviado "por fora" pelo aplicativo nunca é usado. Sem lista de administradores configurada,
  * nenhuma gravação é aceita (falha fechada), conforme D4: acesso restrito à professora administradora.
  */
+import { lerConfiguracaoAcessos, acessosConfigurados, resolverPerfil, type AmbienteAcessos, type Perfil, type ConfiguracaoAcessos } from './acessos';
+
 export const PROJETO_FIREBASE_PADRAO = 'gen-lang-client-0003708748';
 export const URL_JWKS_PADRAO = 'https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com';
 
-export interface AmbienteAutorizacao {
+export interface AmbienteAutorizacao extends AmbienteAcessos {
   ADMIN_EMAILS?: string;
   FIREBASE_PROJECT_ID?: string;
   /** Somente para testes locais: precisa ser loopback (http://127.0.0.1 ou http://localhost). */
@@ -82,4 +84,24 @@ export async function autorizarAdministrador(
   catch { return { ok: false, status: 401, code: 'TOKEN_INVALIDO', message: 'Identidade inválida ou expirada. Entre novamente com a conta Google.' }; }
   if (!admins.includes(id.email)) return { ok: false, status: 403, code: 'NAO_AUTORIZADO', message: 'Esta conta não tem permissão de gravação.' };
   return { ok: true, email: id.email };
+}
+
+export type ResultadoPerfil =
+  | { ok: true; perfil: Perfil; config: ConfiguracaoAcessos }
+  | Extract<ResultadoAutorizacao, { ok: false }>;
+
+/** Identidade verificada + perfil. Sem contas configuradas: 503. Conta sem papel: 403. */
+export async function autenticarPerfil(
+  idToken: string | null, env: AmbienteAutorizacao, agoraMs = Date.now(), buscar: typeof fetch = fetch,
+): Promise<ResultadoPerfil> {
+  const config = lerConfiguracaoAcessos(env);
+  if (!acessosConfigurados(config)) return { ok: false, status: 503, code: 'ACESSO_NAO_CONFIGURADO',
+    message: 'Acesso não configurado: defina ADMIN_EMAILS (e, se houver monitoras, ACESSOS_JSON) no Worker. Enquanto isso nada é aceito.' };
+  if (!idToken) return { ok: false, status: 401, code: 'TOKEN_AUSENTE', message: 'Identidade não informada. Entre novamente com a conta Google.' };
+  let id: { email: string };
+  try { id = await verificarIdTokenFirebase(idToken, env, agoraMs, buscar); }
+  catch { return { ok: false, status: 401, code: 'TOKEN_INVALIDO', message: 'Identidade inválida ou expirada. Entre novamente com a conta Google.' }; }
+  const perfil = resolverPerfil(id.email, config);
+  if (!perfil) return { ok: false, status: 403, code: 'NAO_AUTORIZADO', message: 'Esta conta não tem permissão neste sistema.' };
+  return { ok: true, perfil, config };
 }

@@ -70,7 +70,8 @@ try {
   assert.equal(repassados[0].usuario, 'professora@exemplo.com', 'identidade vem do token, não do corpo');
   assert.equal((await worker.fetch(new Request('https://app.exemplo/api/critical-write', { method: 'POST', headers: { 'X-Firebase-Id-Token': bom }, body: '{}' }), { ...envW, ADMIN_EMAILS: '' })).status, 503);
   const ac = await worker.fetch(new Request('https://app.exemplo/api/acesso', { headers: { 'X-Firebase-Id-Token': bom } }), envW);
-  assert.deepEqual(await ac.json(), { ok: true, email: 'professora@exemplo.com', papel: 'ADMINISTRADORA' });
+  const acj = await ac.json() as any;
+  assert.equal(acj.ok, true); assert.equal(acj.email, 'professora@exemplo.com'); assert.equal(acj.papel, 'PROFESSORA_ADMIN'); assert.deepEqual(acj.turmas, ['*']);
   assert.equal((await worker.fetch(new Request('https://app.exemplo/api/acesso'), envW)).status, 401);
   assert.equal((await worker.fetch(new Request('https://app.exemplo/index.html'), envW)).status, 200, 'arquivos estáticos não exigem login');
   assert.equal((await worker.fetch(new Request('https://app.exemplo/api/critical-write', { method: 'POST', headers: { 'X-Firebase-Id-Token': bom, Origin: 'https://evil.example' }, body: '{}' }), envW)).status, 403, 'origem estranha');

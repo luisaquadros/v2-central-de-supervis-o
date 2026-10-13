@@ -60,7 +60,7 @@ try {
   const store = new Map<string, unknown>();
   const srv = new WriteCoordinator({ storage: { get: async (k: string) => store.get(k), put: async (k: string, v: unknown) => { store.set(k, v); } } } as any, {} as any);
   const enviar = (id: string, status: string, obs: string, esperado: any) => srv.fetch(new Request('https://i/w', {
-    method: 'POST', headers: { Authorization: 'Bearer t', 'Content-Type': 'application/json', 'X-Usuario-Verificado': 'prof@exemplo.com' },
+    method: 'POST', headers: { Authorization: 'Bearer t', 'Content-Type': 'application/json', 'X-Usuario-Verificado': 'prof@exemplo.com', 'X-Perfil': JSON.stringify({papel:'PROFESSORA_ADMIN',email:'prof@exemplo.com',turmas:['*'],operacoes:['CHAMADA','ENTREGAS','DOCUMENTOS_VER']}) },
     body: JSON.stringify({ tabela: 'ocorrencias', tipo: 'UPDATE', operacaoId: id, usuario: 'falsificado@x.com', esperado,
       registro: { ocorrencia_id: 'o1', matricula_id: 'm1', status, observacao: obs } }),
   }));

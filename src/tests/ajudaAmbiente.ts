@@ -36,7 +36,7 @@ export async function criarAmbiente(op: OpcoesAmbiente) {
     const auth = new Headers(init?.headers as any).get('Authorization');
     if (ehJwks(url)) return ok(emissor.jwks);
     if (url.includes('/api/')) {
-      const r = await worker.fetch(new Request('https://app.exemplo' + new URL(url, 'https://app.exemplo').pathname, { method: m, headers: init?.headers as any, body: init?.body as any }), envWorker);
+      const r = await worker.fetch(new Request('https://app.exemplo' + (u => u.pathname + u.search)(new URL(url, 'https://app.exemplo')), { method: m, headers: init?.headers as any, body: m === 'GET' ? undefined : init?.body as any }), envWorker);
       if (process.env.DEBUG_AMBIENTE && !r.ok) console.log('[worker]', r.status, await r.clone().text(), String(init?.body).slice(0, 600));
       return { ok: r.ok, status: r.status, json: async () => r.json(), text: async () => r.text() } as Response;
     }
@@ -56,6 +56,10 @@ export async function criarAmbiente(op: OpcoesAmbiente) {
     const dec = decodeURIComponent(url);
     const aba = dec.match(/values\/'([^'!]+)'/)?.[1];
     if (aba && falhas[aba]) return ok({ error: {} }, falhas[aba]);
+    if (url.includes('/values:batchGet')) {
+      const nomes = [...dec.matchAll(/ranges='([^'!]+)'/g)].map(x => x[1]);
+      return ok({ valueRanges: nomes.map(n => ({ range: n, values: abas[n] ?? [] })) });
+    }
     if (url.includes('fields=sheets')) return ok({ sheets: Object.keys(abas).map(t => ({ properties: { title: t, sheetId: Object.keys(abas).indexOf(t) + 1 } })) });
     if (url.endsWith(':batchUpdate') && !url.includes('/values:') && m === 'POST') {
       const rq = JSON.parse(String(init!.body)).requests?.[0];

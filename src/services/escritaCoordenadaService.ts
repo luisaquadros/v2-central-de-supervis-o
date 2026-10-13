@@ -27,7 +27,7 @@ export async function gravarCriticoCoordenado(item: SyncQueueItem): Promise<void
   });
   const data=await res.json().catch(()=>({ok:false,message:'Resposta inválida do coordenador de escrita.'}));
   if(res.status===409){
-    throw new Error('CONFLITO_VERSAO: '+(data.message||'A versão remota é diferente da edição local.'));
+    throw new Error('CONFLITO_VERSAO: '+(data.message||'A versão remota é diferente da edição local.')+(Array.isArray(data.campos)&&data.campos.length?' Campos em conflito: '+data.campos.join(', ')+'.':''));
   }
   if(!res.ok||!data.ok)
     throw new Error(data.message||'Falha na gravação coordenada. A alteração permanece no dispositivo.');
