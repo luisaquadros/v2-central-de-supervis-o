@@ -31,6 +31,7 @@ const MainContent: React.FC = () => {
   const {
     periodos,
     currentUser,
+    acessoGoogleValidado,
     hasLocalCache,
     connectionStatus,
     syncStatusState,
@@ -118,7 +119,7 @@ const MainContent: React.FC = () => {
 
   // 2. Proteção de dados acadêmicos: cache de dispositivo nunca libera telas sem login.
   // Firebase preserva o login legítimo ao atualizar a página; Sheets mantém permissão por conta.
-  if ((!currentUser && !isRunningInAppsScript()) || (!hasLocalCache && periodos.length === 0)) {
+  if (((!currentUser || !acessoGoogleValidado) && !isRunningInAppsScript()) || (!hasLocalCache && periodos.length === 0)) {
     return <PrimeiraConexaoView />;
   }
 
