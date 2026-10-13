@@ -369,8 +369,15 @@ export function salvarRegistroResiliente(
     if (!validacao.valido) throw new Error(validacao.motivo);
     const item = await salvarAlteracaoAtomica(tabela, tipo, registro);
     await processarFilaInterna();
-    const pending = (await carregarFilaSincronizacao()).some(i => i.id === item.id);
-    return { gravadoOnline: !pending, enfileiradoOffline: pending, queueItem: pending ? item : undefined };
+    const filaAposGravar = await carregarFilaSincronizacao();
+    const itemRestante = filaAposGravar.find(i => i.id === item.id);
+    if (itemRestante?.status === 'CONFLITO') {
+      // Registro e versão original continuam na fila, mas o usuário deve
+      // ver o conflito; nunca confirmar como mero salvamento offline.
+      throw new Error(itemRestante.erro || 'CONFLITO_VERSAO: revisão necessária antes da sincronização.');
+    }
+    const pending = !!itemRestante;
+    return { gravadoOnline: !pending, enfileiradoOffline: pending, queueItem: itemRestante };
   });
 }
 
