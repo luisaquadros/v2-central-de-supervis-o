@@ -2,12 +2,20 @@ import React from 'react';
 import type { RegistroSemanal } from '../types';
 import { obterSemanaRssValidada } from '../services/supervisaoOperacionalService';
 
-const CAMPOS_TEXTO: [string,string][] = [
-  ['observacao','Observações'], ['descricao','Descrição'], ['atividades_realizadas','Atividades realizadas'],
-  ['atividades','Atividades'], ['relato','Relato'], ['conteudo','Conteúdo'], ['texto','Texto'],
-  ['desenvolvimento','Desenvolvimento'], ['intervencoes','Intervenções'], ['resultados','Resultados'],
-  ['reflexoes','Reflexões'], ['dificuldades','Dificuldades'], ['limitacoes','Limitações'],
-  ['encaminhamentos','Encaminhamentos'], ['feedback','Feedback'],
+/** Colunas canônicas conferidas na aba registros_semanais da base oficial. */
+export const CAMPOS_TEXTO_RSS: [string,string][] = [
+  ['local_pratica','Local da prática'],
+  ['objetivos','Objetivos planejados e resultados'],
+  ['tecnicas_atividades','Técnicas e atividades realizadas'],
+  ['manejo_resposta','Intervenção, manejo e resposta observada'],
+  ['compreensao_atual','Compreensão atual e hipóteses'],
+  ['proximo_passo','Próximo passo'],
+  ['prioridade_supervisao','Prioridade para supervisão'],
+  ['duvidas_supervisao','Dúvidas para supervisão'],
+  ['limitacoes','Limitações observadas'],
+  ['observacao','Observações adicionais'],
+  ['motivo_sem_encontro','Motivo de não realização'],
+  ['encontros_referenciados','Encontros referenciados'],
 ];
 const CAMPOS_LINK = ['link','url','link_documento','url_documento','link_rss','arquivo_url','documento_url'];
 
@@ -23,13 +31,18 @@ export const LeituraRss: React.FC<{ registros: RegistroSemanal[] }> = ({ registr
     <p className="text-xs text-slate-500">{ordenados.length} registro(s) encontrado(s). Exibimos os campos disponíveis na planilha, sem reconstruir conteúdo não armazenado.</p>
     {ordenados.map((r,i) => {
       const obj = r as unknown as Record<string,unknown>;
-      const semana = obterSemanaRssValidada(r) ?? obj.semana_rss ?? r.semana ?? 'não informada';
-      const textos = CAMPOS_TEXTO.map(([key,label])=>({key,label,value:String(obj[key] ?? '').trim()})).filter(x=>x.value);
+      const rawSemana = String(obj.semana_rss ?? r.semana ?? '').trim();
+      const semana = rawSemana && Number(rawSemana) >= 1 && Number(rawSemana) <= 12 ? rawSemana : 'não definida';
+      const encontro = String(obj.encontro_numero ?? '').trim();
+      const revisao = String(obj.status_revisao ?? '').trim().toUpperCase();
+      const statusTexto = revisao === 'PENDENTE_REVISAO' ? 'Em revisão'
+        : obterSemanaRssValidada(r) !== null ? 'Validado' : revisao ? revisao.replaceAll('_',' ') : String(r.status || 'Não validado');
+      const textos = CAMPOS_TEXTO_RSS.map(([key,label])=>({key,label,value:String(obj[key] ?? '').trim()})).filter(x=>x.value);
       const links = CAMPOS_LINK.map(key=>String(obj[key]??'').trim()).filter(v=>/^https:\/\//i.test(v));
       const conteudoDisponivel = textos.length>0 || links.length>0;
       return <details key={String(r.registro_id||i)+'-'+i} className="rounded-xl border border-slate-200 bg-white" open={ordenados.length === 1}>
         <summary className="cursor-pointer select-none p-3 sm:p-4 font-semibold text-sm text-slate-900 min-h-[44px]">
-          Semana {String(semana)} · {String(obj.status_revisao || r.status || 'Situação não informada')}
+          Semana RSS {semana} · {statusTexto}{encontro ? <span className="font-normal ml-1">· Encontro {encontro}</span> : null}
           {r.data_entrega ? <span className="text-xs text-slate-500 font-normal ml-2">Entrega: {r.data_entrega}</span> : null}
         </summary>
         <div className="px-3 pb-4 sm:px-4 space-y-3 border-t border-slate-100 pt-3">

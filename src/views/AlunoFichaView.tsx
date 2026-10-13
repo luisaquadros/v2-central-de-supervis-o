@@ -1,3 +1,4 @@
+import { selecionarRssDoEstudante } from '../services/rssVinculos';
 import { LeituraRss } from '../components/LeituraRss';
 import React, { useState } from 'react';
 import {
@@ -97,20 +98,16 @@ export const AlunoFichaView: React.FC<AlunoFichaViewProps> = ({
     );
   }
 
-  // Related data for this student: RSS da Clínica Ampliada é por grupo.
-  const grupoVinculo = grupoIntegrantes.find(gi => gi.matricula_id === matriculaId &&
-    gruposPratica.some(g => g.grupo_id === gi.grupo_id && g.turma_id === turma.turma_id)
-  );
-  const grupoId = grupoVinculo?.grupo_id;
+  // RSS deve usar a mesma regra de vínculo que os indicadores do app.
+  const rssVinculo = selecionarRssDoEstudante({
+    matriculaId, turmaId: turma.turma_id, registros: registrosSemanais,
+    matriculas, alunos, grupos: gruposPratica, integrantes: grupoIntegrantes,
+  });
+  const grupoId = rssVinculo.grupoId;
   const grupo = grupoId ? gruposPratica.find(g => g.grupo_id === grupoId) : undefined;
-  const isGrupoRss = gruposPratica.some(g => g.turma_id === turma.turma_id);
+  const isGrupoRss = rssVinculo.modo === 'GRUPO' || rssVinculo.modo === 'GRUPO_AMBIGUO';
   const studentOrientacoes = orientacoes.filter(o => o.matricula_id === matriculaId);
-  const studentRegistros = registrosSemanais.filter(r =>
-    grupoId
-      ? (r as any).grupo_id === grupoId && (!(r as any).turma_id || (r as any).turma_id === turma.turma_id)
-      : !isGrupoRss && !((r as any).grupo_id) &&
-        (r.matricula_id === matriculaId || (aluno && (r.aluno_id === aluno.aluno_id || r.matricula_id === aluno.identificador_academico)))
-  );
+  const studentRegistros = rssVinculo.registros;
   const studentDocumentos = documentos.filter(
     d => d.matricula_id === matriculaId || (aluno && (d.aluno_id === aluno.aluno_id || d.matricula_id === aluno.identificador_academico))
   );
@@ -650,7 +647,7 @@ export const AlunoFichaView: React.FC<AlunoFichaViewProps> = ({
                   Entrega coletiva — {grupo?.nome_grupo || 'Grupo de prática'}. Envio de qualquer integrante vale para todos.
                 </p>
               )}
-              {isGrupoRss && !grupoId && (
+              {rssVinculo.modo === 'GRUPO_AMBIGUO' && (
                 <p className="text-xs font-semibold text-amber-700">
                   Vínculo com grupo pendente de conferência. Não é possível atribuir falta individual de RSS.
                 </p>

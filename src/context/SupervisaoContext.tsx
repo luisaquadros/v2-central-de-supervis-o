@@ -1,3 +1,4 @@
+import { selecionarRssDoEstudante } from '../services/rssVinculos';
 import { listarAlunosChamada } from '../services/aulaParticipants';
 import { useDurableLocalState } from '../hooks/useDurableLocalState';
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
@@ -2067,10 +2068,14 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     const turma = turmas.find(t => t.turma_id === matricula.turma_id);
     if (!turma) return null;
 
-    const grupoIntegrante = grupoIntegrantes.find(gi => gi.matricula_id === matriculaId &&
-      gruposPratica.some(g => g.grupo_id === gi.grupo_id && g.turma_id === turma.turma_id));
-    const grupoId = grupoIntegrante?.grupo_id;
-    const statusRss = getStatusRssUnidade(turma.turma_id, matriculaId, grupoId);
+    const vinculo = selecionarRssDoEstudante({
+      matriculaId, turmaId: turma.turma_id, registros: registrosSemanais,
+      matriculas, alunos, grupos: gruposPratica, integrantes: grupoIntegrantes,
+    });
+    const grupoId = vinculo.grupoId;
+    // Não usar status agregado da turma para estudante sem grupo inequívoco.
+    const statusRss = vinculo.modo === 'GRUPO_AMBIGUO' ? undefined
+      : getStatusRssUnidade(turma.turma_id, matriculaId, grupoId);
     const regraTurma = regrasRss.find(
       r => r.turma_id === turma.turma_id || r.disciplina_id === turma.disciplina_id
     );
@@ -2080,14 +2085,14 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     return obterSituacaoRssEstudante(
       matriculaId,
       turma.turma_id,
-      registrosSemanais,
+      vinculo.registros,
       statusRss,
       regraTurma,
       situacaoTurma,
       calTurma,
       grupoId
     );
-  }, [matriculas, turmas, getStatusRssUnidade, regrasRss, situacaoAtualTurmas, calendarioRss, registrosSemanais, grupoIntegrantes, gruposPratica]);
+  }, [matriculas, alunos, turmas, getStatusRssUnidade, regrasRss, situacaoAtualTurmas, calendarioRss, registrosSemanais, grupoIntegrantes, gruposPratica]);
 
   const getResumoAlunoSupervisao = (matriculaId: string): AlunoResumoSupervisao | null => {
     const matricula = matriculas.find(m => m.matricula_id === matriculaId);
