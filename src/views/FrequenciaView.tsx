@@ -1,5 +1,5 @@
 import { matriculaParticipaDaChamada } from '../services/aulaParticipants';
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   CalendarCheck,
   AlertTriangle,
@@ -63,6 +63,14 @@ export const FrequenciaView: React.FC<FrequenciaViewProps> = ({
     return turmas.length > 0 ? turmas[0].turma_id : '';
   });
 
+  // A planilha pode chegar depois do primeiro render; não deixar a tela
+  // presa a uma turma vazia/arquivada nem reaproveitar seleção de outra turma.
+  useEffect(() => {
+    if (!turmas.some(t => t.turma_id === selectedTurmaId)) {
+      setSelectedTurmaId(turmas[0]?.turma_id ?? '');
+    }
+  }, [turmas, selectedTurmaId]);
+
   const [selectedMes, setSelectedMes] = useState<string>('TODOS');
   const [selectedOrigemId, setSelectedOrigemId] = useState<string>('TODAS');
   const [searchAlunoQuery, setSearchAlunoQuery] = useState('');
@@ -78,6 +86,11 @@ export const FrequenciaView: React.FC<FrequenciaViewProps> = ({
     justificativaAtual: string;
     origemId?: string;
   } | null>(null);
+
+  useEffect(() => {
+    setSelectedOrigemId('TODAS');
+    setAlunoSelecionadoMatriculaId('');
+  }, [selectedTurmaId]);
 
   const activeTurma = turmas.find(t => t.turma_id === selectedTurmaId);
   const origensDaTurma = turmasOrigem.filter(o => o.turma_id === selectedTurmaId && o.ativo);
