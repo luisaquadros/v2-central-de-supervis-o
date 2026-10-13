@@ -37,6 +37,8 @@ const MainContent: React.FC = () => {
     periodos,
     turmas,
     selectedPeriodoId,
+    getSupervisaoAtual,
+    getProximaSupervisao,
     currentUser,
     acessoGoogleValidado,
     hasLocalCache,
@@ -58,7 +60,8 @@ const MainContent: React.FC = () => {
     if (action === 'menu') { setIsMobileMenuOpen(true); return; }
     setIsMobileMenuOpen(false);
     if (action === 'aula') {
-      const turma = turmas.find(t => t.periodo_id === selectedPeriodoId && t.status === 'ATIVO') ||
+      const turma = getSupervisaoAtual().turma || getProximaSupervisao()?.turma ||
+        turmas.find(t => t.periodo_id === selectedPeriodoId && t.status === 'ATIVO') ||
         turmas.find(t => t.status === 'ATIVO');
       setCurrentView(turma ? {type:'modo-supervisao',turmaId:turma.turma_id} : {type:'tab',tab:'turmas'});
       return;
