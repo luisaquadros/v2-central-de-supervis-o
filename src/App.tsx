@@ -4,6 +4,7 @@ import { SupervisaoProvider, useSupervisao } from './context/SupervisaoContext';
 import { Sidebar } from './components/Sidebar';
 import { SyncIndicator } from './components/SyncIndicator';
 import { NotificationBell } from './components/NotificationBell';
+import { ThemeControl } from './components/ThemeControl';
 import { ViewErrorBoundary } from './components/ViewErrorBoundary';
 import { PrimeiraConexaoView } from './views/PrimeiraConexaoView';
 import { isRunningInAppsScript } from './services/gasService';
@@ -162,6 +163,7 @@ const MainContent: React.FC = () => {
 
             {/* Persistent Global Sync Indicator, Notifications & Details */}
             <div className="flex items-center gap-2">
+              <ThemeControl />
               <NotificationBell
                 onNavigate={(tab, param) => setCurrentView({ type: 'tab', tab, filterParam: param })}
                 onOpenSupervisao={turmaId => setCurrentView({ type: 'modo-supervisao', turmaId })}
