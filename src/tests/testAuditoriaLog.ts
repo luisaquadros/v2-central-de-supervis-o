@@ -56,8 +56,8 @@ try {
   const store = new Map<string, unknown>();
   const srv = new WriteCoordinator({ storage: { get: async (k: string) => store.get(k), put: async (k: string, v: unknown) => { store.set(k, v); } } } as any, {} as any);
   const enviar = (id: string, status: string, obs: string, esperado: any) => srv.fetch(new Request('https://i/w', {
-    method: 'POST', headers: { Authorization: 'Bearer t', 'Content-Type': 'application/json' },
-    body: JSON.stringify({ tabela: 'ocorrencias', tipo: 'UPDATE', operacaoId: id, usuario: 'prof@exemplo.com', esperado,
+    method: 'POST', headers: { Authorization: 'Bearer t', 'Content-Type': 'application/json', 'X-Usuario-Verificado': 'prof@exemplo.com' },
+    body: JSON.stringify({ tabela: 'ocorrencias', tipo: 'UPDATE', operacaoId: id, usuario: 'falsificado@x.com', esperado,
       registro: { ocorrencia_id: 'o1', matricula_id: 'm1', status, observacao: obs } }),
   }));
   const base = { ocorrencia_id: 'o1', matricula_id: 'm1', status: 'ABERTA', observacao: 'segredo' };
@@ -67,7 +67,7 @@ try {
   assert.deepEqual(abas.log_alteracoes[0], [...COLUNAS_LOG_ALTERACOES], 'aba do log criada com cabeçalho');
   assert.equal(abas.log_alteracoes.length, 2);
   const linha = abas.log_alteracoes[1];
-  assert.equal(linha[0], 'op-log-0001'); assert.equal(linha[2], 'prof@exemplo.com'); assert.equal(linha[3], 'ocorrencias');
+  assert.equal(linha[0], 'op-log-0001'); assert.equal(linha[2], 'prof@exemplo.com', 'usuário vem da identidade verificada, não do corpo'); assert.equal(linha[3], 'ocorrencias');
   assert.equal(linha[4], 'o1'); assert.equal(linha[5], 'UPDATE'); assert.equal(linha[6], 'status, observacao');
   assert(!linha.join('|').includes('segredo'), 'texto livre fora do log');
 

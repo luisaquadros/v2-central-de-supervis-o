@@ -9,7 +9,11 @@ Object.assign(globalThis, { window: { indexedDB } });
 const { salvarRegistroResiliente, processarFilaSincronizacao } = await import('../services/syncService');
 const { carregarFilaSincronizacao } = await import('../services/indexedDbService');
 const { setMockToken } = await import('../services/googleSheetsService');
-const { WriteCoordinator } = await import('../server/worker');
+const { WriteCoordinator, default: worker } = await import('../server/worker');
+const { definirProvedorIdToken } = await import('../services/escritaCoordenadaService');
+const { criarEmissor, ehJwks } = await import('./ajudaAutorizacao');
+const emissor = await criarEmissor();
+definirProvedorIdToken(() => emissor.token('professora@exemplo.com'));
 
 const abas: Record<string, any[][]> = {
   orientacoes: [['orientacao_id', 'matricula_id', 'descricao', 'status', 'data_orientacao'],
@@ -18,13 +22,16 @@ const abas: Record<string, any[][]> = {
 const ok = (d: unknown) => ({ ok: true, status: 200, json: async () => d }) as Response;
 const store = new Map<string, unknown>();
 const coord = new WriteCoordinator({ storage: { get: async (k: string) => store.get(k), put: async (k: string, v: unknown) => { store.set(k, v); } } } as any, {} as any);
+const envWorker: any = { ADMIN_EMAILS: 'professora@exemplo.com', ASSETS: { fetch: async () => new Response('') },
+  WRITE_COORDINATOR: { idFromName: () => 'x', get: () => ({ fetch: (rq: Request) => coord.fetch(rq) }) } };
 let chamadasAoWorker = 0, escritasDiretas = 0;
 
 globalThis.fetch = (async (input: any, init?: RequestInit) => {
   const url = String(input); const m = init?.method || 'GET';
+  if (ehJwks(url)) return ok(emissor.jwks);
   if (url.includes('/api/critical-write')) {
     chamadasAoWorker++;
-    const r = await coord.fetch(new Request('https://i/w', { method: 'POST', headers: init!.headers as any, body: init!.body as string }));
+    const r = await worker.fetch(new Request('https://app.exemplo/api/critical-write', { method: 'POST', headers: init!.headers as any, body: init!.body as string }), envWorker);
     return { ok: r.ok, status: r.status, json: async () => r.json() } as Response;
   }
   const aba = decodeURIComponent(url).match(/values\/'([^'!]+)'/)?.[1];
@@ -61,6 +68,7 @@ assert.equal(abas.log_alteracoes?.length, 2, 'log criado com 1 alteração');
 assert.equal(abas.log_alteracoes[1][4], 'o1');
 assert.equal(abas.log_alteracoes[1][6], 'status');
 assert(!abas.log_alteracoes[1].join('|').includes('combinar sigilo'));
+assert.equal(abas.log_alteracoes[1][2], 'professora@exemplo.com', 'log com a identidade verificada no servidor');
 
 // Aparelho B ainda tem a versão antiga (ABERTA) e tenta mudar o mesmo campo: conflito, sem sobrescrever.
 await salvarTabelasNoIndexedDb({ orientacoes: [baseA] });
@@ -69,4 +77,13 @@ await assert.rejects(() => salvarRegistroResiliente('orientacoes', 'UPDATE', { o
 assert.equal(abas.orientacoes[1][3], 'CONCLUIDA', 'valor do outro aparelho preservado');
 assert.equal(abas.log_alteracoes.length, 2, 'conflito não gera log de alteração');
 assert.equal((await carregarFilaSincronizacao())[0].status, 'CONFLITO', 'edição fica preservada para revisão');
+// E2: conta autenticada mas fora da lista não grava, e o app NÃO mostra "salvo".
+definirProvedorIdToken(() => emissor.token('aluna@exemplo.com'));
+const antes = abas.orientacoes.length;
+const negado = await salvarRegistroResiliente('orientacoes', 'INSERT', { orientacao_id: 'o2', matricula_id: 'm2', descricao: 'x', status: 'ABERTA' });
+assert.equal(negado.gravadoOnline, false, 'recusado no servidor: não pode parecer salvo');
+assert.equal(negado.enfileiradoOffline, true, 'fica como pendente de salvamento');
+assert.equal(abas.orientacoes.length, antes, 'nada gravado na planilha');
+const pend = (await carregarFilaSincronizacao()).find(i => i.payload.orientacao_id === 'o2');
+assert(pend && pend.status === 'ERRO' && /permissão/.test(pend.erro || ''), 'fica pendente, com motivo claro: ' + pend?.erro);
 console.log('E1 integração: gravação coordenada com log, sem conflito falso de data, e conflito real detectado.');

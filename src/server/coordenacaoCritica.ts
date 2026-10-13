@@ -126,7 +126,7 @@ export function resumirAlteracaoParaLog(
   return {registro_id:idCritico(tabela,registro),campos,antes,depois};
 }
 export const COLUNAS_LOG_ALTERACOES=[
-  'log_id','ocorrido_em','usuario_declarado','tabela','registro_id','acao','campos','antes','depois','origem',
+  'log_id','ocorrido_em','usuario_verificado','tabela','registro_id','acao','campos','antes','depois','origem',
 ] as const;
 export function linhaDeLog(
   operacaoId:string,agora:string,usuario:string,tabela:string,tipo:OperacaoCritica,a:AlteracaoParaLog,

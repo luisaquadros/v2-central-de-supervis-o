@@ -5,7 +5,11 @@ import * as B from '../services/backupService';
 const { salvarRegistroResiliente } = await import('../services/syncService');
 const { salvarTabelasNoIndexedDb } = await import('../services/indexedDbService');
 const { setMockToken } = await import('../services/googleSheetsService');
-const { WriteCoordinator } = await import('../server/worker');
+const { WriteCoordinator, default: worker } = await import('../server/worker');
+const { definirProvedorIdToken } = await import('../services/escritaCoordenadaService');
+const { criarEmissor, ehJwks } = await import('./ajudaAutorizacao');
+const emissor = await criarEmissor();
+definirProvedorIdToken(() => emissor.token('professora@exemplo.com'));
 
 const tabelas: B.TabelasBackup = {
   alunos: [{ aluno_id: 'a1', nome: 'Estudante 1' }, { aluno_id: 'a2', nome: 'Estudante 2' }],
@@ -51,10 +55,13 @@ const abas: Record<string, any[][]> = {
 const ok = (d: unknown) => ({ ok: true, status: 200, json: async () => d }) as Response;
 const store = new Map<string, unknown>();
 const coord = new WriteCoordinator({ storage: { get: async (k: string) => store.get(k), put: async (k: string, v: unknown) => { store.set(k, v); } } } as any, {} as any);
+const envWorker: any = { ADMIN_EMAILS: 'professora@exemplo.com', ASSETS: { fetch: async () => new Response('') },
+  WRITE_COORDINATOR: { idFromName: () => 'x', get: () => ({ fetch: (rq: Request) => coord.fetch(rq) }) } };
 globalThis.fetch = (async (input: any, init?: RequestInit) => {
   const url = String(input), m = init?.method || 'GET';
+  if (ehJwks(url)) return ok(emissor.jwks);
   if (url.includes('/api/critical-write')) {
-    const r = await coord.fetch(new Request('https://i/w', { method: 'POST', headers: init!.headers as any, body: init!.body as string }));
+    const r = await worker.fetch(new Request('https://app.exemplo/api/critical-write', { method: 'POST', headers: init!.headers as any, body: init!.body as string }), envWorker);
     return { ok: r.ok, status: r.status, json: async () => r.json() } as Response;
   }
   const aba = decodeURIComponent(url).match(/values\/'([^'!]+)'/)?.[1];

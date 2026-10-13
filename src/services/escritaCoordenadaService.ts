@@ -2,6 +2,10 @@ import { TABELAS_CRITICAS } from '../server/coordenacaoCritica';
 import type { SyncQueueItem } from './indexedDbService';
 import { getAccessToken, auth } from './googleSheetsService';
 
+/** Permite aos testes fornecer o token de identidade sem Firebase real. */
+let provedorIdToken: () => Promise<string | undefined> = async () => auth.currentUser?.getIdToken();
+export const definirProvedorIdToken = (f: () => Promise<string | undefined>) => { provedorIdToken = f; };
+
 /** Nenhuma escrita crítica pode contornar o coordenador do servidor. */
 export async function gravarCriticoCoordenado(item: SyncQueueItem): Promise<void> {
   if(!TABELAS_CRITICAS.has(item.tabela))throw new Error('Tabela não protegida pelo coordenador.');
@@ -9,13 +13,15 @@ export async function gravarCriticoCoordenado(item: SyncQueueItem): Promise<void
   if(tipoEfetivo!=='INSERT' && item.versao_base==null)
     throw new Error('CONFLITO_VERSAO: edição antiga sem versão original; registro preservado para revisão manual.');
   const token=await getAccessToken();
+  const idToken=await provedorIdToken();
+  if(!idToken)throw new Error('Sessão expirada: entre novamente com a conta Google.');
   if(!token)throw new Error('Sessão Google expirada.');
   const res=await fetch('/api/critical-write',{
     method:'POST',
-    headers:{'Authorization': 'Bearer '+token,'Content-Type':'application/json'},
+    headers:{'Authorization': 'Bearer '+token,'X-Firebase-Id-Token':idToken,'Content-Type':'application/json'},
     body:JSON.stringify({
       tabela:item.tabela,tipo:tipoEfetivo,registro:item.payload,
-      esperado:item.versao_base??null,operacaoId:item.id,usuario:auth.currentUser?.email??''
+      esperado:item.versao_base??null,operacaoId:item.id
     }),
     signal:AbortSignal.timeout(30000)
   });
@@ -25,4 +31,24 @@ export async function gravarCriticoCoordenado(item: SyncQueueItem): Promise<void
   }
   if(!res.ok||!data.ok)
     throw new Error(data.message||'Falha na gravação coordenada. A alteração permanece no dispositivo.');
+}
+
+export type EstadoAcesso =
+  | { estado: 'AUTORIZADO'; email: string }
+  | { estado: 'SEM_PERMISSAO' | 'NAO_CONFIGURADO' | 'SESSAO_INVALIDA' | 'INDISPONIVEL'; mensagem: string };
+
+/** Pergunta ao servidor se esta conta pode gravar. A decisão é do servidor; a tela só mostra o resultado. */
+export async function verificarAcessoEscrita(): Promise<EstadoAcesso> {
+  try {
+    const idToken = await provedorIdToken();
+    if (!idToken) return { estado: 'SESSAO_INVALIDA', mensagem: 'Entre novamente com a conta Google.' };
+    const res = await fetch('/api/acesso', { headers: { 'X-Firebase-Id-Token': idToken }, signal: AbortSignal.timeout(15000) });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok && data.ok) return { estado: 'AUTORIZADO', email: String(data.email) };
+    const mensagem = String(data.message || 'Não foi possível verificar o acesso.');
+    if (res.status === 403) return { estado: 'SEM_PERMISSAO', mensagem };
+    if (res.status === 503) return { estado: 'NAO_CONFIGURADO', mensagem };
+    if (res.status === 401) return { estado: 'SESSAO_INVALIDA', mensagem };
+    return { estado: 'INDISPONIVEL', mensagem };
+  } catch { return { estado: 'INDISPONIVEL', mensagem: 'Sem conexão com o servidor de gravação.' }; }
 }

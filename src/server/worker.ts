@@ -1,27 +1,15 @@
+import { LIMITE_CORPO, lerCorpoLimitado, baseSheets } from './utilitariosWorker';
+import { autorizarAdministrador, type AmbienteAutorizacao } from './autorizacao';
 import { compararVersaoDeCampos, adaptarRegistroCritico, idCritico, TABELAS_CRITICAS, resumirAlteracaoParaLog, linhaDeLog, COLUNAS_LOG_ALTERACOES, type EscritaCritica } from './coordenacaoCritica';
 
 const SPREADSHEET_ID='1DwhmASMStNtT_L2YinG-jkP9vYVv5ETdc-azYqSSIc4';
 interface DurableStorage {get<T>(key:string):Promise<T|undefined>;put(key:string,value:unknown):Promise<void>}
 interface DurableState {storage:DurableStorage}
 interface Namespace {idFromName(key:string):unknown;get(id:unknown):{fetch(request:Request):Promise<Response>}}
-interface Env {ASSETS:{fetch(request:Request):Promise<Response>};WRITE_COORDINATOR:Namespace}
+interface Env extends AmbienteAutorizacao {ASSETS:{fetch(request:Request):Promise<Response>};WRITE_COORDINATOR:Namespace;
+  /** Somente testes locais: precisa ser loopback. */SHEETS_API_BASE?:string}
 
-export const LIMITE_CORPO=131072;
-/** Lê o corpo em partes e aborta ao passar do limite. Devolve null se exceder. */
-export async function lerCorpoLimitado(request:Request,limite:number):Promise<string|null>{
-  if(!request.body)return '';
-  const leitor=request.body.getReader();
-  const decoder=new TextDecoder();
-  let total=0,texto='';
-  for(;;){
-    const {done,value}=await leitor.read();
-    if(done)break;
-    total+=value.byteLength;
-    if(total>limite){await leitor.cancel().catch(()=>{});return null}
-    texto+=decoder.decode(value,{stream:true});
-  }
-  return texto+decoder.decode();
-}
+
 const json=(data:unknown,status=200)=>new Response(JSON.stringify(data),{
   status,headers:{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'}
 });
@@ -41,10 +29,10 @@ async function googleFetch(url:string,token:string,init:RequestInit={}):Promise<
 }
 
 const ABA_LOG='log_alteracoes';
-const URL_BASE='https://sheets.googleapis.com/v4/spreadsheets/'+SPREADSHEET_ID;
 
 /** Garante a aba do log (criada só na primeira gravação) e acrescenta uma linha. Nunca altera outras abas. */
-async function anexarLog(token:string,linha:string[]):Promise<void>{
+async function anexarLog(base:string,token:string,linha:string[]):Promise<void>{
+  const URL_BASE=base+SPREADSHEET_ID;
   const meta=await googleFetch(URL_BASE+'?fields='+encodeURIComponent('sheets(properties(title))'),token);
   const existe=(meta.sheets||[]).some((x:any)=>x.properties.title===ABA_LOG);
   if(!existe){
@@ -59,7 +47,8 @@ async function anexarLog(token:string,linha:string[]):Promise<void>{
 
 export class WriteCoordinator {
   private tail:Promise<unknown>=Promise.resolve();
-  constructor(private state:DurableState,_env:Env){}
+  private base:string;
+  constructor(private state:DurableState,env:Env){this.base=baseSheets(env??{})}
   async fetch(request:Request):Promise<Response>{
     const task=()=>this.perform(request);
     const response=this.tail.then(task,task);
@@ -75,7 +64,7 @@ export class WriteCoordinator {
     if(!pendentes.length)return;
     const restantes:string[][]=[];
     for(const linha of pendentes){
-      try{if(!restantes.length)await anexarLog(token,linha);else restantes.push(linha)}
+      try{if(!restantes.length)await anexarLog(this.base,token,linha);else restantes.push(linha)}
       catch{restantes.push(linha)}
     }
     await this.state.storage.put('logs-pendentes',restantes);
@@ -85,6 +74,9 @@ export class WriteCoordinator {
       const bearer=request.headers.get('Authorization')||'';
       if(!/^Bearer \S+$/.test(bearer))return fail('Autenticação Google necessária.',401);
       const token=bearer.slice(7);
+      // O DO só é alcançável pelo handler externo, que já verificou a identidade. Defesa em profundidade:
+      const usuarioVerificado=request.headers.get('X-Usuario-Verificado')||'';
+      if(!usuarioVerificado)return fail('Identidade verificada ausente.',401,'TOKEN_AUSENTE');
       const payload=await request.json() as EscritaCritica;
       if(!payload||!TABELAS_CRITICAS.has(payload.tabela)||!['INSERT','UPDATE','DELETE'].includes(payload.tipo)||
          !payload.operacaoId||!/^[-a-zA-Z0-9_:]{8,100}$/.test(payload.operacaoId)||!payload.registro||typeof payload.registro!=='object')
@@ -95,7 +87,7 @@ export class WriteCoordinator {
       if(await this.state.storage.get(receipt)) return json({ok:true,replayed:true});
       const table=payload.tabela;
       const read=await googleFetch(
-        'https://sheets.googleapis.com/v4/spreadsheets/'+SPREADSHEET_ID+
+        this.base+SPREADSHEET_ID+
           '/values/'+encodeURIComponent(quoted(table)+'!A1:ZZ'),token
       );
       const rows=(read.values||[]) as unknown[][];
@@ -114,11 +106,11 @@ export class WriteCoordinator {
       const columns=headers.map((h,index)=>({h,index})).filter(x=>Object.prototype.hasOwnProperty.call(registro,x.h));
       if(payload.tipo==='DELETE'){
         const meta=await googleFetch(
-          'https://sheets.googleapis.com/v4/spreadsheets/'+SPREADSHEET_ID+
+          this.base+SPREADSHEET_ID+
           '?fields='+encodeURIComponent('sheets(properties(title,sheetId))'),token);
         const sheet=(meta.sheets||[]).find((x:any)=>x.properties.title===table);
         if(!sheet)return fail('Aba não encontrada.',409,'SCHEMA_MISMATCH');
-        await googleFetch('https://sheets.googleapis.com/v4/spreadsheets/'+SPREADSHEET_ID+':batchUpdate',token,{
+        await googleFetch(this.base+SPREADSHEET_ID+':batchUpdate',token,{
           method:'POST',
           body:JSON.stringify({requests:[{deleteDimension:{range:{
             sheetId:sheet.properties.sheetId,dimension:'ROWS',
@@ -130,7 +122,7 @@ export class WriteCoordinator {
         const values=headers.map(h=>{
           const v=registro[h];return v==null?'':typeof v==='boolean'?(v?'TRUE':'FALSE'):v
         });
-        await googleFetch('https://sheets.googleapis.com/v4/spreadsheets/'+SPREADSHEET_ID+
+        await googleFetch(this.base+SPREADSHEET_ID+
           '/values/'+encodeURIComponent(quoted(table)+'!A1:ZZ')+':append?valueInputOption=RAW',token,{
           method:'POST',body:JSON.stringify({values:[values]})
         });
@@ -141,17 +133,16 @@ export class WriteCoordinator {
           return {range:quoted(table)+'!'+colName(index)+matches[0].index,
             values:[[v==null?'':typeof v==='boolean'?(v?'TRUE':'FALSE'):v]]}
         });
-        await googleFetch('https://sheets.googleapis.com/v4/spreadsheets/'+SPREADSHEET_ID+
+        await googleFetch(this.base+SPREADSHEET_ID+
           '/values:batchUpdate',token,{method:'POST',body:JSON.stringify({valueInputOption:'RAW',data})});
       }
       // O recibo contém somente o identificador da operação, sem dados dos estudantes.
       await this.state.storage.put(receipt,{ok:true,at:Date.now()});
       // A gravação já está confirmada. Se o log falhar, a linha fica guardada e é reenviada na próxima operação.
-      const usuario=typeof (payload as any).usuario==='string'?(payload as any).usuario:'';
-      const linhaLog=linhaDeLog(payload.operacaoId,new Date().toISOString(),usuario,table,payload.tipo,
+      const linhaLog=linhaDeLog(payload.operacaoId,new Date().toISOString(),usuarioVerificado,table,payload.tipo,
         resumirAlteracaoParaLog(table,payload.tipo,payload.registro,remote,headers));
       let auditoria=true;
-      try{await anexarLog(token,linhaLog)}
+      try{await anexarLog(this.base,token,linhaLog)}
       catch{auditoria=false;await this.guardarLogPendente(linhaLog)}
       return json({ok:true,replayed:false,auditoria});
     }catch(error:any){
@@ -164,10 +155,18 @@ export class WriteCoordinator {
 export default {
   async fetch(request:Request,env:Env):Promise<Response>{
     const url=new URL(request.url);
-    if(url.pathname!=='/api/critical-write') return env.ASSETS.fetch(request);
-    if(request.method!=='POST')return fail('Método não permitido.',405);
+    if(url.pathname!=='/api/critical-write'&&url.pathname!=='/api/acesso') return env.ASSETS.fetch(request);
     const origin=request.headers.get('Origin');
     if(origin && origin!==url.origin)return fail('Origem não permitida.',403);
+    // Autorização no servidor: a identidade vem do token de ID do Firebase verificado aqui,
+    // nunca de um e-mail informado pelo aplicativo.
+    const auth=await autorizarAdministrador(request.headers.get('X-Firebase-Id-Token'),env);
+    if(url.pathname==='/api/acesso'){
+      if(request.method!=='GET')return fail('Método não permitido.',405);
+      return auth.ok?json({ok:true,email:auth.email,papel:'ADMINISTRADORA'}):fail(auth.message,auth.status,auth.code);
+    }
+    if(request.method!=='POST')return fail('Método não permitido.',405);
+    if(!auth.ok)return fail(auth.message,auth.status,auth.code);
     // O limite vale para o corpo real: Content-Length pode faltar (envio em partes) ou mentir.
     if(Number(request.headers.get('Content-Length')||0)>LIMITE_CORPO)return fail('Operação muito grande.',413);
     const corpo=await lerCorpoLimitado(request,LIMITE_CORPO);
@@ -175,7 +174,7 @@ export default {
     const object=env.WRITE_COORDINATOR.get(env.WRITE_COORDINATOR.idFromName(SPREADSHEET_ID));
     return object.fetch(new Request('https://internal/write',{
       method:'POST',
-      headers:{Authorization:request.headers.get('Authorization')||'', 'Content-Type':'application/json'},
+      headers:{Authorization:request.headers.get('Authorization')||'', 'Content-Type':'application/json','X-Usuario-Verificado':auth.email},
       body:corpo,
     }));
   }

@@ -1,6 +1,7 @@
 import { valorConfiguracaoVisivel } from '../services/configuracoesSeguras';
 import { lerCentralControleSomenteLeitura, type DiagnosticoCentralControle } from '../services/centralControleDiagnostico';
 import { BackupPainel } from '../components/BackupPainel';
+import { AcessoPainel } from '../components/AcessoPainel';
 import React, { useState } from 'react';
 import {
   Settings,
@@ -291,6 +292,7 @@ export const ConfiguracoesView: React.FC = () => {
             </button>
           </section>
 
+          <AcessoPainel />
           <BackupPainel />
         </div>
       )}

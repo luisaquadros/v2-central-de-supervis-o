@@ -33,7 +33,7 @@ const server=new WriteCoordinator({storage:{
 }} as any,{} as any);
 const submit=(operacaoId:string,esperado:any,nota:number,tipo='UPDATE')=>
   server.fetch(new Request('https://internal/write',{
-    method:'POST',headers:{Authorization:'Bearer mock','Content-Type':'application/json'},
+    method:'POST',headers:{Authorization:'Bearer mock','Content-Type':'application/json','X-Usuario-Verificado':'prof@exemplo.com'},
     body:JSON.stringify({tabela:'avaliacoes',tipo,operacaoId,registro:{avaliacao_id:'a1',nota},esperado})
   }));
 try{
@@ -55,7 +55,7 @@ try{
 
 // Limite de corpo do Worker: vale para o corpo real, mesmo sem Content-Length (envio em partes).
 {
-  const { lerCorpoLimitado, LIMITE_CORPO } = await import('../server/worker');
+  const { lerCorpoLimitado, LIMITE_CORPO } = await import('../server/utilitariosWorker');
   const pequeno = new Request('https://x/api/critical-write', { method: 'POST', body: '{"ok":true}' });
   assert.equal(await lerCorpoLimitado(pequeno, LIMITE_CORPO), '{"ok":true}', 'corpo pequeno passa');
   const partes = new ReadableStream({
