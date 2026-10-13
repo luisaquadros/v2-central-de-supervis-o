@@ -425,8 +425,10 @@ export const HojeView: React.FC<HojeViewProps> = ({
               '—'
             ) : docsPendentes > 0 ? (
               <span className="text-amber-600">{docsPendentes} pendentes</span>
+            ) : docsResumo.conferir > 0 ? (
+              <span className="text-amber-700">{docsResumo.conferir} a conferir</span>
             ) : (
-              <span className="text-slate-800">{docsResumo.conferir} a conferir</span>
+              <span className="text-emerald-700">{docsCompletos} entregues</span>
             )}
           </div>
           <div className="mt-2 text-xs text-slate-500">
