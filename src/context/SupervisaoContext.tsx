@@ -1849,8 +1849,13 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       let targetGrupoId = grupoId;
       if (!targetGrupoId && matriculaId) {
         const mat = matriculas.find(m => m.matricula_id === matriculaId);
-        const integrante = grupoIntegrantes.find(gi => gi.matricula_id === matriculaId || (mat && gi.aluno_id === mat.aluno_id));
-        targetGrupoId = integrante?.grupo_id;
+        const candidatos = grupoIntegrantes.filter(gi =>
+          (gi.matricula_id === matriculaId || (mat && gi.aluno_id === mat.aluno_id)) &&
+          gruposPratica.some(g => g.grupo_id === gi.grupo_id && g.turma_id === turmaId) &&
+          !['INATIVO', 'REMOVIDO', 'ENCERRADO'].includes(String(gi.status ?? '').toUpperCase())
+        );
+        const ids = [...new Set(candidatos.map(gi => gi.grupo_id))];
+        targetGrupoId = ids.length === 1 ? ids[0] : undefined;
       }
       if (targetGrupoId) {
         return statusRssUnidades.find(s =>
@@ -1859,6 +1864,9 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           (s.unidade_tipo === 'GRUPO' || !s.unidade_tipo)
         );
       }
+      // Clínica Ampliada: sem vínculo de grupo inequívoco, não retornar
+      // saldo da modalidade individual ou de outra turma.
+      return undefined;
     }
     if (matriculaId) {
       const mat = matriculas.find(m => m.matricula_id === matriculaId);
@@ -1869,7 +1877,7 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       );
     }
     return undefined;
-  }, [isTurmaClinicaAmpliada, matriculas, grupoIntegrantes, statusRssUnidades]);
+  }, [isTurmaClinicaAmpliada, matriculas, grupoIntegrantes, gruposPratica, statusRssUnidades]);
 
   const getSituacaoTurma = useCallback((turmaId: string) => {
     const materializado = situacaoAtualTurmas.find(s => s.turma_id === turmaId);
