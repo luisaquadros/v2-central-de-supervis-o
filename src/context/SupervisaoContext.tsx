@@ -52,7 +52,6 @@ import {
   identificarProximaSupervisao,
   identificarChamadasPendentes,
   derivarNotificacoesOperacionais,
-  derivarPendenciasOperacionais,
   obterSituacaoRssEstudante,
   classificarRssOperacional,
   gerarPendenciasCanonicas,
@@ -2623,36 +2622,6 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     periodos,
   ]);
 
-  const getPendenciasOperacionais = useCallback((): ItemPendenciaOperacional[] => {
-    const turmasDoPeriodo = getTurmasDoPeriodo(selectedPeriodoId);
-    return derivarPendenciasOperacionais(
-      turmasDoPeriodo,
-      matriculas,
-      alunos,
-      frequencias,
-      documentos,
-      registrosSemanais,
-      orientacoes,
-      marcosAcademicos,
-      leiturasResponsaveis,
-      encontrosTurma,
-      horariosTurma
-    );
-  }, [
-    getTurmasDoPeriodo,
-    selectedPeriodoId,
-    matriculas,
-    alunos,
-    frequencias,
-    documentos,
-    registrosSemanais,
-    orientacoes,
-    marcosAcademicos,
-    leiturasResponsaveis,
-    encontrosTurma,
-    horariosTurma,
-  ]);
-
   const getPendenciasCanonicas = useCallback((periodoId?: string): ItemPendenciaOperacional[] => {
     const pId = periodoId || selectedPeriodoId;
     return gerarPendenciasCanonicas(
@@ -2696,6 +2665,13 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     gruposPratica,
     grupoIntegrantes
   ]);
+
+  // A visão diária e a área de pendências usam UM ÚNICO cálculo de RSS.
+  // Lacunas antigas ficam nas fichas, sem se tornarem novas urgências.
+  const getPendenciasOperacionais = useCallback(
+    (): ItemPendenciaOperacional[] => getPendenciasCanonicas(),
+    [getPendenciasCanonicas]
+  );
 
   const resetDatabaseToSeed = () => {
     setPeriodos(initialPeriodos);
