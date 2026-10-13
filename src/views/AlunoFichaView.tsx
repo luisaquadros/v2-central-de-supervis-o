@@ -48,6 +48,7 @@ export const AlunoFichaView: React.FC<AlunoFichaViewProps> = ({
     gruposPratica,
     grupoIntegrantes,
     documentos,
+    entregas,
     avaliacoes,
     feedbacks,
     criterios,
@@ -108,6 +109,9 @@ export const AlunoFichaView: React.FC<AlunoFichaViewProps> = ({
   const isGrupoRss = rssVinculo.modo === 'GRUPO' || rssVinculo.modo === 'GRUPO_AMBIGUO';
   const studentOrientacoes = orientacoes.filter(o => o.matricula_id === matriculaId);
   const studentRegistros = rssVinculo.registros;
+  // Registros importados da central de controle: um status oficial por tipo,
+  // separados dos documentos pontuais de serviço-escola (ex.: TCLE).
+  const studentEntregas = entregas.filter(e => e.matricula_id === matriculaId);
   const studentDocumentos = documentos.filter(
     d => d.matricula_id === matriculaId || (aluno && (d.aluno_id === aluno.aluno_id || d.matricula_id === aluno.identificador_academico))
   );
@@ -151,7 +155,8 @@ export const AlunoFichaView: React.FC<AlunoFichaViewProps> = ({
   });
 
   // Metrics
-  const docsPendentes = studentDocumentos.filter(d => d.status === 'PENDENTE').length;
+  const docsPendentes = studentDocumentos.filter(d => d.status === 'PENDENTE').length +
+    studentEntregas.filter(e => ['PENDENTE', 'A CONFERIR'].includes(String(e.status_entrega ?? e.status ?? '').trim().toUpperCase())).length;
   const orientacoesAbertas = studentOrientacoes.filter(o => o.status === 'ABERTA').length;
   const totalAtrasos = studentOcorrencias.filter(o => o.tipo === 'ATRASO').length;
   const totalDispositivos = studentOcorrencias.filter(
@@ -260,7 +265,7 @@ export const AlunoFichaView: React.FC<AlunoFichaViewProps> = ({
     { id: 'pontos', label: 'Pontos de Acompanhamento' },
     { id: 'orientacoes', label: `Orientações (${studentOrientacoes.length})` },
     { id: 'registros', label: `Registros (${totalRegistrosEntregues} de ${totalRegistrosEsperados} esp.)` },
-    { id: 'documentos', label: `Documentos (${studentDocumentos.length})` },
+    { id: 'documentos', label: `Documentos (${studentDocumentos.length + studentEntregas.length})` },
     { id: 'avaliacao', label: `Avaliação (${studentAvaliacoesValidas.length > 0 ? notaTotalNumero.toFixed(1) : '—'})` },
     { id: 'estudos', label: `Estudo Dirigido (${estudosTitular.length + estudosComoSubstituto.length})` },
     { id: 'frequencia', label: 'Frequência' },
@@ -770,6 +775,24 @@ export const AlunoFichaView: React.FC<AlunoFichaViewProps> = ({
             </button>
           </div>
 
+          <div className="rounded-xl border border-slate-200 overflow-hidden">
+            <div className="px-4 py-3 bg-slate-50 border-b border-slate-200">
+              <h4 className="font-bold text-sm text-slate-900">Status oficiais da documentação acadêmica ({studentEntregas.length})</h4>
+              <p className="text-xs text-slate-600 mt-1">Fonte: Central de Controle → entregas. “Enviado” significa envio registrado; “A conferir” exige validação e não comprova entrega. Os status abaixo são somente leitura.</p>
+            </div>
+            {studentEntregas.length === 0 ? <p className="p-4 text-xs text-slate-500">Sem documentação acadêmica vinculada na planilha de entregas.</p> :
+              studentEntregas.map(e => {
+                const valor = String(e.status_entrega ?? e.status ?? 'Sem status').trim();
+                const ok = ['ENVIADO','ENTREGUE'].includes(valor.toUpperCase());
+                const tipo = String(e.tipo_entrega ?? e.tipo_documento ?? 'Documento').replaceAll('_', ' ');
+                return <div key={e.entrega_id ?? tipo} className="px-4 py-3 flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 last:border-0">
+                  <div><p className="font-semibold text-sm text-slate-900">{tipo}</p>
+                    {e.prazo && <p className="text-xs text-slate-500 mt-1">Prazo: {e.prazo}</p>}</div>
+                  <span className={`px-2 py-1 rounded-lg border text-xs font-semibold ${ok ? 'bg-teal-50 border-teal-200 text-teal-900' : 'bg-amber-50 border-amber-200 text-amber-900'}`}>{valor}</span>
+                </div>;
+              })}
+          </div>
+          <h4 className="font-bold text-sm text-slate-900 pt-2">Outros documentos do serviço-escola</h4>
           <div className="divide-y divide-slate-100 border border-slate-200 rounded-xl overflow-hidden">
             {studentDocumentos.length === 0 ? (
               <div className="p-4 text-center text-xs text-slate-400">
