@@ -363,7 +363,7 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
   const resumoAluno = selectedMatriculaId ? getResumoAlunoSupervisao(selectedMatriculaId) : null;
 
   return (
-    <div className="flex flex-col h-[calc(100vh-2rem)] md:h-[calc(100vh-2.5rem)] -m-4 sm:-m-6 bg-slate-100 overflow-hidden font-sans">
+    <div className="flex flex-col h-[100dvh] min-h-0 md:h-[calc(100dvh-2.5rem)] -m-4 sm:-m-6 bg-slate-100 overflow-hidden font-sans">
       {/* 1. TOP HEADER DE NAVEGAÇÃO E AÇÕES RÁPIDAS DA AULA */}
       <header className="bg-slate-900 text-white px-4 py-3 flex flex-wrap items-center justify-between gap-3 shrink-0 shadow-sm">
         <div className="flex items-center gap-3">
@@ -678,9 +678,9 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
       </div>
 
       {/* 3. MAIN SPLIT SCREEN: LISTA DE ALUNOS COM CHAMADA POR EXCEÇÃO (35%) / DETALHES DO ALUNO (65%) */}
-      <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
+      <div className="flex-1 min-h-0 flex flex-col md:flex-row overflow-hidden">
         {/* COLUNA ESQUERDA: CHAMADA POR EXCEÇÃO + LISTA RÁPIDA (Tablet 35%) */}
-        <div className={`w-full md:w-[380px] lg:w-[420px] bg-white border-r border-slate-200 flex-col shrink-0 overflow-hidden ${mobileTab === 'DETALHE' ? 'hidden md:flex' : 'flex'}`}>
+        <div className={`w-full md:w-[380px] lg:w-[420px] bg-white border-r border-slate-200 flex-col shrink-0 min-h-0 overflow-hidden ${mobileTab === 'DETALHE' ? 'hidden md:flex' : 'flex'}`}>
           {/* HEADER DA CHAMADA: RESUMO E BOTÃO DE SALVAMENTO */}
           <div className="p-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between gap-2 shrink-0">
             <div>
@@ -732,7 +732,7 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
           </div>
 
           {/* LISTA COMPACTA COM CONTROLES RÁPIDOS POR EXCEÇÃO: [Faltou] [Atraso] [Celular] [+] */}
-          <div className="flex-1 overflow-y-auto divide-y divide-slate-100">
+          <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain touch-pan-y divide-y divide-slate-100 [-webkit-overflow-scrolling:touch]">
             {filteredAlunos.length === 0 ? (
               <div className="p-6 text-center text-xs text-slate-400">
                 Nenhum aluno encontrado nesta turma.
@@ -849,7 +849,7 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
         </div>
 
         {/* COLUNA DIREITA: FICHA RESUMIDA DO ALUNO SELECIONADO (65%) */}
-        <div className={`flex-1 bg-slate-50 overflow-y-auto p-4 md:p-6 space-y-4 ${mobileTab === 'LISTA' ? 'hidden md:block' : 'block'}`}>
+        <div className={`flex-1 min-h-0 bg-slate-50 overflow-y-auto overscroll-contain touch-pan-y [-webkit-overflow-scrolling:touch] p-4 md:p-6 space-y-4 ${mobileTab === 'LISTA' ? 'hidden md:block' : 'block'}`}>
           {!resumoAluno ? (
             <div className="h-full flex items-center justify-center text-slate-400 text-xs">
               Selecione um aluno na coluna à esquerda para visualizar sua ficha e registrar orientações.
