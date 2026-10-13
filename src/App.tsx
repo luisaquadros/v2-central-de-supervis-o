@@ -150,7 +150,7 @@ const MainContent: React.FC = () => {
   const isModoSupervisao = currentView.type === 'modo-supervisao';
 
   return (
-    <div className="flex h-[100dvh] min-h-0 bg-slate-100 overflow-hidden font-sans">
+    <div className="flex h-[100dvh] min-h-0 cs-muted-surface overflow-hidden font-sans">
       <ErrorNotifier />
       {isMobileMenuOpen && !isModoSupervisao && (
         <button type="button" aria-label="Fechar menu de navegação"

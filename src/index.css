@@ -5,6 +5,11 @@
   --cs-navy: #15233b;
   --cs-teal: #2c827e;
   --cs-orchid: #8276b1;
+  --cs-canvas: #f4f7fa;
+  --cs-surface: #ffffff;
+  --cs-ink: #15233b;
+  --cs-border: #e2e8f0;
+  --cs-radius: 0.875rem;
   color-scheme: light;
 }
 * { -webkit-tap-highlight-color: transparent; }
@@ -12,11 +17,11 @@ html { scroll-behavior: smooth; }
 html, body, #root { min-width: 320px; min-height: 100%; }
 body {
   font-family: 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  background: #f4f7fa;
+  background: var(--cs-canvas);
 }
 .font-mono { font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace; }
 :where(button, input, textarea, select, a):focus-visible {
-  outline: 2px solid #42aea7;
+  outline: 2px solid var(--cs-teal);
   outline-offset: 3px;
 }
 button, select, input[type="checkbox"] { touch-action: manipulation; }
@@ -94,3 +99,22 @@ html[data-theme="dark"] .shadow-xs { box-shadow: 0 1px 8px rgb(0 0 0 / .22); }
     transition-duration: .01ms !important;
   }
 }
+
+/* Design system: núcleo visual reutilizável — preserva as utilidades existentes. */
+.cs-panel { background: var(--cs-surface); border: 1px solid var(--cs-border); border-radius: var(--cs-radius); }
+.cs-nav-active { background: var(--cs-navy); color: #fff; }
+.cs-nav-active:hover { background: #203753; }
+.cs-brand-accent { color: var(--cs-teal); }
+.cs-primary-action { background: var(--cs-navy); color: #fff; border-radius: 0.75rem; }
+.cs-primary-action:hover { background: #203753; }
+.cs-muted-surface { background: var(--cs-canvas); }
+.cs-count { font-variant-numeric: tabular-nums; }
+html[data-theme="dark"] {
+  --cs-canvas: #0c1423;
+  --cs-surface: #172437;
+  --cs-ink: #eff6fb;
+  --cs-border: #34475b;
+}
+html[data-theme="dark"] .cs-nav-active { background: #314e67; color: #fff; }
+html[data-theme="dark"] .cs-primary-action { background: #314e67; color: #fff; }
+html[data-theme="dark"] .cs-primary-action:hover { background: #3c5b75; }
