@@ -13,6 +13,7 @@ export const TABELAS_CRITICAS = new Set([
   'disciplinas',
   'turmas_origem',
   'grupos_pratica',
+  'grupo_integrantes',
 ]);
 
 export type OperacaoCritica = 'INSERT' | 'UPDATE' | 'DELETE';
