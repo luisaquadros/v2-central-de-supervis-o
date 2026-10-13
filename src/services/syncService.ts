@@ -11,12 +11,13 @@
  * - Sincronização em background quando houver autenticação Google válida.
  * - Falha de conexão/OAuth preserva integralmente os dados locais.
  * - Gravação resiliente: quando offline/sem conexão, enfileira no syncQueue.
- * - Detecção estrita de conflitos: nunca sobrescreve dado oficial mais recente.
+ * - Serialização local e entre abas; edição simultânea em dispositivos distintos ainda requer homologação.
  * - Replay seguro da fila após reconexão com remoção estrita somente após confirmação do Sheets.
  */
 
 import {
   salvarTabelasNoIndexedDb,
+  salvarAlteracaoAtomica,
   salvarTabelaUnicaNoIndexedDb,
   carregarTodasTabelasDoIndexedDb,
   salvarMetaSincronizacao,
@@ -48,6 +49,16 @@ export interface SyncStatusState {
   conflitosCount: number;
   erros: string[];
   tabelasStatus: Record<string, { ok: boolean; count: number; error?: string }>;
+}
+
+// Serialize reads and writes, including across tabs where Web Locks is available.
+let operationTail: Promise<unknown> = Promise.resolve();
+function exclusively<T>(work: () => Promise<T>): Promise<T> {
+  const run = () => typeof navigator !== 'undefined' && navigator.locks
+    ? navigator.locks.request('central-supervisao-sync', work) : work();
+  const result = operationTail.then(run, run);
+  operationTail = result.catch(() => {});
+  return result;
 }
 
 let syncStatusListeners: ((status: SyncStatusState) => void)[] = [];
@@ -90,7 +101,7 @@ export async function inicializarCacheLocal(): Promise<{
       carregarFilaSincronizacao(),
     ]);
 
-    const pendentes = fila.filter(i => i.status === 'PENDENTE' || i.status === 'ERRO');
+    const pendentes = fila.filter(i => i.status === 'PENDENTE' || i.status === 'ERRO' || i.status === 'SINCRONIZANDO');
     const conflitos = fila.filter(i => i.status === 'CONFLITO');
 
     if (meta) {
@@ -172,7 +183,7 @@ function tableDataOrEmpty(map: Record<string, any[]>, key: string): any[] {
  * 2. Sincronização completa de leitura da base oficial (Google Sheets)
  * Respeita a regra canônica: NUNCA substituir dados locais válidos por arrays vazios
  */
-export async function sincronizarDaBaseOficial(): Promise<{
+async function sincronizarDaBaseOficialInterna(): Promise<{
   sucesso: boolean;
   dados?: DadosIniciaisGas;
   erro?: string;
@@ -191,7 +202,7 @@ export async function sincronizarDaBaseOficial(): Promise<{
 
     // Alterações locais precisam ser confirmadas antes de aceitar o snapshot remoto.
     // Caso permaneçam pendentes, a leitura não pode sobrescrever essas tabelas.
-    await processarFilaSincronizacao();
+    await processarFilaInterna();
     const pendentesAntesDaLeitura = (await carregarFilaSincronizacao())
       .filter(i => ['PENDENTE', 'ERRO', 'SINCRONIZANDO', 'CONFLITO'].includes(i.status));
     const tabelasComEscritaPendente = new Set(pendentesAntesDaLeitura.map(i => i.tabela));
@@ -235,17 +246,9 @@ export async function sincronizarDaBaseOficial(): Promise<{
         mapParaSalvar[tab] = rows;
         tabelasStatus[tab] = { ok: true, count: rows.length };
       } else if (Array.isArray(rows) && rows.length === 0) {
-        // Se a resposta retornou 0 linhas mas já tínhamos cache anterior válido, PRESERVA o cache anterior
-        if (cacheAnterior[tab] && cacheAnterior[tab].length > 0) {
-          tabelasStatus[tab] = {
-            ok: true,
-            count: cacheAnterior[tab].length,
-            error: 'Planilha retornou vazia; dados locais preservados.',
-          };
-        } else {
-          mapParaSalvar[tab] = [];
-          tabelasStatus[tab] = { ok: true, count: 0 };
-        }
+        // A successfully read empty table is authoritative (including remote deletions).
+        mapParaSalvar[tab] = [];
+        tabelasStatus[tab] = { ok: true, count: 0 };
       } else {
         // Tabela ausente ou não lida
         if (cacheAnterior[tab] && cacheAnterior[tab].length > 0) {
@@ -353,88 +356,38 @@ export async function sincronizarDaBaseOficial(): Promise<{
  * Se online com token: grava diretamente no Google Sheets e atualiza cache
  * Se offline ou erro temporário: salva na fila syncQueue no IndexedDB
  */
-export async function salvarRegistroResiliente(
-  tabela: string,
-  tipo: SyncQueueOpTipo,
-  registro: Record<string, any>,
-  tabelaAtualizadaCompleta?: any[]
-): Promise<{ gravadoOnline: boolean; enfileiradoOffline: boolean; queueItem?: SyncQueueItem; erro?: string }> {
-  // 1. Validação estrita via safeWriteService (bloqueia abas-fonte e tabelas não autorizadas)
-  const validacao = validarEscritaTabela(tabela, registro);
-  if (!validacao.valido) {
-    throw new Error(validacao.motivo);
-  }
-
-  // Atualiza imediatamente o IndexedDB com a cópia local se a lista completa foi passada
-  if (tabelaAtualizadaCompleta && Array.isArray(tabelaAtualizadaCompleta)) {
-    await salvarTabelaUnicaNoIndexedDb(tabela, tabelaAtualizadaCompleta).catch(e =>
-      console.warn('Erro ao atualizar cache local único:', e)
-    );
-  }
-
-  const token = await getAccessToken();
-
-  // Se autenticado, tenta gravar imediatamente no Google Sheets
-  if (token) {
-    try {
-      if (tipo === 'DELETE') {
-        await removerRegistroDaPlanilhaOficial(tabela, registro);
-      } else {
-        await gravarRegistroNaPlanilhaOficial(tabela, registro);
-      }
-      const now = new Date().toISOString();
-      notifySyncStatusChange({
-        ultimaEscritaSucesso: now,
-        ultimaSincronizacao: now,
-        status: currentSyncState.pendentesCount > 0 ? 'LOCAL' : 'SINCRONIZADO',
-      });
-      return { gravadoOnline: true, enfileiradoOffline: false };
-    } catch (err: any) {
-      console.warn(`Falha na escrita direta na tabela ${tabela}. Enfileirando localmente:`, err.message);
-    }
-  }
-
-  // Se não foi possível gravar online, enfileira com ID estável no IndexedDB
-  const stableId =
-    (tabela === 'frequencias' && registro.matricula_id && registro.data_aula
-      ? `freq_${registro.matricula_id}_${registro.data_aula}`
-      : null) ||
-    registro.id ||
-    registro[`${tabela}_id`] ||
-    registro.registro_id ||
-    registro.orientacao_id ||
-    registro.entrega_id ||
-    `queue_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
-
-  const item = await enfileirarAlteracaoLocal({
-    id: stableId,
-    tabela,
-    tipo,
-    payload: registro,
+export function salvarRegistroResiliente(
+  tabela: string, tipo: SyncQueueOpTipo, registro: Record<string, any>,
+  _tabelaAtualizadaCompleta?: any[]
+): Promise<{ gravadoOnline: boolean; enfileiradoOffline: boolean; queueItem?: SyncQueueItem }> {
+  return exclusively(async () => {
+    const validacao = validarEscritaTabela(tabela, registro);
+    if (!validacao.valido) throw new Error(validacao.motivo);
+    const item = await salvarAlteracaoAtomica(tabela, tipo, registro);
+    await processarFilaInterna();
+    const pending = (await carregarFilaSincronizacao()).some(i => i.id === item.id);
+    return { gravadoOnline: !pending, enfileiradoOffline: pending, queueItem: pending ? item : undefined };
   });
+}
 
-  const fila = await carregarFilaSincronizacao();
-  const pendentes = fila.filter(i => i.status === 'PENDENTE' || i.status === 'ERRO');
-
-  notifySyncStatusChange({
-    pendentesCount: pendentes.length,
-    status: 'LOCAL',
-  });
-
-  return { gravadoOnline: false, enfileiradoOffline: true, queueItem: item };
+export function sincronizarDaBaseOficial() {
+  return exclusively(sincronizarDaBaseOficialInterna);
+}
+export function processarFilaSincronizacao() {
+  return exclusively(processarFilaInterna);
 }
 
 /**
  * 4. Processamento da fila de sincronização (syncQueue) com detecção de conflitos
  * Nunca remove o item antes da confirmação real no Google Sheets
  */
-export async function processarFilaSincronizacao(): Promise<{
+async function processarFilaInterna(): Promise<{
   processados: number;
   erros: number;
   conflitos: number;
 }> {
   const fila = await carregarFilaSincronizacao();
-  const pendentes = fila.filter(i => i.status === 'PENDENTE' || i.status === 'ERRO');
+  const pendentes = fila.filter(i => i.status === 'PENDENTE' || i.status === 'ERRO' || i.status === 'SINCRONIZANDO');
 
   if (pendentes.length === 0) {
     notifySyncStatusChange({ pendentesCount: 0 });
@@ -443,6 +396,7 @@ export async function processarFilaSincronizacao(): Promise<{
 
   const token = await getAccessToken();
   if (!token) {
+    notifySyncStatusChange({ status: 'LOCAL', pendentesCount: pendentes.length });
     return { processados: 0, erros: 0, conflitos: 0 };
   }
 
@@ -471,14 +425,12 @@ export async function processarFilaSincronizacao(): Promise<{
         status: 'ERRO',
         erro: err?.message || 'Falha ao sincronizar com Google Sheets',
       });
-      if (is401) {
-        break; // Interrompe reenvio para não disparar requisições em cascata com token expirado
-      }
+      break; // Preserve operation order and avoid cascading requests after any failure.
     }
   }
 
   const filaAtualizada = await carregarFilaSincronizacao();
-  const pendentesRestantes = filaAtualizada.filter(i => i.status === 'PENDENTE' || i.status === 'ERRO');
+  const pendentesRestantes = filaAtualizada.filter(i => i.status === 'PENDENTE' || i.status === 'ERRO' || i.status === 'SINCRONIZANDO');
   const conflitosRestantes = filaAtualizada.filter(i => i.status === 'CONFLITO');
 
   const now = new Date().toISOString();
@@ -486,7 +438,7 @@ export async function processarFilaSincronizacao(): Promise<{
     pendentesCount: pendentesRestantes.length,
     conflitosCount: conflitosRestantes.length,
     ultimaEscritaSucesso: processados > 0 ? now : currentSyncState.ultimaEscritaSucesso,
-    status: pendentesRestantes.length > 0 ? 'LOCAL' : 'SINCRONIZADO',
+    status: pendentesRestantes.length > 0 ? 'LOCAL' : conflitosRestantes.length > 0 || currentSyncState.erros.length > 0 ? 'PARCIAL' : 'SINCRONIZADO',
   });
 
   return { processados, erros, conflitos };
