@@ -185,6 +185,7 @@ export const getAccessToken = async (): Promise<string | null> => {
 
 export const setMockToken = (token: string | null) => {
   inMemoryAccessToken = token;
+  expiryInMemory = token ? Date.now() + 55 * 60 * 1000 : 0;
   if (token) saveTokenToSession(token);
   else clearSessionToken();
 };
