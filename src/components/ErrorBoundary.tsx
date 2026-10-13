@@ -49,7 +49,7 @@ export class ErrorBoundary extends Component<Props, State> {
                 {this.props.fallbackTitle || 'Ocorreu um erro ao carregar esta área'}
               </h2>
               <p className="text-xs text-slate-500 mt-0.5">
-                A navegação e os dados locais continuam disponíveis.
+                Nenhum dado foi apagado. Tente novamente; se o erro persistir, preserve os dados do navegador.
               </p>
             </div>
           </div>

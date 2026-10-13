@@ -1,3 +1,4 @@
+import { PRIMARY_KEYS, recordIdentity } from './recordIdentity';
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import {
   getAuth,
@@ -9,6 +10,10 @@ import {
 } from 'firebase/auth';
 import firebaseConfig from '../../firebase-applet-config.json';
 import { DadosIniciaisGas } from './gasService';
+
+function fetchWithTimeout(input: string, init?: RequestInit) {
+  return fetch(input, { ...init, signal: AbortSignal.timeout(20000) });
+}
 
 export const OFFICIAL_SPREADSHEET_ID = '1DwhmASMStNtT_L2YinG-jkP9vYVv5ETdc-azYqSSIc4';
 export const OFFICIAL_SPREADSHEET_NAME = 'Central de Supervisão - DESENVOLVIMENTO';
@@ -65,8 +70,10 @@ provider.addScope('https://www.googleapis.com/auth/spreadsheets');
 // Persistência segura da sessão e token de acesso OAuth no sessionStorage (com expiração de 55 minutos)
 const SESSION_TOKEN_KEY = 'cs_google_access_token_session';
 const SESSION_EXPIRY_KEY = 'cs_google_access_token_exp';
+let accessTokenExpiresAt = 0;
 
 function saveTokenToSession(token: string) {
+  accessTokenExpiresAt = Date.now() + 55 * 60 * 1000;
   try {
     if (typeof window !== 'undefined') {
       const expiresAt = Date.now() + 55 * 60 * 1000; // 55 minutos
@@ -92,6 +99,7 @@ function getStoredTokenFromSession(): string | null {
       if (token && expStr) {
         const exp = Number(expStr);
         if (Date.now() < exp) {
+          accessTokenExpiresAt = exp;
           return token;
         } else {
           clearSessionToken();
@@ -163,7 +171,8 @@ export const googleSignIn = async (): Promise<{ user: User; accessToken: string 
 };
 
 export const getAccessToken = async (): Promise<string | null> => {
-  if (inMemoryAccessToken) return inMemoryAccessToken;
+  if (inMemoryAccessToken && Date.now() < accessTokenExpiresAt) return inMemoryAccessToken;
+  inMemoryAccessToken = null;
   const stored = getStoredTokenFromSession();
   if (stored) {
     inMemoryAccessToken = stored;
@@ -272,7 +281,7 @@ export async function obterTitulosReaisDasAbas(token: string, forceRefresh = fal
     return cachedRealSheetTitles;
   }
   const metaUrl = `https://sheets.googleapis.com/v4/spreadsheets/${OFFICIAL_SPREADSHEET_ID}?fields=sheets.properties.title`;
-  const metaRes = await fetch(metaUrl, {
+  const metaRes = await fetchWithTimeout(metaUrl, {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!metaRes.ok) {
@@ -370,7 +379,7 @@ export async function carregarDadosDaPlanilhaOficial(): Promise<ResultadoLeitura
       .join('&');
     const batchUrl = `https://sheets.googleapis.com/v4/spreadsheets/${OFFICIAL_SPREADSHEET_ID}/values:batchGet?${rangesQuery}`;
 
-    const batchRes = await fetch(batchUrl, {
+    const batchRes = await fetchWithTimeout(batchUrl, {
       headers: {
         Authorization: `Bearer ${token}`,
       },
@@ -381,7 +390,8 @@ export async function carregarDadosDaPlanilhaOficial(): Promise<ResultadoLeitura
       const valueRanges: { range: string; values?: any[][] }[] = batchData.valueRanges || [];
       matchedTables.forEach((m, idx) => {
         const vr = valueRanges[idx];
-        const rows = vr?.values || [];
+        if (!vr) return; // Missing response is a read failure, not an empty table.
+        const rows = vr.values || [];
         tableDataMap[m.canonicalName] = normalizarLinhasDaAba(m.canonicalName, parseSheetRowsToObjects(rows));
       });
     } else {
@@ -391,7 +401,7 @@ export async function carregarDadosDaPlanilhaOficial(): Promise<ResultadoLeitura
         matchedTables.map(async m => {
           try {
             const singleUrl = `https://sheets.googleapis.com/v4/spreadsheets/${OFFICIAL_SPREADSHEET_ID}/values/${encodeURIComponent(formatarRangeSheet(m.realSheetName, 'A1:ZZ'))}`;
-            const singleRes = await fetch(singleUrl, {
+            const singleRes = await fetchWithTimeout(singleUrl, {
               headers: { Authorization: `Bearer ${token}` },
             });
             if (singleRes.ok) {
@@ -465,7 +475,7 @@ export async function gravarRegistroNaPlanilhaOficial(
 
   // 1. Obtém o cabeçalho e dados existentes da tabela para verificação de duplicidade
   const tableDataUrl = `https://sheets.googleapis.com/v4/spreadsheets/${OFFICIAL_SPREADSHEET_ID}/values/${encodeURIComponent(formatarRangeSheet(realSheetName, 'A1:ZZ'))}`;
-  const tableDataRes = await fetch(tableDataUrl, {
+  const tableDataRes = await fetchWithTimeout(tableDataUrl, {
     headers: { Authorization: `Bearer ${token}` },
   });
 
@@ -506,55 +516,18 @@ export async function gravarRegistroNaPlanilhaOficial(
     return String(val);
   });
 
-  // 3. Procura por linha existente com a mesma chave primária / chave composta
-  let existingRowIndex = -1; // 1-indexed
-
-  if (allRows.length > 1) {
-    const lowerHeaders = headers.map(h => h.trim().toLowerCase());
-
-    if (tabela === 'frequencias') {
-      const matIdx = lowerHeaders.indexOf('matricula_id');
-      const dataIdx = lowerHeaders.indexOf('data_aula');
-      if (matIdx >= 0 && dataIdx >= 0) {
-        for (let i = 1; i < allRows.length; i++) {
-          const row = allRows[i];
-          if (
-            String(row[matIdx] || '').trim() === String(registro.matricula_id || '').trim() &&
-            String(row[dataIdx] || '').trim() === String(registro.data_aula || '').trim()
-          ) {
-            existingRowIndex = i + 1; // 1-indexed
-            break;
-          }
-        }
-      }
-    } else {
-      // Procura por coluna de ID
-      const primaryKeyCol =
-        lowerHeaders.find(h => h === `${tabela.toLowerCase()}_id`) ||
-        lowerHeaders.find(h => h === 'id') ||
-        lowerHeaders.find(h => h.endsWith('_id'));
-
-      if (primaryKeyCol) {
-        const keyIdx = lowerHeaders.indexOf(primaryKeyCol);
-        const recordKeyVal = String(
-          registro[primaryKeyCol] ||
-          registro[primaryKeyCol.toUpperCase()] ||
-          registro.id ||
-          ''
-        ).trim();
-
-        if (recordKeyVal) {
-          for (let i = 1; i < allRows.length; i++) {
-            const row = allRows[i];
-            if (String(row[keyIdx] || '').trim() === recordKeyVal) {
-              existingRowIndex = i + 1;
-              break;
-            }
-          }
-        }
-      }
-    }
-  }
+  // Resolve identity independently of column order; reject ambiguous duplicates.
+  const identity = recordIdentity(tabela, registro);
+  const key = PRIMARY_KEYS[tabela];
+  const lowerHeaders = headers.map(h => h.trim().toLowerCase());
+  if (!lowerHeaders.includes(key)) throw new Error(`Registro incompatível: cabeçalho ${key} ausente.`);
+  const matches = allRows.slice(1).flatMap((row, index) => {
+    const object = Object.fromEntries(lowerHeaders.map((h, i) => [h, row[i] ?? '']));
+    try { return recordIdentity(tabela, object) === identity ? [index + 2] : []; }
+    catch { return []; }
+  });
+  if (matches.length > 1) throw new Error('Escrita bloqueada: chave duplicada na planilha.');
+  const existingRowIndex = matches[0] ?? -1;
 
   // 4. Se a linha já existe, atualiza preservando colunas não presentes
   // no payload (especialmente dados importados e trilhas de auditoria).
@@ -568,7 +541,7 @@ export async function gravarRegistroNaPlanilhaOficial(
     });
     const updateRange = formatarRangeSheet(realSheetName, `A${existingRowIndex}`);
     const updateUrl = `https://sheets.googleapis.com/v4/spreadsheets/${OFFICIAL_SPREADSHEET_ID}/values/${encodeURIComponent(updateRange)}?valueInputOption=RAW`;
-    const updateRes = await fetch(updateUrl, {
+    const updateRes = await fetchWithTimeout(updateUrl, {
       method: 'PUT',
       headers: {
         Authorization: `Bearer ${token}`,
@@ -597,8 +570,8 @@ export async function gravarRegistroNaPlanilhaOficial(
 
   // 5. Caso não exista, executa o APPEND seguro
   const appendRange = formatarRangeSheet(realSheetName, 'A1:ZZ');
-  const appendUrl = `https://sheets.googleapis.com/v4/spreadsheets/${OFFICIAL_SPREADSHEET_ID}/values/${encodeURIComponent(appendRange)}?valueInputOption=RAW`;
-  const appendRes = await fetch(appendUrl, {
+  const appendUrl = `https://sheets.googleapis.com/v4/spreadsheets/${OFFICIAL_SPREADSHEET_ID}/values/${encodeURIComponent(appendRange)}:append?valueInputOption=RAW`;
+  const appendRes = await fetchWithTimeout(appendUrl, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${token}`,
@@ -632,28 +605,31 @@ export async function removerRegistroDaPlanilhaOficial(
   const token = await getAccessToken();
   if (!token) throw new Error('Não autenticado com Google Workspace.');
   const metaUrl = `https://sheets.googleapis.com/v4/spreadsheets/${OFFICIAL_SPREADSHEET_ID}?fields=sheets.properties(sheetId,title)`;
-  const metaResponse = await fetch(metaUrl, { headers: { Authorization: `Bearer ${token}` } });
+  const metaResponse = await fetchWithTimeout(metaUrl, { headers: { Authorization: `Bearer ${token}` } });
   if (!metaResponse.ok) throw new Error('Não foi possível identificar a aba para exclusão.');
   const metadata = await metaResponse.json();
-  const sheet = (metadata.sheets || []).find((item: any) => item.properties?.title === tabela)?.properties;
+  const realName = await resolverNomeRealAba(token, tabela);
+  const sheet = (metadata.sheets || []).find((item: any) => item.properties?.title === realName)?.properties;
   if (!sheet || !Number.isInteger(sheet.sheetId)) throw new Error(`Aba ${tabela} não localizada; exclusão cancelada.`);
 
-  const range = formatarRangeSheet(tabela, 'A1:ZZ');
-  const res = await fetch(
+  const range = formatarRangeSheet(realName, 'A1:ZZ');
+  const res = await fetchWithTimeout(
     `https://sheets.googleapis.com/v4/spreadsheets/${OFFICIAL_SPREADSHEET_ID}/values/${encodeURIComponent(range)}`,
     { headers: { Authorization: `Bearer ${token}` } }
   );
   if (!res.ok) throw new Error(`Falha na leitura de ${tabela} antes da exclusão.`);
   const rows: any[][] = (await res.json()).values || [];
   const headers = (rows[0] || []).map((h: any) => String(h).trim());
-  const pk = headers[0];
-  if (!pk || !pk.endsWith('_id') || !registro[pk]) {
+  const pk = PRIMARY_KEYS[tabela];
+  const keyIndex = headers.indexOf(pk);
+  if (!pk || keyIndex < 0 || !registro[pk]) {
     throw new Error(`Chave primária inválida para excluir em ${tabela}.`);
   }
-  const rowIndexes = rows.map((row, i) => i > 0 && String(row[0] || '') === String(registro[pk]) ? i : -1).filter(i => i > 0);
+  const rowIndexes = rows.map((row, i) => i > 0 && String(row[keyIndex] || '') === String(registro[pk]) ? i : -1).filter(i => i > 0);
+  if (rowIndexes.length === 0) return true; // Retry after a lost response: already deleted.
   if (rowIndexes.length !== 1) throw new Error('Exclusão bloqueada: chave ausente ou duplicada.');
   const rowIndex = rowIndexes[0];
-  const deleteRes = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${OFFICIAL_SPREADSHEET_ID}:batchUpdate`, {
+  const deleteRes = await fetchWithTimeout(`https://sheets.googleapis.com/v4/spreadsheets/${OFFICIAL_SPREADSHEET_ID}:batchUpdate`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ requests: [{

@@ -247,6 +247,9 @@ export const AvaliacaoView: React.FC = () => {
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto pb-12">
+      <p role="status" className="rounded-xl bg-amber-50 border border-amber-200 p-3 text-sm text-amber-900">
+        Avaliações detalhadas e devolutivas ficam salvas apenas neste navegador. Exporte o backup em Configurações antes de trocar de dispositivo. As notas por critério têm sincronização própria com a planilha.
+      </p>
       {/* Top Header */}
       <div className="bg-white border border-slate-200 rounded-2xl p-5 sm:p-6 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
