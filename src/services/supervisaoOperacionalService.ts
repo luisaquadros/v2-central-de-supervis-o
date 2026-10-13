@@ -336,9 +336,6 @@ export function identificarChamadasPendentes(
       }
 
       // Se foi marcada como NÃO REALIZADA ou REAGENDADA: NÃO GERA CHAMADA PENDENTE
-      const encontro = encontrosTurma.find(
-        e => e.turma_id === turma.turma_id && e.data === dataIso
-      );
       // A base pode conter encontros duplicados pela sincronização: qualquer
       // encerramento explícito da aula elimina sua pendência de chamada.
       const aulaEncerrada = encontrosTurma.some(e => e.turma_id === turma.turma_id &&
