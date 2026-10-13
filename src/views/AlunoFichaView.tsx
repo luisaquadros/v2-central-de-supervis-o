@@ -661,6 +661,15 @@ export const AlunoFichaView: React.FC<AlunoFichaViewProps> = ({
             </div>
           </div>
 
+          {situacaoRss && totalRegistrosEntregues > new Set(studentRegistros.map(obterSemanaRssValidada).filter((n): n is number => n !== null)).size && (
+            <div role="status" className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">
+              <strong>Diferença entre consolidado e formulários:</strong> a base indica {totalRegistrosEntregues} entrega(s) contabilizada(s), mas apenas {new Set(studentRegistros.map(obterSemanaRssValidada).filter((n): n is number => n !== null)).size} semana(s) têm RSS detalhado e validado nesta ficha. Os registros sem formulário precisam ser conferidos na origem; não atribua automaticamente falta ou conteúdo a uma semana.
+            </div>
+          )}
+          {studentRegistros.some(r => !String((r as any).semana_rss ?? r.semana ?? '').trim()) && (
+            <p className="text-xs text-amber-900">Existem RSS sem semana acadêmica definida. Eles permanecem disponíveis na leitura, mas não comprovam uma semana específica.</p>
+          )}
+
           <section className="rounded-xl border border-slate-200 bg-slate-50/60 p-3 sm:p-4 space-y-3">
             <h4 className="text-sm font-bold text-slate-900">Ler registros e observações</h4>
             <LeituraRss registros={studentRegistros} />
@@ -674,7 +683,8 @@ export const AlunoFichaView: React.FC<AlunoFichaViewProps> = ({
                 String((r as any).status_revisao || '').toUpperCase() === 'PENDENTE_REVISAO'
               );
               const isEntregue = !!reg;
-              const isFaltante = !isEntregue && !emRevisao && semana <= totalRegistrosEsperados && !isGrupoRss;
+              const existeDiferencaConsolidado = totalRegistrosEntregues > new Set(studentRegistros.map(obterSemanaRssValidada).filter((n): n is number => n !== null)).size;
+              const isFaltante = !isEntregue && !emRevisao && !existeDiferencaConsolidado && semana <= totalRegistrosEsperados && !isGrupoRss;
 
               return (
                 <div
@@ -707,7 +717,7 @@ export const AlunoFichaView: React.FC<AlunoFichaViewProps> = ({
                       <span className="text-red-700 font-semibold">Faltante</span>
                     ) : (
                       <span className="text-slate-400">
-                        {isGrupoRss && semana <= totalRegistrosEsperados ? 'Pendente do grupo' : 'Ainda não exigível'}
+                        {existeDiferencaConsolidado && !isEntregue ? 'Conferir consolidado' : isGrupoRss && semana <= totalRegistrosEsperados ? 'Pendente do grupo' : 'Ainda não exigível'}
                       </span>
                     )}
                     {reg?.data_entrega && (
