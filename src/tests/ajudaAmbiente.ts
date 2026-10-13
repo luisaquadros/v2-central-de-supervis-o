@@ -37,6 +37,7 @@ export async function criarAmbiente(op: OpcoesAmbiente) {
     if (ehJwks(url)) return ok(emissor.jwks);
     if (url.includes('/api/')) {
       const r = await worker.fetch(new Request('https://app.exemplo' + new URL(url, 'https://app.exemplo').pathname, { method: m, headers: init?.headers as any, body: init?.body as any }), envWorker);
+      if (process.env.DEBUG_AMBIENTE && !r.ok) console.log('[worker]', r.status, await r.clone().text(), String(init?.body).slice(0, 600));
       return { ok: r.ok, status: r.status, json: async () => r.json(), text: async () => r.text() } as Response;
     }
     if (url.includes('oauth2.googleapis.com/token') || url.includes('/token')) {
@@ -55,9 +56,15 @@ export async function criarAmbiente(op: OpcoesAmbiente) {
     const dec = decodeURIComponent(url);
     const aba = dec.match(/values\/'([^'!]+)'/)?.[1];
     if (aba && falhas[aba]) return ok({ error: {} }, falhas[aba]);
-    if (url.includes('fields=sheets')) return ok({ sheets: Object.keys(abas).map(t => ({ properties: { title: t, sheetId: 1 } })) });
+    if (url.includes('fields=sheets')) return ok({ sheets: Object.keys(abas).map(t => ({ properties: { title: t, sheetId: Object.keys(abas).indexOf(t) + 1 } })) });
     if (url.endsWith(':batchUpdate') && !url.includes('/values:') && m === 'POST') {
-      const a = JSON.parse(String(init!.body)).requests?.[0]?.addSheet; if (a) abas[a.properties.title] = []; return ok({});
+      const rq = JSON.parse(String(init!.body)).requests?.[0];
+      if (rq?.addSheet) abas[rq.addSheet.properties.title] = [];
+      if (rq?.deleteDimension) {
+        const r = rq.deleteDimension.range, titulo = Object.keys(abas)[r.sheetId - 1];
+        abas[titulo].splice(r.startIndex, r.endIndex - r.startIndex);
+      }
+      return ok({});
     }
     if (url.includes('/values:batchUpdate')) {
       for (const p of JSON.parse(String(init!.body)).data) {

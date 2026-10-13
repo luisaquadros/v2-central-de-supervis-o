@@ -152,7 +152,8 @@ var TABELAS_CRITICAS = /* @__PURE__ */ new Set([
   "preparacoes_aula",
   // Cadastro: migrado uma tabela por vez (cada linha abaixo é um passo reversível, ver docs/DOCUMENTO_MESTRE.md)
   "alunos",
-  "matriculas"
+  "matriculas",
+  "turmas"
 ]);
 function dataCanonica(texto) {
   if (/^\d{4}-\d{2}-\d{2}/.test(texto)) return texto.slice(0, 10);
@@ -390,7 +391,12 @@ var WriteCoordinator = class {
       if (matches.length > 1) return fail("Identificadores duplicados na planilha; opera\xE7\xE3o bloqueada.", 409, "DUPLICATE_ID");
       const remote = matches[0]?.row ?? null;
       const divergencias = compararVersaoDeCampos(table, payload.registro, payload.esperado, remote, headers, payload.tipo);
-      if (divergencias.length) return fail("Conflito de vers\xE3o ou registro inexistente. Atualize e revise a altera\xE7\xE3o antes de reenviar.", 409, "VERSION_CONFLICT");
+      if (divergencias.length) return json2({
+        ok: false,
+        code: "VERSION_CONFLICT",
+        campos: divergencias,
+        message: "Conflito de vers\xE3o ou registro inexistente. Atualize e revise a altera\xE7\xE3o antes de reenviar."
+      }, 409);
       const registro = adaptarRegistroCritico(table, payload.registro);
       const columns = headers.map((h, index) => ({ h, index })).filter((x) => Object.prototype.hasOwnProperty.call(registro, x.h));
       if (payload.tipo === "DELETE") {

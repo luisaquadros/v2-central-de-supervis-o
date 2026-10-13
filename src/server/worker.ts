@@ -101,7 +101,8 @@ export class WriteCoordinator {
       if(matches.length>1)return fail('Identificadores duplicados na planilha; operação bloqueada.',409,'DUPLICATE_ID');
       const remote=matches[0]?.row??null;
       const divergencias=compararVersaoDeCampos(table,payload.registro,payload.esperado,remote,headers,payload.tipo);
-      if(divergencias.length)return fail('Conflito de versão ou registro inexistente. Atualize e revise a alteração antes de reenviar.',409,'VERSION_CONFLICT');
+      if(divergencias.length)return json({ok:false,code:'VERSION_CONFLICT',campos:divergencias,
+        message:'Conflito de versão ou registro inexistente. Atualize e revise a alteração antes de reenviar.'},409);
       const registro=adaptarRegistroCritico(table,payload.registro);
       const columns=headers.map((h,index)=>({h,index})).filter(x=>Object.prototype.hasOwnProperty.call(registro,x.h));
       if(payload.tipo==='DELETE'){
