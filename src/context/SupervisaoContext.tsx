@@ -2461,25 +2461,25 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       setOcorrencias(prev => [...novasOcorrencias, ...prev]);
     }
 
+    const encontroAnterior = encontrosTurma.find(e => e.turma_id === turmaId && e.data === dataAula);
+    const encontroAtualizado: EncontroTurma = {
+      ...encontroAnterior,
+      encontro_id: encontroAnterior?.encontro_id || generateUuid(),
+      turma_id: turmaId,
+      periodo_id: selectedPeriodoId,
+      data: dataAula,
+      status: 'REALIZADO',
+      chamada_salva: true,
+      total_presentes: Object.values(mapNovasFreqs).filter(f => f.status === 'PRESENTE').length,
+      total_faltas: Object.values(mapNovasFreqs).filter(f => f.status !== 'PRESENTE').length,
+      atualizado_em: now,
+    };
     setEncontrosTurma(prev => {
       const idx = prev.findIndex(e => e.turma_id === turmaId && e.data === dataAula);
-      const encAtualizado: EncontroTurma = {
-        encontro_id: idx >= 0 ? prev[idx].encontro_id : generateUuid(),
-        turma_id: turmaId,
-        periodo_id: selectedPeriodoId,
-        data: dataAula,
-        status: 'REALIZADO',
-        chamada_salva: true,
-        total_presentes: Object.values(mapNovasFreqs).filter(f => f.status === 'PRESENTE').length,
-        total_faltas: Object.values(mapNovasFreqs).filter(f => f.status !== 'PRESENTE').length,
-        atualizado_em: now,
-      };
-      if (idx >= 0) {
-        const copy = [...prev];
-        copy[idx] = encAtualizado;
-        return copy;
-      }
-      return [...prev, encAtualizado];
+      if (idx < 0) return [...prev, encontroAtualizado];
+      const copy = [...prev];
+      copy[idx] = encontroAtualizado;
+      return copy;
     });
 
     // 1. Persistência local imediata e segura em cache persistente (IndexedDB)
@@ -2543,6 +2543,19 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           }
         }
       }
+    }
+
+    // Encerramento do encontro é uma escrita real e independente.
+    // Se a rede não estiver disponível, fica na fila após as frequências;
+    // não anunciar chamada sincronizada enquanto este marcador estiver pendente.
+    try {
+      const resEncontro = await salvarRegistroResiliente(
+        'encontros_turma', encontroAnterior ? 'UPDATE' : 'INSERT', encontroAtualizado
+      );
+      if (!resEncontro.gravadoOnline) todasGravadasRemotamente = false;
+    } catch (erro) {
+      handleSaveError(erro);
+      throw new Error('Frequências processadas, mas não foi possível garantir o fechamento do encontro. Verifique a fila de sincronização antes de tentar novamente.');
     }
 
     if (houveTokenExpirado) {
