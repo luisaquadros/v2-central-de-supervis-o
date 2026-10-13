@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 import { useSupervisao, NovoHorarioInput, NovaOrigemInput } from '../context/SupervisaoContext';
 import { Turma } from '../types';
-import { classificarRssOperacional, getHojeDataIso } from '../services/supervisaoOperacionalService';
+import { classificarRssOperacional, getHojeDataIso, obterLeiturasAgendadas } from '../services/supervisaoOperacionalService';
 
 interface TurmasViewProps {
   onSelectTurma: (turmaId: string) => void;
@@ -679,9 +679,7 @@ export const TurmaDetalheView: React.FC<{
   const alunosTurma = getAlunosDaTurma(turmaId);
   const horarios = horariosTurma.filter(h => h.turma_id === turmaId && h.ativo);
   const origens = turmasOrigem.filter(o => o.turma_id === turmaId && o.ativo);
-  const leiturasTurma = leiturasResponsaveis
-    .filter(l => l.turma_id === turmaId)
-    .sort((a,b) => String(a.data||'').localeCompare(String(b.data||'')));
+  const leiturasTurma = obterLeiturasAgendadas(leiturasResponsaveis.filter(l => l.turma_id === turmaId), encontrosTurma);
   const gruposDestaTurma = gruposPratica.filter(g => g.turma_id === turmaId);
   const classificacoesRss = alunosTurma.map(item => {
     const situacao = getSituacaoRssEstudante(item.matricula.matricula_id);
@@ -1030,13 +1028,13 @@ export const TurmaDetalheView: React.FC<{
           </div>
           <div className="divide-y divide-slate-100">
             {leiturasTurma.map(l => {
-              const dia = l.data || '';
-              const cancelamento = encontrosTurma.find(e => e.turma_id === turmaId && e.data === dia && e.status === 'NAO_REALIZADO');
+              const dia = l.data_apresentacao || l.data || '';
+              const cancelamento = l.reprogramada;
               return <div className="py-3 text-xs" key={l.leitura_id || dia}>
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="font-mono text-slate-500">{dia ? dia.split('-').reverse().join('/') : 'Data a confirmar'}</span>
                   <span className={l.tipo === 'LEITURA_RECOMENDADA' ? 'text-slate-500' : 'text-indigo-700'}>{l.tipo === 'LEITURA_RECOMENDADA' ? 'Leitura de apoio' : 'Estudo dirigido'}</span>
-                  {cancelamento && <span className="bg-amber-50 text-amber-800 rounded px-1.5 py-0.5">Aula cancelada · reagendamento a confirmar</span>}
+                  {cancelamento && <span className="bg-amber-50 text-amber-800 rounded px-1.5 py-0.5">Transferida da aula cancelada de {l.data_original.split('-').reverse().join('/')}</span>}
                 </div>
                 <div className="font-semibold text-slate-900 mt-1">{l.tema || l.titulo || 'Leitura'}</div>
                 <div className="text-slate-600 mt-1">
