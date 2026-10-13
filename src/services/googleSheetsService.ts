@@ -584,6 +584,16 @@ export async function gravarRegistroNaPlanilhaOficial(
     const lowerHeader = cleanHeader.toLowerCase();
     const val = adaptado[cleanHeader] !== undefined ? adaptado[cleanHeader] : adaptado[lowerHeader];
     if (val === undefined || val === null) return '';
+    // RAW protege texto contra injeção de fórmulas. Já a nota precisa ir
+    // como número JSON (1.8), não como texto "1.8", para continuar numérica
+    // mesmo numa planilha configurada para a localidade pt-BR.
+    if (tabela === 'avaliacoes' && lowerHeader === 'nota') {
+      const numero = Number(String(val).trim().replace(',', '.'));
+      if (!Number.isFinite(numero) || numero < 0) {
+        throw new Error('Nota inválida: informe um número não negativo.');
+      }
+      return numero;
+    }
     if (typeof val === 'boolean') return val ? 'TRUE' : 'FALSE';
     return String(val);
   });
