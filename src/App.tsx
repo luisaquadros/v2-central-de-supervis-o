@@ -6,6 +6,7 @@ import { SyncIndicator } from './components/SyncIndicator';
 import { NotificationBell } from './components/NotificationBell';
 import { ViewErrorBoundary } from './components/ViewErrorBoundary';
 import { PrimeiraConexaoView } from './views/PrimeiraConexaoView';
+import { isRunningInAppsScript } from './services/gasService';
 import { NavTab } from './types';
 import { DashboardView } from './views/DashboardView';
 import { HojeView } from './views/HojeView';
@@ -29,6 +30,7 @@ type AppView =
 const MainContent: React.FC = () => {
   const {
     periodos,
+    currentUser,
     hasLocalCache,
     connectionStatus,
     syncStatusState,
@@ -114,8 +116,9 @@ const MainContent: React.FC = () => {
     );
   }
 
-  // 2. Primeira Conexão: quando ainda não há dados em cache no IndexedDB
-  if (!hasLocalCache && periodos.length === 0) {
+  // 2. Proteção de dados acadêmicos: cache de dispositivo nunca libera telas sem login.
+  // Firebase preserva o login legítimo ao atualizar a página; Sheets mantém permissão por conta.
+  if ((!currentUser && !isRunningInAppsScript()) || (!hasLocalCache && periodos.length === 0)) {
     return <PrimeiraConexaoView />;
   }
 
