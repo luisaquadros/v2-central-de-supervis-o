@@ -12,6 +12,7 @@ import {
   CalendarCheck,
 } from 'lucide-react';
 import { useSupervisao } from '../context/SupervisaoContext';
+import { ThemeControl } from './ThemeControl';
 import { NavTab } from '../types';
 export type { NavTab };
 
@@ -93,6 +94,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
             </div>
           </div>
 
+          <div className="mt-3 md:hidden flex items-center justify-between gap-2 rounded-lg bg-slate-50 px-3 py-2">
+            <span className="text-xs font-semibold text-slate-700">Aparência</span>
+            <ThemeControl />
+          </div>
           {/* Context Selector: Período Letivo */}
           <div className="mt-3.5 pt-3 border-t border-slate-100">
             <label className="text-[11px] font-medium text-slate-400 block mb-1">

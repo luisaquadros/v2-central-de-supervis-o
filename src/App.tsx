@@ -152,6 +152,12 @@ const MainContent: React.FC = () => {
   return (
     <div className="flex h-[100dvh] min-h-0 bg-slate-100 overflow-hidden font-sans">
       <ErrorNotifier />
+      {isMobileMenuOpen && !isModoSupervisao && (
+        <button type="button" aria-label="Fechar menu de navegação"
+          className="fixed inset-0 z-40 bg-slate-950/40 md:hidden"
+          onClick={() => setIsMobileMenuOpen(false)}
+        />
+      )}
       {/* Sidebar (hidden during Modo Supervisão for maximum tablet focus) */}
       {!isModoSupervisao && (
         <Sidebar
@@ -175,7 +181,7 @@ const MainContent: React.FC = () => {
                 >
                   {isMobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
                 </button>
-                <span className="font-bold text-xs text-slate-900 sm:text-sm truncate">Supervisão</span>
+                <span className="font-bold text-xs text-slate-900 sm:text-sm truncate hidden min-[375px]:inline">Supervisão</span>
               </div>
               <div className="hidden md:flex items-center gap-2 text-xs text-slate-500">
                 <span className="font-semibold text-slate-700">Central de Supervisão</span>
@@ -186,7 +192,7 @@ const MainContent: React.FC = () => {
 
             {/* Persistent Global Sync Indicator, Notifications & Details */}
             <div className="flex items-center gap-1 sm:gap-2 shrink-0">
-              <ThemeControl />
+              <div className="hidden sm:block"><ThemeControl /></div>
               <AppErrorMonitor />
               <NotificationBell
                 onNavigate={(tab, param) => setCurrentView({ type: 'tab', tab, filterParam: param })}
