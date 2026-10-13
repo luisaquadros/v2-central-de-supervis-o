@@ -1,9 +1,9 @@
 import type { Aluno, Matricula } from '../types';
 
-/** A base pode trazer estado vazio para matrículas legadas; exclusões são sempre explícitas. */
+/** Somente matrículas confirmadas entram na chamada. Status vazio não é autorização para presumir presença. */
 export const matriculaParticipaDaChamada = (status: unknown): boolean => {
   const s = String(status ?? '').trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
-  return !['TRANCADO', 'CANCELADO', 'CANCELADA', 'INATIVO', 'INATIVA', 'DESLIGADO', 'DESLIGADA', 'TRANSFERIDO', 'TRANSFERIDA', 'CONCLUIDO', 'CONCLUIDA'].includes(s);
+  return ['MATRICULADO', 'MATRICULADA', 'ATIVO', 'ATIVA'].includes(s);
 };
 
 export function listarAlunosChamada(turmaId: string, matriculas: Matricula[], alunos: Aluno[]) {
