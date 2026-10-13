@@ -868,6 +868,7 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
   const handleSaveError = (err: any) => {
     console.error('Erro de persistência:', err);
+    if (typeof window !== 'undefined') window.dispatchEvent(new Event('cs:save-error'));
     setSaveStatus('ERRO_SINCRONIZACAO');
     setSaveErrorMessage(err?.message || 'Erro ao sincronizar com Google Sheets');
     setSaveStatusMessage('⚠ Erro de sincronização');
