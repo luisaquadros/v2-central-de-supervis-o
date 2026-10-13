@@ -1,0 +1,67 @@
+import type { Aluno, Matricula } from '../types';
+
+/** A base pode trazer estado vazio para matrículas legadas; exclusões são sempre explícitas. */
+export const matriculaParticipaDaChamada = (status: unknown): boolean => {
+  const s = String(status ?? '').trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
+  return !['TRANCADO', 'CANCELADO', 'CANCELADA', 'INATIVO', 'INATIVA', 'DESLIGADO', 'DESLIGADA', 'TRANSFERIDO', 'TRANSFERIDA', 'CONCLUIDO', 'CONCLUIDA'].includes(s);
+};
+
+export function listarAlunosChamada(turmaId: string, matriculas: Matricula[], alunos: Aluno[]) {
+  const alunosPorId = new Map(alunos.map(a => [String(a.aluno_id).trim(), a]));
+  return matriculas.filter(m => String(m.turma_id ?? '').trim() === String(turmaId).trim() && matriculaParticipaDaChamada(m.status))
+    .map(m => { const a = alunosPorId.get(String(m.aluno_id ?? '').trim()); return a ? {matricula:m, aluno:a} : null; })
+    .filter((item): item is {matricula:Matricula; aluno:Aluno} => item !== null)
+    .sort((a,b) => a.aluno.nome.localeCompare(b.aluno.nome,'pt-BR'));
+}
+
+/** Lê células de Sheets em CSV simples, JSON array ou lista separada por quebra de linha. */
+export function separarResponsaveis(value: unknown): string[] {
+  if (value == null || value === '') return [];
+  if (Array.isArray(value)) return value.flatMap(separarResponsaveis);
+  const raw=String(value).trim();
+  if (raw.startsWith('[')) {
+    try { const v=JSON.parse(raw); if(Array.isArray(v)) return separarResponsaveis(v); } catch {}
+  }
+  return raw.split(/[;,\n]+/).map(v=>v.trim().replace(/^["']|["']$/g,'')).filter(Boolean);
+}
+
+export function resolverResponsaveis(params: {
+ leitura: Record<string,unknown>;
+ matriculas: Matricula[];
+ alunos: Aluno[];
+ grupos: {grupo_id:string;nome_grupo?:string}[];
+ integrantes: {grupo_id:string;matricula_id?:string;aluno_id?:string;papel?:string}[];
+}) {
+  const {leitura, matriculas, alunos, grupos, integrantes}=params;
+  const list: {matriculaId:string;nome:string;papel?:string;tipo:'TITULAR'|'SUBSTITUTO'|'GRUPO'}[]=[];
+  const achar=(id:string)=>{
+    const key=id.trim();
+    const mat=matriculas.find(m=>String(m.matricula_id).trim()===key || String(m.aluno_id).trim()===key);
+    const al=alunos.find(a=>String(a.aluno_id).trim()===String(mat?.aluno_id??key) || String(a.identificador_academico??'').trim()===key || a.nome.trim().toLocaleLowerCase('pt-BR')===key.toLocaleLowerCase('pt-BR'));
+    return {mat,al};
+  };
+  const inserir=(rawId:string,tipo:'TITULAR'|'SUBSTITUTO'|'GRUPO',papel?:string)=>{
+    const {mat,al}=achar(rawId);
+    if(!al) return;
+    const id=mat?.matricula_id ?? String(al.aluno_id);
+    const found=list.find(x=>x.matriculaId===id);
+    if(found) { if(tipo==='TITULAR') found.tipo='TITULAR'; return; }
+    list.push({matriculaId:id,nome:al.nome,tipo,papel});
+  };
+  if(leitura.grupo_id && grupos.some(g=>g.grupo_id===leitura.grupo_id)) {
+    integrantes.filter(i=>i.grupo_id===leitura.grupo_id).forEach(i=>inserir(String(i.matricula_id||i.aluno_id||''),'GRUPO',i.papel));
+  }
+  separarResponsaveis(leitura.responsaveis_previstos).forEach(id=>inserir(id,'TITULAR'));
+  separarResponsaveis(leitura.responsaveis_efetivos).forEach(id=>inserir(id,'SUBSTITUTO'));
+  separarResponsaveis(leitura.responsavel_id).forEach(id=>inserir(id,'TITULAR'));
+  // Texto livre da planilha: exibir todos, mesmo sem matrícula vinculada.
+  // Não usar texto livre como chave para alterações na base.
+  const textos=separarResponsaveis(leitura.responsavel_nome ?? leitura.responsaveis_texto);
+  for(const nome of textos) {
+    if(list.some(x=>x.nome.trim().toLocaleLowerCase('pt-BR')===nome.toLocaleLowerCase('pt-BR'))) continue;
+    const {mat,al}=achar(nome);
+    if(al) inserir(mat?.matricula_id??al.aluno_id,'TITULAR');
+    else list.push({matriculaId:'',nome,tipo:'TITULAR'});
+  }
+  return list;
+}
