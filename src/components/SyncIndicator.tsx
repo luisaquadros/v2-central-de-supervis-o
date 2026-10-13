@@ -84,6 +84,15 @@ export const SyncIndicator: React.FC = () => {
       );
     }
 
+    if (syncStatusState.status !== 'SINCRONIZADO' || syncStatusState.erros.length > 0 || syncStatusState.conflitosCount > 0) {
+      return (
+        <div className="flex items-center gap-1.5 text-xs text-amber-900 bg-amber-50 border border-amber-300 px-2 xl:px-3 py-1.5 rounded-full min-h-10 min-w-10 justify-center">
+          <AlertCircle className="w-3.5 h-3.5 text-amber-700" />
+          <span className="font-semibold hidden xl:inline">⚠ Atualização incompleta — confira o status</span>
+        </div>
+      );
+    }
+
     // Apenas após confirmação real e remota da API Google Sheets
     return (
       <div className="flex items-center gap-1.5 text-xs text-emerald-800 bg-emerald-50 border border-emerald-200 px-2 xl:px-3 py-1.5 rounded-full min-h-10 min-w-10 justify-center cursor-pointer hover:bg-emerald-100 transition-colors">
@@ -104,7 +113,9 @@ export const SyncIndicator: React.FC = () => {
           syncStatusState.pendentesCount > 0 ? 'alterações aguardando envio' :
           syncStatusState.status === 'SINCRONIZANDO' ? 'sincronizando' :
           syncStatusState.status === 'ERRO' ? 'erro na sincronização' :
-          syncStatusState.status === 'LOCAL' ? 'dados locais' : 'sincronizado'}. Toque para detalhes.`}
+          syncStatusState.status === 'LOCAL' ? 'dados locais' :
+          syncStatusState.status !== 'SINCRONIZADO' || syncStatusState.erros.length > 0 || syncStatusState.conflitosCount > 0
+          ? 'atualização incompleta' : 'sincronizado'}. Toque para detalhes.`}
       >
         {renderBadge()}
       </button>
