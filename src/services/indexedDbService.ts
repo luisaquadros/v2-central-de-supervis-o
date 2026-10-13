@@ -352,6 +352,7 @@ export async function salvarAlteracaoAtomica(
     criado_em: new Date().toISOString(), status: 'PENDENTE', tentativas: 0,
   };
   return new Promise((resolve, reject) => {
+    let erroConflito: Error | null = null;
     const tx = db.transaction([STORE_TABELAS, STORE_QUEUE], 'readwrite');
     const tables = tx.objectStore(STORE_TABELAS);
     const queue = tx.objectStore(STORE_QUEUE);
@@ -369,6 +370,11 @@ export async function salvarAlteracaoAtomica(
       pending.onsuccess = () => {
         for (const prior of pending.result as SyncQueueItem[]) {
           if (prior.tabela === tabela && matches(prior.payload)) {
+            if (prior.status === 'CONFLITO') {
+              erroConflito = new Error('Este registro tem um conflito de sincronização não resolvido. A edição foi cancelada sem apagar o registro local.');
+              tx.abort(); // Desfaz também a alteração provisória da tabela local.
+              return;
+            }
             if (tipo !== 'DELETE' && prior.tipo !== 'DELETE') item.payload = { ...prior.payload, ...item.payload };
             queue.delete(prior.id);
           }
@@ -377,6 +383,6 @@ export async function salvarAlteracaoAtomica(
       };
     };
     tx.oncomplete = () => { db.close(); resolve(item); };
-    tx.onerror = tx.onabort = () => { db.close(); reject(tx.error || new Error('Falha ao salvar no dispositivo.')); };
+    tx.onerror = tx.onabort = () => { db.close(); reject(erroConflito || tx.error || new Error('Falha ao salvar no dispositivo.')); };
   });
 }
