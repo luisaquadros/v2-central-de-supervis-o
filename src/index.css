@@ -118,3 +118,17 @@ html[data-theme="dark"] {
 html[data-theme="dark"] .cs-nav-active { background: #314e67; color: #fff; }
 html[data-theme="dark"] .cs-primary-action { background: #314e67; color: #fff; }
 html[data-theme="dark"] .cs-primary-action:hover { background: #3c5b75; }
+
+/* Leitura prolongada dos registros semanais: legibilidade e contraste nos dois temas. */
+.cs-reading-copy {
+  font-size: 0.9375rem;
+  line-height: 1.65;
+  max-width: 80ch;
+}
+.cs-reading-link {
+  color: #1e6965;
+  text-underline-offset: 3px;
+}
+.cs-reading-link:hover { color: var(--cs-navy); }
+html[data-theme="dark"] .cs-reading-link { color: #91dfd1; }
+html[data-theme="dark"] .cs-reading-link:hover { color: #c2f4eb; }
