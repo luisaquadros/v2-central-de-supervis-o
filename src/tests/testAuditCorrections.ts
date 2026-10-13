@@ -136,9 +136,9 @@ const situacaoOficial: SituacaoAtualTurma[] = [
 
 const resConflito = calcularMetricasCronogramaRss('turma-conflito', calConflito, situacaoOficial, '2026-10-06');
 
-assert(resConflito.semanaAtual === 10, 'Datas do calendário prevalecem sobre o número da aula de supervisão');
-assert(resConflito.totalSemanas === 10, 'Total corresponde às dez janelas efetivamente informadas no teste');
-assert(resConflito.semanaTexto === '10 / 10', 'Exibe a última semana do calendário fornecido');
+assert(resConflito.semanaAtual === 11, 'Próxima janela prevista é a semana 11, não a aula de supervisão 5');
+assert(resConflito.totalSemanas === 12, 'Total corresponde às doze janelas informadas no teste');
+assert(resConflito.semanaTexto === '11 / 12', 'Exibe próxima janela prevista com total do cronograma');
 assert(resConflito.semanasEncerradas === 10, 'Todas as semanas encerradas continuam contadas após o período');
 assert(resConflito.semanasEncerradasTexto === '10', 'Texto correto de semanas encerradas');
 assert(resConflito.conflitoIdentificado === true, 'Conflito de datas defasadas na base foi identificado e sinalizado');
