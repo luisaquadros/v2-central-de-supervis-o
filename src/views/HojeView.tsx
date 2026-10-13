@@ -17,9 +17,10 @@ import {
   Bell,
   UserCheck,
   AlertCircle,
+  RefreshCw,
 } from 'lucide-react';
 import { useSupervisao } from '../context/SupervisaoContext';
-import { calcularMetricasCronogramaRss, getHojeDataIso, obterLeiturasAgendadas } from '../services/supervisaoOperacionalService';
+import { calcularMetricasCronogramaRss, getHojeDataIso, obterLeiturasAgendadas, listarProximasSupervisoes } from '../services/supervisaoOperacionalService';
 
 interface HojeViewProps {
   onOpenTurma: (turmaId: string) => void;
@@ -54,10 +55,18 @@ export const HojeView: React.FC<HojeViewProps> = ({
     getSupervisaoAtual,
     getProximaSupervisao,
     getPendenciasOperacionais,
+    sincronizarAgora,
+    entregas,
   } = useSupervisao();
 
+  // Atualiza a agenda enquanto a página permanece aberta, inclusive na virada do dia.
+  const [agora, setAgora] = React.useState(() => new Date());
+  const [atualizando, setAtualizando] = React.useState(false);
+  React.useEffect(() => {
+    const id = setInterval(() => setAgora(new Date()), 60_000);
+    return () => clearInterval(id);
+  }, []);
   const supervisaoAtual = getSupervisaoAtual();
-  const proximaSupervisao = getProximaSupervisao();
   const pendenciasAtencao = getPendenciasOperacionais();
 
   // Filtragem de turmas do período ativo
@@ -65,15 +74,16 @@ export const HojeView: React.FC<HojeViewProps> = ({
     t => (t.periodo_id === selectedPeriodoId || !selectedPeriodoId) && t.status !== 'ARQUIVADO'
   );
 
-  // Turma prioritária para supervisão hoje / próxima supervisão
-  const turmaEmDestaque = supervisaoAtual.turma || proximaSupervisao?.turma || turmasAtivas[0];
-  const horarioDestaque = turmaEmDestaque
-    ? horariosTurma.find(h => h.turma_id === turmaEmDestaque.turma_id)
-    : undefined;
+  const agenda = listarProximasSupervisoes(turmasAtivas, horariosTurma, encontrosTurma, agora);
+  const proximasAulas = agenda.slice(0, 8);
+  const proximaSupervisao = agenda[0] ?? null;
+  const turmaEmDestaque = (supervisaoAtual.emAndamento ? supervisaoAtual.turma : undefined)
+    || proximaSupervisao?.turma;
+  const horarioDestaque = proximaSupervisao?.horario;
 
   // Cálculos consolidados da base
   const totalAlunosAtivos = alunos.filter(a => a.status === 'ATIVO').length;
-  const hojeStr = getHojeDataIso();
+  const hojeStr = getHojeDataIso(agora);
 
   // RSS & Cronograma Semanal: Calculado canonicamente com filtragem estrita por turma_id
   const metricasCronograma = React.useMemo(() => {
@@ -94,8 +104,8 @@ export const HojeView: React.FC<HojeViewProps> = ({
   const frequenciasParaRevisar = faltasInjustificadas + justificativasPendentes;
 
   // Documentos
-  const docsPendentes = documentos.filter(d => d.status === 'PENDENTE').length;
-  const docsCompletos = documentos.filter(d => d.status === 'ENTREGUE').length;
+  const docsPendentes = entregas.length ? entregas.filter(e => ['PENDENTE', 'A CONFERIR'].includes(String(e.status_entrega ?? e.status ?? '').trim().toUpperCase())).length + documentos.filter(d => d.status === 'PENDENTE').length : documentos.filter(d => d.status === 'PENDENTE').length;
+  const docsCompletos = entregas.length ? entregas.filter(e => ['ENVIADO', 'ENTREGUE'].includes(String(e.status_entrega ?? e.status ?? '').trim().toUpperCase())).length + documentos.filter(d => d.status === 'ENTREGUE').length : documentos.filter(d => d.status === 'ENTREGUE').length;
 
   // Avaliação Semestral: cálculo real a partir de avaliacoesCompletas e matrículas
   const totalMatriculas = matriculas.filter(m => m.status === 'MATRICULADO').length;
@@ -124,6 +134,29 @@ export const HojeView: React.FC<HojeViewProps> = ({
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
+      <section className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 shadow-xs space-y-3" aria-label="Agenda cronológica da supervisão">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div><h2 className="text-base font-bold text-slate-900">Hoje e próximas supervisões</h2>
+            <p className="text-xs text-slate-500">Atualizada pela data, hora e status oficial de cada turma.</p></div>
+          <button type="button" disabled={atualizando} onClick={async () => {
+            setAtualizando(true);
+            try { await sincronizarAgora(); setAgora(new Date()); }
+            finally { setAtualizando(false); }
+          }} className="min-h-[44px] px-3 py-2 rounded-lg border border-slate-300 text-slate-800 text-xs font-semibold flex gap-2 items-center disabled:opacity-50">
+            <RefreshCw className="w-4 h-4" /> {atualizando ? 'Sincronizando...' : 'Atualizar agenda'}
+          </button>
+        </div>
+        {proximasAulas.length === 0 ? <p className="text-sm text-slate-600">Nenhuma próxima supervisão encontrada no calendário ativo. Confira os horários da turma.</p> :
+          <div className="divide-y divide-slate-100">
+            {proximasAulas.map(aula => (
+              <div key={aula.turma.turma_id + aula.dataProxima + aula.horaInicio} className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 py-3">
+                <div><p className="text-sm font-bold text-slate-900">{aula.turma.nome}</p>
+                  <p className="text-xs text-slate-600 mt-1">{aula.dataProxima.split('-').reverse().join('/')} · {aula.diaSemanaNome} · {aula.horaInicio}–{aula.horaFim}{aula.dataProxima === hojeStr ? ' · Hoje' : ''}</p></div>
+                <button onClick={() => onIniciarSupervisao(aula.turma.turma_id)} className="min-h-[44px] px-4 py-2 rounded-lg bg-slate-900 text-white font-semibold text-xs">Abrir Modo Aula</button>
+              </div>
+            ))}
+          </div>}
+      </section>
       {/* 1. AGORA: Supervisão em andamento, Chamada pendente ou Informativo */}
       {supervisaoAtual.emAndamento && supervisaoAtual.turma && (
         <div className="bg-slate-900 border-2 border-amber-400 rounded-2xl p-5 text-white shadow-md">

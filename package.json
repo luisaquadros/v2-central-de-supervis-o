@@ -9,7 +9,7 @@
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
-    "test": "node --import tsx src/tests/testAuditCorrections.ts && node --import tsx src/tests/testOperationalConsolidation.ts && node --import tsx src/tests/testSheetWrites.ts && node --import tsx src/tests/testSyncResilience.ts && node --import tsx src/tests/testRssGrupos.ts && node --import tsx src/tests/testAulaUx.ts && node --import tsx src/tests/testUxRules.ts && node --import tsx src/tests/testAvaliacoes.ts && node --import tsx src/tests/testAulaParticipants.ts && node --import tsx src/tests/testRssVinculos.ts && node --import tsx src/tests/testPendenciaResolution.ts"
+    "test": "node --import tsx src/tests/testAuditCorrections.ts && node --import tsx src/tests/testOperationalConsolidation.ts && node --import tsx src/tests/testSheetWrites.ts && node --import tsx src/tests/testSyncResilience.ts && node --import tsx src/tests/testRssGrupos.ts && node --import tsx src/tests/testAulaUx.ts && node --import tsx src/tests/testUxRules.ts && node --import tsx src/tests/testAvaliacoes.ts && node --import tsx src/tests/testAulaParticipants.ts && node --import tsx src/tests/testRssVinculos.ts && node --import tsx src/tests/testPendenciaResolution.ts && node --import tsx src/tests/testAgendaHoje.ts"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",

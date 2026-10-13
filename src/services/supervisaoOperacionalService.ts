@@ -100,7 +100,7 @@ export function identificarSupervisaoAtual(
     );
 
     // Se a aula foi explicitamente cancelada / não realizada hoje:
-    if (encontroHoje && encontroHoje.status === 'NAO_REALIZADO') {
+    if (horarioHoje && encontroHoje && encontroHoje.status === 'NAO_REALIZADO') {
       return {
         emAndamento: false,
         turma,
@@ -116,7 +116,7 @@ export function identificarSupervisaoAtual(
     }
 
     // Se foi reagendada a partir de hoje:
-    if (encontroHoje && encontroHoje.status === 'REAGENDADO') {
+    if (horarioHoje && encontroHoje && encontroHoje.status === 'REAGENDADO') {
       return {
         emAndamento: false,
         turma,
@@ -194,73 +194,86 @@ export interface ResultadoProximaSupervisao {
 /**
  * Identifica a PRÓXIMA supervisão agendada que não esteja cancelada
  */
+/** Aceita tanto datas ISO quanto datas brasileiras vindas da planilha de horários. */
+function dataHorarioIso(valor: unknown): string | null {
+  if (!valor) return null;
+  const texto = String(valor).trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(texto)) return texto;
+  const match = texto.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  return match ? [match[3], match[2], match[1]].join('-') : null;
+}
+
+/** Agenda real, em ordem cronológica, sem depender da ordem das linhas de turmas. */
+export function listarProximasSupervisoes(
+  turmas: Turma[],
+  horariosTurma: HorarioTurma[],
+  encontrosTurma: EncontroTurma[],
+  dataReferencia: Date = new Date(),
+  horizonteDias = 14
+): ResultadoProximaSupervisao[] {
+  const ativas = turmas.filter(t => t.status === 'ATIVO');
+  const agoraIso = getHojeDataIso(dataReferencia);
+  const agoraHora = getHoraMinutoAtual(dataReferencia);
+  const eventos: ResultadoProximaSupervisao[] = [];
+  for (let offset = 0; offset <= horizonteDias; offset++) {
+    const dia = new Date(dataReferencia.getFullYear(), dataReferencia.getMonth(), dataReferencia.getDate() + offset);
+    const dataProxima = getHojeDataIso(dia);
+    const diaSemana = dia.getDay();
+    for (const turma of ativas) {
+      const cancelado = encontrosTurma.some(e =>
+        e.turma_id === turma.turma_id &&
+        e.data === dataProxima &&
+        (e.status === 'NAO_REALIZADO' || e.status === 'REAGENDADO')
+      );
+      if (cancelado) continue;
+      const regulares = horariosTurma.filter(h => {
+        if (h.turma_id !== turma.turma_id || Number(h.dia_semana) !== diaSemana || !h.ativo) return false;
+        const inicio = dataHorarioIso(h.data_inicio);
+        const fim = dataHorarioIso(h.data_fim);
+        return (!inicio || inicio <= dataProxima) && (!fim || fim >= dataProxima);
+      });
+      const excepcional = encontrosTurma.find(e =>
+        e.turma_id === turma.turma_id && e.data === dataProxima &&
+        e.status !== 'NAO_REALIZADO' && e.status !== 'REAGENDADO'
+      );
+      const transferido = encontrosTurma.find(e =>
+        e.turma_id === turma.turma_id && e.data_reagendada === dataProxima && e.status === 'REAGENDADO'
+      );
+      const horariosDia = regulares.length ? regulares : (excepcional || transferido ? [{
+        horario_id: 'extra-' + turma.turma_id + '-' + dataProxima,
+        turma_id: turma.turma_id,
+        dia_semana: diaSemana,
+        hora_inicio: excepcional?.hora_inicio || transferido?.hora_inicio || '18:30',
+        hora_fim: excepcional?.hora_fim || transferido?.hora_fim || '21:12',
+        ativo: true,
+      } as HorarioTurma] : []);
+      for (const horario of horariosDia) {
+        const horaInicio = excepcional?.hora_inicio || horario.hora_inicio || '18:30';
+        const horaFim = excepcional?.hora_fim || horario.hora_fim || '21:12';
+        if (dataProxima === agoraIso && horaFim < agoraHora) continue;
+        eventos.push({
+          turma, horario, dataProxima,
+          diaSemanaNome: DIAS_SEMANA_NOMES[diaSemana],
+          horaInicio, horaFim, diasAte: offset,
+        });
+      }
+    }
+  }
+  return eventos.sort((a, b) =>
+    a.dataProxima.localeCompare(b.dataProxima) ||
+    a.horaInicio.localeCompare(b.horaInicio) ||
+    a.turma.nome.localeCompare(b.turma.nome, 'pt-BR')
+  );
+}
+
+/** Próxima supervisão, ignorando cancelamentos e horários já encerrados. */
 export function identificarProximaSupervisao(
   turmas: Turma[],
   horariosTurma: HorarioTurma[],
   encontrosTurma: EncontroTurma[],
   dataReferencia: Date = new Date()
 ): ResultadoProximaSupervisao | null {
-  const turmasAtivas = turmas.filter(t => t.status === 'ATIVO');
-  const horaAtual = getHoraMinutoAtual(dataReferencia);
-
-  // Varre os próximos 14 dias para encontrar a supervisão válida mais próxima
-  for (let offset = 0; offset <= 14; offset++) {
-    const alvo = new Date(dataReferencia);
-    alvo.setDate(dataReferencia.getDate() + offset);
-    const alvoIso = getHojeDataIso(alvo);
-    const diaSemanaAlvo = alvo.getDay();
-
-    for (const turma of turmasAtivas) {
-      // Verifica encontro específico reagendado para esta data
-      const encontroReagendado = encontrosTurma.find(
-        e => e.turma_id === turma.turma_id && e.data === alvoIso && e.status !== 'NAO_REALIZADO'
-      );
-
-      const horario = horariosTurma.find(
-        h => h.turma_id === turma.turma_id && h.dia_semana === diaSemanaAlvo && h.ativo
-      );
-
-      if (!horario && !encontroReagendado) continue;
-
-      // Se for no próprio dia de hoje, precisa ser em horário futuro
-      if (offset === 0 && horario && horario.hora_fim && horaAtual > horario.hora_fim) {
-        continue;
-      }
-
-      // Verifica se a aula foi cancelada nesta data
-      const encontroCancelado = encontrosTurma.find(
-        e => e.turma_id === turma.turma_id && e.data === alvoIso && e.status === 'NAO_REALIZADO'
-      );
-      if (encontroCancelado) {
-        // Aula não realizada/feriado, pula para o próximo
-        continue;
-      }
-
-      const horaInicio = encontroReagendado?.hora_inicio || horario?.hora_inicio || '18:30';
-      const horaFim = encontroReagendado?.hora_fim || horario?.hora_fim || '21:12';
-
-      return {
-        turma,
-        horario: horario || {
-          horario_id: 'reagendado',
-          turma_id: turma.turma_id,
-          dia_semana: diaSemanaAlvo,
-          hora_inicio: horaInicio,
-          hora_fim: horaFim,
-          data_inicio: alvoIso,
-          data_fim: alvoIso,
-          ativo: true,
-        },
-        dataProxima: alvoIso,
-        diaSemanaNome: DIAS_SEMANA_NOMES[diaSemanaAlvo],
-        horaInicio,
-        horaFim,
-        diasAte: offset,
-      };
-    }
-  }
-
-  return null;
+  return listarProximasSupervisoes(turmas, horariosTurma, encontrosTurma, dataReferencia)[0] ?? null;
 }
 
 export interface ItemChamadaPendente {
