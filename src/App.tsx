@@ -6,6 +6,7 @@ import { SyncIndicator } from './components/SyncIndicator';
 import { NotificationBell } from './components/NotificationBell';
 import { ThemeControl } from './components/ThemeControl';
 import { AppErrorMonitor } from './components/AppErrorMonitor';
+import { MobileBottomNav } from './components/MobileBottomNav';
 import { PrepararAulaModal } from './components/PrepararAulaModal';
 import { ErrorNotifier } from './components/ErrorNotifier';
 import { ViewErrorBoundary } from './components/ViewErrorBoundary';
@@ -35,6 +36,7 @@ const MainContent: React.FC = () => {
   const {
     periodos,
     turmas,
+    selectedPeriodoId,
     currentUser,
     acessoGoogleValidado,
     hasLocalCache,
@@ -50,6 +52,18 @@ const MainContent: React.FC = () => {
   // Navigation handlers
   const handleSelectNavTab = (tab: NavTab) => {
     setCurrentView({ type: 'tab', tab });
+  };
+
+  const handleMobileSelect = (action: 'hoje'|'turmas'|'aula'|'avaliacao'|'menu') => {
+    if (action === 'menu') { setIsMobileMenuOpen(true); return; }
+    setIsMobileMenuOpen(false);
+    if (action === 'aula') {
+      const turma = turmas.find(t => t.periodo_id === selectedPeriodoId && t.status === 'ATIVO') ||
+        turmas.find(t => t.status === 'ATIVO');
+      setCurrentView(turma ? {type:'modo-supervisao',turmaId:turma.turma_id} : {type:'tab',tab:'turmas'});
+      return;
+    }
+    setCurrentView({type:'tab',tab: action === 'avaliacao' ? 'avaliacao' : action});
   };
 
   const handleOpenTurma = (turmaId: string) => {
@@ -133,7 +147,7 @@ const MainContent: React.FC = () => {
   const isModoSupervisao = currentView.type === 'modo-supervisao';
 
   return (
-    <div className="flex h-screen bg-slate-100 overflow-hidden font-sans">
+    <div className="flex h-[100dvh] min-h-0 bg-slate-100 overflow-hidden font-sans">
       <ErrorNotifier />
       {/* Sidebar (hidden during Modo Supervisão for maximum tablet focus) */}
       {!isModoSupervisao && (
@@ -149,7 +163,7 @@ const MainContent: React.FC = () => {
       <main className="flex-1 flex flex-col min-w-0 overflow-hidden">
         {/* Persistent Global Header Bar */}
         {!isModoSupervisao && (
-          <header className="bg-white border-b border-slate-200 px-4 py-2.5 flex items-center justify-between shrink-0 shadow-2xs">
+          <header className="bg-white border-b border-slate-200 px-2.5 sm:px-4 py-2.5 flex items-center justify-between shrink-0 shadow-2xs min-w-0 gap-1">
             <div className="flex items-center gap-3">
               <div className="md:hidden flex items-center gap-2">
                 <button
@@ -158,7 +172,7 @@ const MainContent: React.FC = () => {
                 >
                   {isMobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
                 </button>
-                <span className="font-bold text-sm text-slate-900">Central de Supervisão</span>
+                <span className="font-bold text-xs text-slate-900 sm:text-sm truncate">Supervisão</span>
               </div>
               <div className="hidden md:flex items-center gap-2 text-xs text-slate-500">
                 <span className="font-semibold text-slate-700">Central de Supervisão</span>
@@ -168,7 +182,7 @@ const MainContent: React.FC = () => {
             </div>
 
             {/* Persistent Global Sync Indicator, Notifications & Details */}
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1 sm:gap-2 shrink-0">
               <ThemeControl />
               <AppErrorMonitor />
               <NotificationBell
@@ -204,7 +218,7 @@ const MainContent: React.FC = () => {
         )}
 
         {/* Viewport View Content with Resilience against White Screen */}
-        <div className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8">
+        <div className={`flex-1 min-h-0 overflow-y-auto overscroll-contain touch-pan-y p-3 sm:p-6 lg:p-8 ${isModoSupervisao ? '' : 'pb-[calc(5rem+env(safe-area-inset-bottom))] md:pb-8'}`}>
           <ViewErrorBoundary
             key={
               currentView.type === 'tab'
@@ -318,6 +332,13 @@ const MainContent: React.FC = () => {
           </ViewErrorBoundary>
         </div>
       </main>
+      {!isModoSupervisao && (
+        <MobileBottomNav
+          selected={currentView.type === 'tab' && ['hoje','turmas','avaliacao'].includes(currentView.tab) ?
+            currentView.tab as 'hoje'|'turmas'|'avaliacao' : 'menu'}
+          onSelect={handleMobileSelect}
+        />
+      )}
       {prepararTurmaId && turmas.some(t => t.turma_id === prepararTurmaId) && (
         <PrepararAulaModal
           isOpen
