@@ -21,6 +21,7 @@ import {
   X,
 } from 'lucide-react';
 import { useSupervisao } from '../context/SupervisaoContext';
+import { getHojeDataIso } from '../services/supervisaoOperacionalService';
 import { Frequencia, TurmaOrigem } from '../types';
 
 interface FrequenciaViewProps {
@@ -80,7 +81,7 @@ export const FrequenciaView: React.FC<FrequenciaViewProps> = ({
   const activeTurma = turmas.find(t => t.turma_id === selectedTurmaId);
   const origensDaTurma = turmasOrigem.filter(o => o.turma_id === selectedTurmaId && o.ativo);
 
-  const hojeIso = useMemo(() => new Date().toISOString().split('T')[0], []);
+  const hojeIso = useMemo(() => getHojeDataIso(), []);
   const supervisaoAtual = getSupervisaoAtual();
 
   // Matrículas da turma filtrada por Docente Online se selecionado
