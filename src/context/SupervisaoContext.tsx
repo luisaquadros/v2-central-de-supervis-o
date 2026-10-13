@@ -847,6 +847,27 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     setSaveStatusMessage('⚠ Erro de sincronização');
   };
 
+  // Persistência: só confirma sincronização remota após resposta do Google Sheets.
+  // Mantém o estado local atualizado no IndexedDB para uso offline.
+  const persistirMudancaWeb = async (
+    tabela: string,
+    tipo: 'INSERT' | 'UPDATE' | 'DELETE',
+    registro: Record<string, any>,
+    listaAtualizada: any[]
+  ): Promise<void> => {
+    if (isRunningInAppsScript()) {
+      notifySaveSuccess(true);
+      return;
+    }
+    try {
+      const resultado = await salvarRegistroResiliente(tabela, tipo, registro, listaAtualizada);
+      notifySaveSuccess(resultado.gravadoOnline);
+    } catch (erro) {
+      handleSaveError(erro);
+      throw erro;
+    }
+  };
+
   const reconectarESincronizar = async (): Promise<void> => {
     try {
       setSaveStatus('SALVANDO');
@@ -1143,6 +1164,7 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
   const deleteOrientacao = async (orientacaoId: string): Promise<void> => {
     setSaveStatus('SALVANDO');
+    const anterior = orientacoes.find(o => o.orientacao_id === orientacaoId);
     if (isRunningInAppsScript()) {
       try {
         await deleteOrientacaoNoSheets(orientacaoId);
@@ -1151,7 +1173,7 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       }
     }
     setOrientacoes(prev => prev.filter(ori => ori.orientacao_id !== orientacaoId));
-    notifySaveSuccess();
+    if (anterior) await persistirMudancaWeb('orientacoes', 'DELETE', anterior, orientacoes.filter(o => o.orientacao_id !== orientacaoId));
   };
 
   // ==========================================
@@ -1180,11 +1202,12 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       texto,
     };
     setFeedbacks(prev => [newFeedback, ...prev]);
-    notifySaveSuccess();
+    await persistirMudancaWeb('feedback_alunos', 'INSERT', newFeedback, [newFeedback, ...feedbacks]);
   };
 
   const deleteFeedback = async (feedbackId: string): Promise<void> => {
     setSaveStatus('SALVANDO');
+    const anterior = feedbacks.find(f => f.feedback_id === feedbackId);
     if (isRunningInAppsScript()) {
       try {
         await deleteFeedbackNoSheets(feedbackId);
@@ -1193,7 +1216,7 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       }
     }
     setFeedbacks(prev => prev.filter(fb => fb.feedback_id !== feedbackId));
-    notifySaveSuccess();
+    if (anterior) await persistirMudancaWeb('feedback_alunos', 'DELETE', anterior, feedbacks.filter(f => f.feedback_id !== feedbackId));
   };
 
   // ==========================================
@@ -1227,11 +1250,12 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       observacao,
     };
     setOcorrencias(prev => [newOcorrencia, ...prev]);
-    notifySaveSuccess();
+    await persistirMudancaWeb('ocorrencias', 'INSERT', newOcorrencia, [newOcorrencia, ...ocorrencias]);
   };
 
   const deleteOcorrencia = async (ocorrenciaId: string): Promise<void> => {
     setSaveStatus('SALVANDO');
+    const anterior = ocorrencias.find(o => o.ocorrencia_id === ocorrenciaId);
     if (isRunningInAppsScript()) {
       try {
         await deleteOcorrenciaNoSheets(ocorrenciaId);
@@ -1240,7 +1264,7 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       }
     }
     setOcorrencias(prev => prev.filter(oc => oc.ocorrencia_id !== ocorrenciaId));
-    notifySaveSuccess();
+    if (anterior) await persistirMudancaWeb('ocorrencias', 'DELETE', anterior, ocorrencias.filter(o => o.ocorrencia_id !== ocorrenciaId));
   };
 
   // ==========================================
@@ -1276,7 +1300,7 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       atualizado_em: today,
     };
     setPontosAcompanhamento(prev => [newPonto, ...prev]);
-    notifySaveSuccess();
+    await persistirMudancaWeb('pontos_acompanhamento', 'INSERT', newPonto, [newPonto, ...pontosAcompanhamento]);
   };
 
   const togglePontoStatus = async (pontoId: string): Promise<void> => {
@@ -1285,6 +1309,7 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     const ponto = pontosAcompanhamento.find(p => p.ponto_id === pontoId);
     const novoStatus = ponto?.status === 'ATIVO' ? 'CONCLUIDO' : 'ATIVO';
     const dataConclusao = novoStatus === 'CONCLUIDO' ? today : undefined;
+    if (!ponto) return;
 
     if (isRunningInAppsScript()) {
       try {
@@ -1306,11 +1331,13 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           : p
       )
     );
-    notifySaveSuccess();
+    const atualizado = { ...ponto, status: novoStatus, atualizado_em: today, data_conclusao: dataConclusao };
+    await persistirMudancaWeb('pontos_acompanhamento', 'UPDATE', atualizado, pontosAcompanhamento.map(p => p.ponto_id === pontoId ? atualizado : p));
   };
 
   const deletePontoAcompanhamento = async (pontoId: string): Promise<void> => {
     setSaveStatus('SALVANDO');
+    const anterior = pontosAcompanhamento.find(p => p.ponto_id === pontoId);
     if (isRunningInAppsScript()) {
       try {
         await deletePontoAcompanhamentoNoSheets(pontoId);
@@ -1319,7 +1346,7 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       }
     }
     setPontosAcompanhamento(prev => prev.filter(p => p.ponto_id !== pontoId));
-    notifySaveSuccess();
+    if (anterior) await persistirMudancaWeb('pontos_acompanhamento', 'DELETE', anterior, pontosAcompanhamento.filter(p => p.ponto_id !== pontoId));
   };
 
   // ==========================================
@@ -1377,6 +1404,7 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     obs?: string
   ): Promise<void> => {
     setSaveStatus('SALVANDO');
+    const anterior = documentos.find(d => d.documento_id === documentoId);
     const today = new Date().toISOString().split('T')[0];
 
     if (isRunningInAppsScript()) {
@@ -1399,7 +1427,10 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           : d
       )
     );
-    notifySaveSuccess();
+    if (anterior) {
+      const atualizado = { ...anterior, status, data_entrega: status === 'ENTREGUE' ? today : anterior.data_entrega, observacao: obs !== undefined ? obs : anterior.observacao };
+      await persistirMudancaWeb('documentos', 'UPDATE', atualizado, documentos.map(d => d.documento_id === documentoId ? atualizado : d));
+    }
   };
 
   const addDocumento = async (
@@ -1431,7 +1462,7 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       observacao: obs,
     };
     setDocumentos(prev => [...prev, newDoc]);
-    notifySaveSuccess();
+    await persistirMudancaWeb('documentos', 'INSERT', newDoc, [...documentos, newDoc]);
   };
 
   // ==========================================
@@ -1476,7 +1507,7 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       atualizado_em: now,
     };
     setFrequencias(prev => [newFreq, ...prev]);
-    notifySaveSuccess();
+    await persistirMudancaWeb('frequencias', 'INSERT', newFreq, [newFreq, ...frequencias]);
   };
 
   const updateFrequenciaStatus = async (
@@ -1485,6 +1516,7 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     justificativa?: string
   ): Promise<void> => {
     setSaveStatus('SALVANDO');
+    const anterior = frequencias.find(f => f.frequencia_id === frequenciaId);
     const now = new Date().toISOString();
 
     if (isRunningInAppsScript()) {
@@ -1507,7 +1539,10 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           : f
       )
     );
-    notifySaveSuccess();
+    if (anterior) {
+      const atualizado = { ...anterior, status, justificativa: justificativa !== undefined ? justificativa : anterior.justificativa, atualizado_em: now };
+      await persistirMudancaWeb('frequencias', 'UPDATE', atualizado, frequencias.map(f => f.frequencia_id === frequenciaId ? atualizado : f));
+    }
   };
 
   // ==========================================
@@ -1521,6 +1556,8 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     observacao: string = ''
   ): Promise<void> => {
     setSaveStatus('SALVANDO');
+    const anterior = avaliacoes.find(a => a.matricula_id === matriculaId && a.criterio_id === criterioId);
+    const registro = anterior ? { ...anterior, nota, observacao } : { avaliacao_id: generateUuid(), matricula_id: matriculaId, criterio_id: criterioId, nota, observacao };
 
     if (isRunningInAppsScript()) {
       try {
@@ -1540,7 +1577,7 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         return [
           ...prev,
           {
-            avaliacao_id: generateUuid(),
+            avaliacao_id: registro.avaliacao_id,
             matricula_id: matriculaId,
             criterio_id: criterioId,
             nota,
@@ -1549,7 +1586,7 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         ];
       }
     });
-    notifySaveSuccess();
+    await persistirMudancaWeb('avaliacoes', anterior ? 'UPDATE' : 'INSERT', registro, anterior ? avaliacoes.map(a => a.avaliacao_id === anterior.avaliacao_id ? registro : a) : [...avaliacoes, registro]);
   };
 
   // ==========================================
@@ -1787,10 +1824,14 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       categoria,
       texto,
       status,
+      data: dataHora || new Date().toISOString(),
+      descricao: texto,
+      periodo_id: selectedPeriodoId,
+      turma_id: matriculas.find(m => m.matricula_id === matriculaId)?.turma_id || '',
+      escopo: 'INDIVIDUAL',
     };
-    await salvarRegistroResiliente('registros_supervisao', 'INSERT', novoRegistro, [novoRegistro, ...registrosSupervisao]);
+    await persistirMudancaWeb('registros_supervisao', 'INSERT', novoRegistro, [novoRegistro, ...registrosSupervisao]);
     setRegistrosSupervisao(prev => [novoRegistro, ...prev]);
-    notifySaveSuccess();
     return novoRegistro;
   };
 
@@ -1809,10 +1850,15 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       status_entrega: statusEntrega,
       data_entrega: statusEntrega === 'ENTREGUE' ? new Date().toISOString().split('T')[0] : '',
       observacao: obs,
+      periodo_id: selectedPeriodoId,
+      turma_id: matriculas.find(m => m.matricula_id === matriculaId)?.turma_id || '',
+      tipo_entrega: tipoDocumento,
+      status: statusEntrega,
+      data_envio: statusEntrega === 'ENTREGUE' ? new Date().toISOString().split('T')[0] : '',
+      escopo: 'INDIVIDUAL',
     };
-    await salvarRegistroResiliente('entregas', 'INSERT', novaEntrega, [novaEntrega, ...entregas]);
+    await persistirMudancaWeb('entregas', 'INSERT', novaEntrega, [novaEntrega, ...entregas]);
     setEntregas(prev => [novaEntrega, ...prev]);
-    notifySaveSuccess();
     return novaEntrega;
   };
 
