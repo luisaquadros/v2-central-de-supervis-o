@@ -5,6 +5,7 @@ import { Turma } from '../types';
 import { AulaPreparacaoPainel } from './AulaPreparacaoPainel';
 import { obterLeiturasAgendadas, getHojeDataIso, proximoMarcoDaTurma } from '../services/supervisaoOperacionalService';
 import { gerarSugestoesRss } from '../services/sugestoesAulaService';
+import { ResumoRssSemEnvio } from './ResumoRssSemEnvio';
 
 interface PrepararAulaModalProps {
   isOpen: boolean;
@@ -118,6 +119,8 @@ export const PrepararAulaModal: React.FC<PrepararAulaModalProps> = ({
               <div className="pl-6 text-slate-400">Nenhuma leitura programada especificamente.</div>
             )}
           </div>
+
+          <ResumoRssSemEnvio turmaId={turma.turma_id} />
 
           {/* 1b. O que os estudantes relataram nos últimos 14 dias */}
           <div className="p-3.5 rounded-xl border border-indigo-200 bg-indigo-50/40 space-y-2" data-testid="sugestoes-rss">

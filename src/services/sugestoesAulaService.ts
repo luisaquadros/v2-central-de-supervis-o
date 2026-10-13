@@ -143,3 +143,53 @@ export function gerarSugestoesRss(params: {
     prioritarios, duvidas, limitacoes, termos, ligacaoComLeitura, sugestoes,
   };
 }
+
+export interface ResumoSemEnvio {
+  dias: number;
+  de: string;
+  ate: string;
+  totalUnidades: number;
+  semEnvio: number;
+  tipo: 'GRUPO' | 'INDIVIDUAL';
+  nomes: string[];
+  texto: string;
+}
+
+/**
+ * Resumo de quem NÃO enviou RSS na janela (padrão 7 dias), por turma — em vez de um aviso por estudante.
+ * Grupo (Clínica Ampliada) ou estudante é a unidade. Respostas "em revisão" contam como enviadas.
+ * Devolve null quando não há unidades ou a prática da turma não está em andamento.
+ */
+export function resumirSemEnvioRss(params: {
+  turmaId: string;
+  registros: RegistroSemanal[];
+  unidades: UnidadeRssRef[];
+  hojeIso: string;
+  praticaAtiva: boolean;
+  dias?: number;
+}): ResumoSemEnvio | null {
+  const { turmaId, registros, unidades, hojeIso, praticaAtiva, dias = 7 } = params;
+  if (!praticaAtiva || unidades.length === 0) return null;
+  const de = SOMAR_DIAS(hojeIso, -dias);
+  const enviaram = new Set<string>();
+  for (const r of registros) {
+    const rt = campo(r, 'turma_id');
+    const data = campo(r, 'data_entrega').slice(0, 10);
+    if ((rt && rt !== turmaId) || !/^\d{4}-\d{2}-\d{2}$/.test(data) || data < de || data > hojeIso) continue;
+    const chave = campo(r, 'grupo_id') || campo(r, 'matricula_id');
+    if (chave) enviaram.add(chave);
+  }
+  const faltam = unidades.filter(u => !enviaram.has(u.unidadeId));
+  const tipo: 'GRUPO' | 'INDIVIDUAL' = unidades.some(u => u.tipo === 'GRUPO') ? 'GRUPO' : 'INDIVIDUAL';
+  const n = faltam.length;
+  const periodo = `nos últimos ${dias} dias`;
+  const texto = n === 0
+    ? `Todos os ${tipo === 'GRUPO' ? 'grupos' : 'alunos'} enviaram o registro ${periodo}.`
+    : tipo === 'GRUPO'
+      ? `${n} ${n === 1 ? 'grupo não enviou' : 'grupos não enviaram'} o registro ${periodo}.`
+      : `${n} ${n === 1 ? 'aluno não enviou' : 'alunos não enviaram'} o registro ${periodo}.`;
+  return {
+    dias, de, ate: hojeIso, totalUnidades: unidades.length, semEnvio: n, tipo, texto,
+    nomes: faltam.map(u => u.nome).sort((a, b) => a.localeCompare(b, 'pt-BR')),
+  };
+}
