@@ -1,3 +1,4 @@
+import { resumirDocumentacaoOficial, documentosPendentesOficiais } from '../services/documentacaoAcademicaService';
 import { interpretarStatusEntrega } from '../services/normalizacaoAcademica';
 import { filtrarPendenciasResolvidas } from '../services/pendenciaResolutionService';
 import { selecionarRssDoEstudante } from '../services/rssVinculos';
@@ -1861,10 +1862,8 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
     if (materializado?.total_pendencias === undefined || materializado?.total_pendencias === null) {
       const mats = matriculas.filter(m => m.turma_id === turmaId).map(m => m.matricula_id);
-      const docs = entregas.length > 0
-        ? entregas.filter(e => mats.includes(e.matricula_id || '') &&
-          ['PENDENTE', 'A_CONFERIR'].includes(interpretarStatusEntrega(e.status_entrega ?? e.status))).length
-        : documentos.filter(d => mats.includes(d.matricula_id) && d.status === 'PENDENTE').length;
+      const resumoDocs = resumirDocumentacaoOficial(entregas, documentos, new Set(mats));
+      const docs = resumoDocs.pendentes + resumoDocs.conferir;
       const freqs = frequencias.filter(f => mats.includes(f.matricula_id) && f.status === 'FALTA_SEM_JUSTIFICATIVA').length;
       totalPendencias = docs + freqs;
     }
@@ -2091,9 +2090,8 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     const totalPrevistoNoPeriodo = situacaoRss?.totalPrevistoNoPeriodo ?? 12;
     const saldoRss = situacaoRss?.saldoRss ?? (totalRegistrosEntregues - totalRegistrosEsperados);
 
-    const docsPendentesCount = documentos.filter(
-      d => d.matricula_id === matriculaId && d.status === 'PENDENTE'
-    ).length;
+    const docsResumo = resumirDocumentacaoOficial(entregas, documentos, new Set([matriculaId]));
+    const docsPendentesCount = docsResumo.pendentes + docsResumo.conferir;
 
     const freqs = frequencias.filter(f => f.matricula_id === matriculaId);
     const faltasInjustificadasCount = freqs.filter(
@@ -2125,7 +2123,7 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     const rssOperacional = classificarRssOperacional(situacaoRss, calendarioRss, getHojeDataIso());
     // RSS é informação contextual da aula; não ativa alerta geral de estudante.
     if (docsPendentesCount > 0) {
-      motivosAtencao.push(`${docsPendentesCount} documento(s) pendente(s)`);
+      motivosAtencao.push(`${docsPendentesCount} documento(s) pendente(s) ou a conferir`);
     }
     if (faltasInjustificadasCount > 0) {
       motivosAtencao.push(`${faltasInjustificadasCount} falta(s) sem justificativa`);
@@ -2719,7 +2717,7 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       matriculas,
       alunos,
       frequencias,
-      documentos,
+      documentosPendentesOficiais(entregas, documentos),
       registrosSemanais,
       orientacoes,
       marcosAcademicos,
@@ -2742,6 +2740,7 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     alunos,
     frequencias,
     documentos,
+    entregas,
     registrosSemanais,
     orientacoes,
     marcosAcademicos,
