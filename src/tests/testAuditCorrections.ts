@@ -109,8 +109,8 @@ for (let i = 1; i <= 10; i++) {
     turma_id: 'turma-conflito',
     sequencia: i,
     semana: i,
-    semana_inicio: `2026-01-0${i}`,
-    semana_fim: `2026-01-0${i}`,
+    semana_inicio: new Date(Date.UTC(2026, 0, i)).toISOString().slice(0, 10),
+    semana_fim: new Date(Date.UTC(2026, 0, i)).toISOString().slice(0, 10),
     status_calendario: 'CONCLUIDA',
   });
 }
