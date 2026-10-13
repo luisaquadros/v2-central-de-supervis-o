@@ -36,36 +36,36 @@ export const SyncIndicator: React.FC = () => {
   const renderBadge = () => {
     if (syncStatusState.status === 'SINCRONIZANDO' || sincronizandoManual) {
       return (
-        <div className="flex items-center gap-1.5 text-xs text-blue-700 bg-blue-50 border border-blue-200 px-3 py-1.5 rounded-full cursor-pointer hover:bg-blue-100 transition-colors">
+        <div className="flex items-center gap-1.5 text-xs text-blue-700 bg-blue-50 border border-blue-200 px-2.5 sm:px-3 py-2 sm:py-1.5 min-h-10 rounded-full cursor-pointer hover:bg-blue-100 transition-colors">
           <RefreshCw className="w-3.5 h-3.5 animate-spin text-blue-600" />
-          <span className="font-semibold">Sincronizando com Google Sheets...</span>
+          <span className="hidden sm:inline font-semibold">Sincronizando com Google Sheets...</span>
         </div>
       );
     }
 
     if (isTokenExpired) {
       return (
-        <div className="flex items-center gap-1.5 text-xs text-amber-900 bg-amber-100 border border-amber-300 px-3 py-1.5 rounded-full cursor-pointer hover:bg-amber-200 transition-colors animate-pulse" title="Sessão Google expirada. Clique para reconectar.">
+        <div className="flex items-center gap-1.5 text-xs text-amber-900 bg-amber-100 border border-amber-300 px-2.5 sm:px-3 py-2 sm:py-1.5 min-h-10 rounded-full cursor-pointer hover:bg-amber-200 transition-colors animate-pulse" title="Sessão Google expirada. Clique para reconectar.">
           <Clock className="w-3.5 h-3.5 text-amber-700" />
-          <span className="font-semibold">● Salvo neste dispositivo — aguardando sincronização (Reconectar)</span>
+          <span className="hidden sm:inline font-semibold">● Salvo neste dispositivo — aguardando sincronização (Reconectar)</span>
         </div>
       );
     }
 
     if (syncStatusState.pendentesCount > 0) {
       return (
-        <div className="flex items-center gap-1.5 text-xs text-amber-800 bg-amber-50 border border-amber-300 px-3 py-1.5 rounded-full cursor-pointer hover:bg-amber-100 transition-colors" title="Dados preservados localmente na fila segura.">
+        <div className="flex items-center gap-1.5 text-xs text-amber-800 bg-amber-50 border border-amber-300 px-2.5 sm:px-3 py-2 sm:py-1.5 min-h-10 rounded-full cursor-pointer hover:bg-amber-100 transition-colors" title="Dados preservados localmente na fila segura.">
           <Clock className="w-3.5 h-3.5 text-amber-600" />
-          <span className="font-semibold">● Salvo neste dispositivo — aguardando sincronização</span>
+          <span className="hidden sm:inline font-semibold">● Salvo neste dispositivo — aguardando sincronização</span>
         </div>
       );
     }
 
     if (syncStatusState.status === 'ERRO') {
       return (
-        <div className="flex items-center gap-1.5 text-xs text-red-700 bg-red-50 border border-red-200 px-3 py-1.5 rounded-full cursor-pointer hover:bg-red-100 transition-colors">
+        <div className="flex items-center gap-1.5 text-xs text-red-700 bg-red-50 border border-red-200 px-2.5 sm:px-3 py-2 sm:py-1.5 min-h-10 rounded-full cursor-pointer hover:bg-red-100 transition-colors">
           <AlertCircle className="w-3.5 h-3.5 text-red-600" />
-          <span className="font-semibold">⚠ Erro de sincronização</span>
+          <span className="hidden sm:inline font-semibold">⚠ Erro de sincronização</span>
         </div>
       );
     }
@@ -75,9 +75,9 @@ export const SyncIndicator: React.FC = () => {
         ? formatarDataHora(syncStatusState.ultimaSincronizacao).split(' às ')[1]
         : null;
       return (
-        <div className="flex items-center gap-1.5 text-xs text-slate-700 bg-slate-100 border border-slate-200 px-3 py-1.5 rounded-full cursor-pointer hover:bg-slate-200 transition-colors">
+        <div className="flex items-center gap-1.5 text-xs text-slate-700 bg-slate-100 border border-slate-200 px-2.5 sm:px-3 py-2 sm:py-1.5 min-h-10 rounded-full cursor-pointer hover:bg-slate-200 transition-colors">
           <Database className="w-3.5 h-3.5 text-slate-500" />
-          <span className="font-medium">
+          <span className="hidden sm:inline font-medium">
             Dados locais {horaStr ? `• última sincronização: ${horaStr}` : ''}
           </span>
         </div>
@@ -86,23 +86,30 @@ export const SyncIndicator: React.FC = () => {
 
     // Apenas após confirmação real e remota da API Google Sheets
     return (
-      <div className="flex items-center gap-1.5 text-xs text-emerald-800 bg-emerald-50 border border-emerald-200 px-3 py-1.5 rounded-full cursor-pointer hover:bg-emerald-100 transition-colors">
+      <div className="flex items-center gap-1.5 text-xs text-emerald-800 bg-emerald-50 border border-emerald-200 px-2.5 sm:px-3 py-2 sm:py-1.5 min-h-10 rounded-full cursor-pointer hover:bg-emerald-100 transition-colors">
         <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-        <span className="font-semibold">✓ Sincronizado no Google Sheets</span>
+        <span className="hidden sm:inline font-semibold">✓ Sincronizado no Google Sheets</span>
       </div>
     );
   };
 
   return (
     <>
-      <div onClick={() => setModalAberto(true)} title="Clique para abrir detalhes da sincronização">
+      <button type="button" onClick={() => setModalAberto(true)}
+        aria-label={isTokenExpired ? 'Reconectar Google Sheets' :
+          syncStatusState.pendentesCount > 0 ? 'Alterações aguardando sincronização' :
+          syncStatusState.status === 'ERRO' ? 'Erro de sincronização: abrir detalhes' :
+          syncStatusState.status === 'SINCRONIZANDO' ? 'Sincronização em andamento' :
+          syncStatusState.status === 'SINCRONIZADO' ? 'Dados sincronizados' : 'Ver dados locais'}
+        title="Status do Google Sheets"
+        className="rounded-full focus-visible:outline focus-visible:outline-2 focus-visible:outline-teal-500">
         {renderBadge()}
-      </div>
+      </button>
 
       {/* Painel Modal de Detalhes da Sincronização */}
       {modalAberto && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-md w-full overflow-hidden flex flex-col">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-md w-full overflow-hidden flex flex-col max-h-[calc(100dvh-2rem)]">
             <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-50">
               <div className="flex items-center gap-2">
                 <Database className="w-4 h-4 text-slate-700" />
@@ -116,7 +123,7 @@ export const SyncIndicator: React.FC = () => {
               </button>
             </div>
 
-            <div className="p-5 space-y-4 text-xs">
+            <div className="p-5 space-y-4 text-xs overflow-y-auto min-h-0">
               {/* Hierarquia */}
               <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1 text-slate-600">
                 <div className="font-semibold text-slate-800">Hierarquia da Base:</div>
