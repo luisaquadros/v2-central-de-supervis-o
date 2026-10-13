@@ -569,7 +569,7 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       handleSaveError(err);
       return false;
     }
-  }, [itemExcluidoRecente, notifySaveSuccess, handleSaveError]);
+  }, [itemExcluidoRecente]);
 
   // Gestão Operacional de Encontros (Feriados, Cancelamentos e Reagendamentos)
   const [encontrosTurma, setEncontrosTurma] = useState<EncontroTurma[]>(() => {
@@ -2700,6 +2700,12 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   return (
     <SupervisaoContext.Provider
       value={{
+        confirmacaoExclusaoModal,
+        solicitarConfirmacaoExclusao,
+        fecharConfirmacaoExclusao,
+        itemExcluidoRecente,
+        desfazerUltimaExclusao,
+        limparItemDesfazer,
         periodos,
         disciplinas,
         turmas,
