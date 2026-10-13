@@ -4,7 +4,7 @@ on:
   push:
     branches:
       - main
-      - fix/supervisao-2026-10-13
+      - fix/cloudflare-bun-compat-20261013
   pull_request:
     branches: [main]
   workflow_dispatch:
