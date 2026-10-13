@@ -16,6 +16,6 @@ lint ✔ · `npm test` (32 arquivos) ✔ · build ✔ · `test:worker-real` ✔ 
 - D2, D3, D5, D6, D7. Ativar sincronização/crons só após a validação real.
 
 ## Próxima ação exata
-1. (Autônomo) Retificação de chamada encerrada com justificativa/data/autor (sem alterar frequência já confirmada: cria evento de retificação).
-2. (Autônomo) Ocultar abas confidenciais da ficha para perfil monitora.
+1. **Precisa de autorização**: retificação de chamada encerrada (altera frequência já confirmada, ainda que com trilha).
+2. ✔ Abas confidenciais da ficha ocultas para monitora (implementado; não exercitado no navegador com perfil monitora).
 3. (Bloqueado por D2/D3/validação real) regras de falta/atraso, rubricas, ativação de crons.

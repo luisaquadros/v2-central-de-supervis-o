@@ -129,7 +129,7 @@ Entradas inválidas (sem turma, sem operação, `"*"`, e-mail ruim) são **ignor
 | Funcionalidade | Estado | Observações |
 |---|---|---|
 | Autorização e identidade no servidor | ✅ | §5 |
-| Perfis PROFESSORA_ADMIN e MONITORA por turma | ✅ servidor · 🟡 interface | monitora não vê Avaliação/Semestres/Configurações; revisar fichas com abas vazias |
+| Perfis PROFESSORA_ADMIN e MONITORA por turma | ✅ servidor · 🟡 interface | monitora não vê Avaliação/Semestres/Configurações nem as abas confidenciais da ficha (implementado; não exercitado no navegador com perfil monitora) |
 | Leitura filtrada para monitora (`/api/leitura`) | ✅ | exige conta de serviço |
 | Controle de versão + log em 23 tabelas | ✅ | 7 originais + 7 de acompanhamento + 9 de cadastro (`alunos`, `matriculas`, `turmas`, `horarios_turma`, `periodos`, `disciplinas`, `turmas_origem`, `grupos_pratica`, `grupo_integrantes`), um commit cada, reversível |
 | Cadastros restantes (4 tabelas) | ❌ | ver §3: risco de sobrescrever fórmulas / dependem de D3 |
@@ -201,7 +201,7 @@ O teste `testSincronizacaoDocumentos` recusa qualquer outro valor. **Desligar:**
 ## 10. Próximas etapas priorizadas
 
 1. **Validação real (bloqueia o resto):** itens de §1 e §8 numa cópia da planilha; conferir cabeçalhos e vínculos do Olyver.
-2. **E2 restante:** esconder abas confidenciais da ficha para monitora; conferir e migrar as 4 tabelas restantes; decidir D5.
+2. **E2 restante:** conferir e migrar as 4 tabelas restantes; decidir D5.
 3. **E3 restante:** retificação de chamada encerrada; falta/atraso/justificativa/dispensa separados (D2, depende do regulamento); diário e participação.
 4. **E4:** RSS original imutável, tela de conferência de vínculos, janela operacional de 7 dias sem cortar histórico.
 5. **E5:** rubricas versionadas, competências, devolutiva com evidência (D3).

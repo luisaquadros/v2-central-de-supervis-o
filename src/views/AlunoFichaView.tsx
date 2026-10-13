@@ -3,7 +3,7 @@ import { selecionarRssDoEstudante } from '../services/rssVinculos';
 import { LeituraRss } from '../components/LeituraRss';
 import { DocumentosDriveFicha } from '../components/DocumentosDrive';
 import { temSupervisaoHorarioAlternativo, ROTULO_HORARIO_ALTERNATIVO } from '../services/condicoesMatricula';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   ArrowLeft,
   Calendar,
@@ -34,6 +34,9 @@ interface AlunoFichaViewProps {
   initialTab?: string;
   onVoltar: () => void;
 }
+
+// Monitora não vê abas confidenciais (o servidor também não envia esses dados).
+const ABAS_RESTRITAS = new Set(['pontos', 'orientacoes', 'registros', 'avaliacao', 'estudos', 'ocorrencias', 'feedback', 'historico']);
 
 export const AlunoFichaView: React.FC<AlunoFichaViewProps> = ({
   matriculaId,
@@ -73,9 +76,11 @@ export const AlunoFichaView: React.FC<AlunoFichaViewProps> = ({
     addDocumento,
     updateFrequenciaStatus,
     saveAvaliacao,
+    perfilServidor,
   } = useSupervisao();
 
   const [activeTab, setActiveTab] = useState(initialTab);
+  useEffect(() => { if (perfilServidor?.papel === 'MONITORA' && ABAS_RESTRITAS.has(activeTab)) setActiveTab('resumo'); }, [perfilServidor, activeTab]);
   const [modalType, setModalType] = useState<
     'orientacao' | 'feedback' | 'ocorrencia' | 'ponto' | 'documento' | null
   >(null);
@@ -263,7 +268,8 @@ export const AlunoFichaView: React.FC<AlunoFichaViewProps> = ({
 
   timelineEvents.sort((a, b) => new Date(b.data).getTime() - new Date(a.data).getTime());
 
-  const tabs = [
+  const ehMonitora = perfilServidor?.papel === 'MONITORA';
+  const todasAsAbas = [
     { id: 'resumo', label: 'Resumo' },
     { id: 'pontos', label: 'Pontos de Acompanhamento' },
     { id: 'orientacoes', label: `Orientações (${studentOrientacoes.length})` },
@@ -276,6 +282,7 @@ export const AlunoFichaView: React.FC<AlunoFichaViewProps> = ({
     { id: 'feedback', label: `Feedback (${studentFeedbacks.length})` },
     { id: 'historico', label: 'Histórico' },
   ];
+  const tabs = ehMonitora ? todasAsAbas.filter(t => !ABAS_RESTRITAS.has(t.id)) : todasAsAbas;
 
   const handleAddNovoDoc = (e: React.FormEvent) => {
     e.preventDefault();
