@@ -55,6 +55,7 @@ export interface Orientacao {
 }
 
 export interface RegistroSemanal {
+  aluno_id?: string; // Compatibilidade de leitura com identificadores legados; prioridade sempre à matrícula.
   registro_id: string;
   matricula_id: string;
   semana: number; // 1 a 12 (configurável)
@@ -64,6 +65,7 @@ export interface RegistroSemanal {
 }
 
 export interface Documento {
+  aluno_id?: string; // Compatibilidade de leitura com identificadores legados; prioridade sempre à matrícula.
   documento_id: string;
   matricula_id: string;
   tipo: 'TCLE' | 'Termo de Compromisso' | 'Ficha de Matrícula' | 'Relatório de Atendimento' | 'Declaração da Instituição' | string;
@@ -73,6 +75,7 @@ export interface Documento {
 }
 
 export interface Avaliacao {
+  aluno_id?: string; // Compatibilidade de leitura com identificadores legados; prioridade sempre à matrícula.
   avaliacao_id: string;
   matricula_id: string;
   criterio_id: string;
@@ -81,6 +84,7 @@ export interface Avaliacao {
 }
 
 export interface FeedbackAluno {
+  aluno_id?: string; // Compatibilidade de leitura com identificadores legados; prioridade sempre à matrícula.
   feedback_id: string;
   matricula_id: string;
   data_hora: string;
@@ -300,6 +304,7 @@ export interface AuditoriaBase {
 }
 
 export interface Ocorrencia {
+  aluno_id?: string; // Compatibilidade de leitura com identificadores legados; prioridade sempre à matrícula.
   ocorrencia_id: string;
   matricula_id: string;
   data_hora: string;
@@ -326,6 +331,7 @@ export interface TurmaOrigem {
 }
 
 export interface Frequencia {
+  aluno_id?: string; // Compatibilidade de leitura com identificadores legados; prioridade sempre à matrícula.
   frequencia_id: string;
   matricula_id: string;
   data_aula: string; // YYYY-MM-DD
@@ -354,6 +360,7 @@ export interface HorarioTurma {
 }
 
 export interface PontoAcompanhamento {
+  aluno_id?: string; // Compatibilidade de leitura com identificadores legados; prioridade sempre à matrícula.
   ponto_id: string;
   matricula_id: string;
   texto: string; // Ex: 'Revisar formulação do caso clínico'
