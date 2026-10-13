@@ -1,0 +1,10 @@
+import assert from 'node:assert/strict';
+import { valorConfiguracaoVisivel } from '../services/configuracoesSeguras';
+const textoSensivel='Observação privada simulada';
+assert.equal(valorConfiguracaoVisivel('APP_OPERACIONAL_V1:FILA_PROFESSORA:fp1',JSON.stringify({registro:{titulo:textoSensivel}})),'Registro operacional protegido');
+assert.equal(valorConfiguracaoVisivel('PENDENCIA_RESOLVIDA:id1',JSON.stringify({descricao:textoSensivel})),'Registro operacional protegido');
+assert.equal(valorConfiguracaoVisivel('outra','{"notas":"'+textoSensivel+'"}'),'Conteúdo estruturado protegido');
+assert.equal(valorConfiguracaoVisivel('api_key','abc123'),'Valor protegido');
+assert.equal(valorConfiguracaoVisivel('SEMESTRE_ATUAL','2026.2'),'2026.2');
+assert.equal(valorConfiguracaoVisivel('QUALQUER',''), '—');
+console.log('Configurações: payloads privados não aparecem em valores da interface.');
