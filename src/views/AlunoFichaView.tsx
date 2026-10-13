@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { useSupervisao } from '../context/SupervisaoContext';
 import { normalizarNota, formatarNotaParaExibicao } from '../utils/gradeUtils';
+import { obterSemanaRssValidada } from '../services/supervisaoOperacionalService';
 import {
   ModalNovaOrientacao,
   ModalNovoFeedback,
@@ -42,6 +43,8 @@ export const AlunoFichaView: React.FC<AlunoFichaViewProps> = ({
     periodos,
     orientacoes,
     registrosSemanais,
+    gruposPratica,
+    grupoIntegrantes,
     documentos,
     avaliacoes,
     feedbacks,
@@ -93,10 +96,19 @@ export const AlunoFichaView: React.FC<AlunoFichaViewProps> = ({
     );
   }
 
-  // Related data for this student
+  // Related data for this student: RSS da Clínica Ampliada é por grupo.
+  const grupoVinculo = grupoIntegrantes.find(gi => gi.matricula_id === matriculaId &&
+    gruposPratica.some(g => g.grupo_id === gi.grupo_id && g.turma_id === turma.turma_id)
+  );
+  const grupoId = grupoVinculo?.grupo_id;
+  const grupo = grupoId ? gruposPratica.find(g => g.grupo_id === grupoId) : undefined;
+  const isGrupoRss = gruposPratica.some(g => g.turma_id === turma.turma_id);
   const studentOrientacoes = orientacoes.filter(o => o.matricula_id === matriculaId);
-  const studentRegistros = registrosSemanais.filter(
-    r => r.matricula_id === matriculaId || (aluno && (r.aluno_id === aluno.aluno_id || r.matricula_id === aluno.identificador_academico))
+  const studentRegistros = registrosSemanais.filter(r =>
+    grupoId
+      ? (r as any).grupo_id === grupoId && (!(r as any).turma_id || (r as any).turma_id === turma.turma_id)
+      : !isGrupoRss && !((r as any).grupo_id) &&
+        (r.matricula_id === matriculaId || (aluno && (r.aluno_id === aluno.aluno_id || r.matricula_id === aluno.identificador_academico)))
   );
   const studentDocumentos = documentos.filter(
     d => d.matricula_id === matriculaId || (aluno && (d.aluno_id === aluno.aluno_id || d.matricula_id === aluno.identificador_academico))
@@ -188,12 +200,12 @@ export const AlunoFichaView: React.FC<AlunoFichaViewProps> = ({
   });
 
   studentRegistros
-    .filter(r => r.status === 'ENTREGUE')
+    .filter(r => obterSemanaRssValidada(r) !== null)
     .forEach(reg => {
       timelineEvents.push({
         id: reg.registro_id,
         data: reg.data_entrega || '2026-08-01',
-        titulo: `Registro Semanal - Semana ${reg.semana} entregue`,
+        titulo: `Registro Semanal - Semana ${obterSemanaRssValidada(reg)} recebida${grupoId ? ' pelo grupo' : ''}`,
         detalhes: reg.observacao || 'No prazo',
         tipo: 'registro',
       });
@@ -632,6 +644,16 @@ export const AlunoFichaView: React.FC<AlunoFichaViewProps> = ({
           <div className="flex items-center justify-between">
             <div>
               <h3 className="text-sm font-bold text-slate-900">Registros Semanais de Estágio (RSS)</h3>
+              {grupoId && (
+                <p className="text-xs font-semibold text-indigo-700">
+                  Entrega coletiva — {grupo?.nome_grupo || 'Grupo de prática'}. Envio de qualquer integrante vale para todos.
+                </p>
+              )}
+              {isGrupoRss && !grupoId && (
+                <p className="text-xs font-semibold text-amber-700">
+                  Vínculo com grupo pendente de conferência. Não é possível atribuir falta individual de RSS.
+                </p>
+              )}
               <p className="text-xs text-slate-500">
                 Acompanhamento das entregas semanais: {totalRegistrosEntregues} realizadas de {totalRegistrosEsperados} esperadas até hoje ({totalPrevistoNoPeriodo} no total do período).
               </p>
@@ -643,10 +665,13 @@ export const AlunoFichaView: React.FC<AlunoFichaViewProps> = ({
 
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2.5">
             {Array.from({ length: 12 }, (_, i) => i + 1).map(semana => {
-              const reg = studentRegistros.find(r => r.semana === semana);
-              const status = reg ? reg.status : 'PENDENTE_REVISAO';
-              const isEntregue = status === 'ENTREGUE';
-              const isFaltante = status === 'FALTANTE';
+              const reg = studentRegistros.find(r => obterSemanaRssValidada(r) === semana);
+              const emRevisao = !reg && studentRegistros.some(r =>
+                Number((r as any).semana_rss ?? r.semana) === semana &&
+                String((r as any).status_revisao || '').toUpperCase() === 'PENDENTE_REVISAO'
+              );
+              const isEntregue = !!reg;
+              const isFaltante = !isEntregue && !emRevisao && semana <= totalRegistrosEsperados && !isGrupoRss;
 
               return (
                 <div
@@ -673,10 +698,14 @@ export const AlunoFichaView: React.FC<AlunoFichaViewProps> = ({
                   <div className="text-[11px] my-1">
                     {isEntregue ? (
                       <span className="text-emerald-700 font-semibold">Entregue</span>
+                    ) : emRevisao ? (
+                      <span className="text-amber-700 font-semibold">Em revisão</span>
                     ) : isFaltante ? (
                       <span className="text-red-700 font-semibold">Faltante</span>
                     ) : (
-                      <span className="text-slate-400">Pendente</span>
+                      <span className="text-slate-400">
+                        {isGrupoRss && semana <= totalRegistrosEsperados ? 'Pendente do grupo' : 'Ainda não exigível'}
+                      </span>
                     )}
                     {reg?.data_entrega && (
                       <div className="text-[10px] text-slate-500 font-mono mt-0.5">
@@ -686,19 +715,21 @@ export const AlunoFichaView: React.FC<AlunoFichaViewProps> = ({
                   </div>
 
                   <div className="flex gap-1 border-t border-slate-200/60 pt-1.5">
-                    <button
-                      onClick={() =>
-                        updateRegistroSemanal(
-                          matriculaId,
-                          semana,
-                          isEntregue ? 'PENDENTE_REVISAO' : 'ENTREGUE',
-                          reg?.observacao || ''
-                        )
-                      }
-                      className="w-full py-1 text-[10px] font-semibold rounded bg-white border border-slate-200 hover:bg-slate-100 transition-colors cursor-pointer text-center"
-                    >
-                      {isEntregue ? 'Desfazer' : 'Marcar Entregue'}
-                    </button>
+                    {isGrupoRss || (reg && (reg as any).origem === 'REGISTRO_SEMANAL') ? (
+                      <span className="text-[10px] text-slate-500">
+                        {grupoId ? 'Situação compartilhada pelo grupo' : 'Conferência automática pela planilha'}
+                      </span>
+                    ) : (
+                      <button
+                        onClick={() => updateRegistroSemanal(
+                          matriculaId, semana,
+                          isEntregue ? 'PENDENTE_REVISAO' : 'ENTREGUE', reg?.observacao || ''
+                        )}
+                        className="w-full py-1 text-[10px] font-semibold rounded bg-white border border-slate-200 hover:bg-slate-100 transition-colors cursor-pointer text-center"
+                      >
+                        {isEntregue ? 'Desfazer' : 'Marcar Entregue'}
+                      </button>
+                    )}
                   </div>
                 </div>
               );

@@ -1968,7 +1968,10 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     const turma = turmas.find(t => t.turma_id === matricula.turma_id);
     if (!turma) return null;
 
-    const statusRss = getStatusRssUnidade(turma.turma_id, matriculaId);
+    const grupoIntegrante = grupoIntegrantes.find(gi => gi.matricula_id === matriculaId &&
+      gruposPratica.some(g => g.grupo_id === gi.grupo_id && g.turma_id === turma.turma_id));
+    const grupoId = grupoIntegrante?.grupo_id;
+    const statusRss = getStatusRssUnidade(turma.turma_id, matriculaId, grupoId);
     const regraTurma = regrasRss.find(
       r => r.turma_id === turma.turma_id || r.disciplina_id === turma.disciplina_id
     );
@@ -1982,9 +1985,10 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       statusRss,
       regraTurma,
       situacaoTurma,
-      calTurma
+      calTurma,
+      grupoId
     );
-  }, [matriculas, turmas, getStatusRssUnidade, regrasRss, situacaoAtualTurmas, calendarioRss, registrosSemanais]);
+  }, [matriculas, turmas, getStatusRssUnidade, regrasRss, situacaoAtualTurmas, calendarioRss, registrosSemanais, grupoIntegrantes, gruposPratica]);
 
   const getResumoAlunoSupervisao = (matriculaId: string): AlunoResumoSupervisao | null => {
     const matricula = matriculas.find(m => m.matricula_id === matriculaId);
@@ -2613,7 +2617,10 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       regrasRss,
       situacaoAtualTurmas,
       calendarioRss,
-      statusRssUnidades
+      statusRssUnidades,
+      new Date(),
+      gruposPratica,
+      grupoIntegrantes
     );
   }, [
     selectedPeriodoId,
@@ -2631,7 +2638,9 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     regrasRss,
     situacaoAtualTurmas,
     calendarioRss,
-    statusRssUnidades
+    statusRssUnidades,
+    gruposPratica,
+    grupoIntegrantes
   ]);
 
   const resetDatabaseToSeed = () => {

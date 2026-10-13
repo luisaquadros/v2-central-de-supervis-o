@@ -20,7 +20,7 @@
 
 - `npm ci`: instalação limpa.
 - `npm run lint`: TypeScript sem erros.
-- `npm test`: 63 verificações da auditoria existente, 18 operacionais, 10 grupos da API simulada e cenários adicionais usando o serviço real de sincronização com fake-indexeddb.
+- `npm test`: 63 verificações da auditoria existente, 18 operacionais, 10 grupos da API simulada, testes de RSS coletivo da Clínica Ampliada e cenários adicionais usando o serviço real de sincronização com fake-indexeddb.
 - Cenários adicionais: gravação local atômica, edição offline, recuperação de item interrompido, replay concorrente, proteção da edição mais recente e rejeição quando o armazenamento local falha.
 - `npm run build`: bundle de produção gerado.
 - Testes não utilizaram dados pessoais, credenciais reais nem escreveram na planilha institucional.
@@ -46,3 +46,5 @@
 4. Conferir fila vazia, ausência de erros e persistência após nova sessão; revisar a base de destino antes de usar dados reais.
 
 **Orientação para a próxima supervisão:** manter a Central de Controle/planilha atual como registro principal até concluir esses passos. Não declarar o aplicativo funcionando perfeitamente com base apenas em compilação e testes simulados.
+
+As alterações concorrentes da main até `570007a` foram incorporadas, preservando a contagem coletiva de RSS por grupo. A correção anterior do lock Bun foi substituída pela instalação npm com lock próprio.

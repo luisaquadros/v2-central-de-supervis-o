@@ -4,7 +4,7 @@ on:
   push:
     branches:
       - main
-      - fix/supervisao-2026-10-13
+      - fix/cloudflare-bun-compat-20261013
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -14,6 +14,7 @@ permissions:
 
 jobs:
   validar:
+    name: Validar Node 24 e npm
     runs-on: ubuntu-latest
     timeout-minutes: 12
     steps:
