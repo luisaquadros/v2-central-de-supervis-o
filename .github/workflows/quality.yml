@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - fix/cloudflare-bun-compat-20261013
+      - fix/operacional-20261013-leituras-aulas-mobile
   pull_request:
     branches: [main]
   workflow_dispatch:

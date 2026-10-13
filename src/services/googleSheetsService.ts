@@ -3,6 +3,8 @@ import { initializeApp, getApps, getApp } from 'firebase/app';
 import {
   getAuth,
   signInWithPopup,
+  setPersistence,
+  browserLocalPersistence,
   GoogleAuthProvider,
   onAuthStateChanged,
   User,
@@ -52,6 +54,9 @@ export const TABELAS_NORMALIZADAS = [
   'entregas',
   'feedbacks',
   'registros_supervisao',
+  'encontros_turma',
+  'preparacoes_aula',
+  'avaliacoes_completas',
   'sincronizacao',
   // Documentação e Contrato da Base Oficial
   'dicionario_dados',
@@ -154,6 +159,7 @@ export const initAuth = (
 export const googleSignIn = async (): Promise<{ user: User; accessToken: string } | null> => {
   try {
     isSigningIn = true;
+    await setPersistence(auth, browserLocalPersistence);
     const result = await signInWithPopup(auth, provider);
     const credential = GoogleAuthProvider.credentialFromResult(result);
     if (!credential?.accessToken) {
@@ -265,14 +271,52 @@ export function normalizarLinhasDaAba(tabela: string, rows: Record<string, any>[
       r.data_hora = r.data_hora ?? r.data ?? '';
     } else if (tabela === 'grupo_integrantes') {
       r.integrante_id = r.integrante_id ?? r.grupo_integrante_id ?? '';
+    } else if (tabela === 'horarios_turma') {
+      const dias: Record<string, number> = { DOMINGO: 0, SEGUNDA: 1, TERCA: 2, 'TERÇA': 2, QUARTA: 3, QUINTA: 4, SEXTA: 5, SABADO: 6, 'SÁBADO': 6 };
+      const rawDia = String(r.dia_semana ?? '').trim().toUpperCase();
+      r.dia_semana = rawDia in dias ? dias[rawDia] : (Number.isInteger(Number(rawDia)) ? Number(rawDia) : -1);
+      r.ativo = String(r.ativo ?? '').trim().toUpperCase() === 'TRUE' || r.ativo === true || r.ativo === 1;
+      r.data_inicio = normalizarDataAcademica(r.data_inicio);
+      r.data_fim = normalizarDataAcademica(r.data_fim);
+    } else if (tabela === 'marcos_academicos') {
+      r.data_prazo = normalizarDataAcademica(r.data_prazo);
+    } else if (tabela === 'turmas_origem') {
+      r.ativo = String(r.ativo ?? '').trim().toUpperCase() === 'TRUE' || r.ativo === true || r.ativo === 1;
+    } else if (tabela === 'avaliacoes_completas') {
+      try { r.notas_criterios = r.notas_criterios_json ? JSON.parse(String(r.notas_criterios_json)) : []; }
+      catch { r.notas_criterios = []; }
+      r.nota_final = Number(String(r.nota_final ?? 0).replace(',', '.')) || 0;
+      r.nota_maxima = Number(String(r.nota_maxima ?? 10).replace(',', '.')) || 10;
+    } else if (tabela === 'avaliacoes') {
+      // A planilha acadêmica usa vírgula decimal, não ponto.
+      const raw = String(r.nota ?? '').trim().replace(/\s/g, '').replace(',', '.');
+      r.nota = raw === '' ? null : Number(raw);
+    } else if (tabela === 'criterios_avaliacao') {
+      const rawMax = String(r.nota_maxima ?? '').trim().replace(',', '.');
+      const rawPeso = String(r.peso ?? '').trim().replace(',', '.');
+      r.nota_maxima = rawMax === '' ? 0 : Number(rawMax);
+      r.peso = rawPeso === '' ? 1 : Number(rawPeso);
+      r.ativo = !['FALSE', 'FALSO', '0', 'NÃO', 'NAO'].includes(String(r.ativo ?? 'TRUE').trim().toUpperCase());
+      // Os instrumentos não estão preenchidos no banco 2026.2:
+      // manter cada critério na rubrica da própria turma, sem inventar IDs.
+      r.instrumento_avaliacao = r.instrumento_avaliacao || '';
     } else if (tabela === 'leituras_responsaveis') {
       r.leitura_id = r.leitura_id ?? r.leitura_agenda_id ?? '';
-      r.data = r.data ?? r.data_discussao ?? '';
+      r.data = normalizarDataAcademica(r.data ?? r.data_discussao ?? '');
+      r.responsavel_nome = r.responsavel_nome ?? r.responsaveis_texto ?? '';
+      r.tema = r.tema ?? r.titulo ?? '';
+      r.tipo = r.tipo ?? 'ESTUDO_DIRIGIDO';
+      r.responsavel_tipo = r.responsavel_tipo ?? (r.tipo === 'LEITURA_RECOMENDADA' ? 'SEM_RESPONSAVEL' : 'ALUNO');
     } else if (tabela === 'registros_semanais') {
       // semana_rss é a semana acadêmica, encontro_numero é a sessão clínica.
       r.semana = r.semana ?? r.semana_rss ?? '';
       r.observacao = r.observacao ?? r.limitacoes ?? '';
       r.data_entrega = normalizarDataAcademica(r.data_entrega);
+    } else if (tabela === 'preparacoes_aula') {
+      r.data_aula = normalizarDataAcademica(r.data_aula);
+    } else if (tabela === 'encontros_turma') {
+      r.data = normalizarDataAcademica(r.data);
+      if (typeof r.chamada_salva === 'string') r.chamada_salva = r.chamada_salva.toUpperCase() === 'TRUE';
     } else if (tabela === 'calendario_rss') {
       r.semana_inicio = normalizarDataAcademica(r.semana_inicio);
       r.semana_fim = normalizarDataAcademica(r.semana_fim);
@@ -468,6 +512,9 @@ export async function carregarDadosDaPlanilhaOficial(): Promise<ResultadoLeitura
     entregas: tableDataMap['entregas'] || [],
     feedbacksOficiais: tableDataMap['feedbacks'] || [],
     registrosSupervisao: tableDataMap['registros_supervisao'] || [],
+    encontrosTurma: tableDataMap['encontros_turma'] || [],
+    preparacoesAula: tableDataMap['preparacoes_aula'] || [],
+    avaliacoesCompletas: tableDataMap['avaliacoes_completas'] || [],
     sincronizacao: tableDataMap['sincronizacao'] || [],
     dicionarioDados: tableDataMap['dicionario_dados'] || [],
     contratoApp: tableDataMap['contrato_app'] || [],
@@ -517,6 +564,9 @@ export async function gravarRegistroNaPlanilhaOficial(
   // Adaptação à estrutura real das tabelas normalizadas.
   // Não altera cabeçalhos da planilha e não inventa um segundo banco.
   const adaptado: Record<string, any> = { ...registro };
+  if (tabela === 'avaliacoes_completas') {
+    adaptado.notas_criterios_json = JSON.stringify(registro.notas_criterios || []);
+  }
   if (tabela === 'registros_supervisao') {
     adaptado.data = registro.data ?? registro.data_hora;
     adaptado.descricao = registro.descricao ?? registro.texto;

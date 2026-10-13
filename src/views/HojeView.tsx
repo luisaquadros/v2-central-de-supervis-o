@@ -19,7 +19,7 @@ import {
   AlertCircle,
 } from 'lucide-react';
 import { useSupervisao } from '../context/SupervisaoContext';
-import { calcularMetricasCronogramaRss, getHojeDataIso } from '../services/supervisaoOperacionalService';
+import { calcularMetricasCronogramaRss, getHojeDataIso, obterLeiturasAgendadas } from '../services/supervisaoOperacionalService';
 
 interface HojeViewProps {
   onOpenTurma: (turmaId: string) => void;
@@ -44,13 +44,12 @@ export const HojeView: React.FC<HojeViewProps> = ({
     frequencias,
     horariosTurma,
     leiturasResponsaveis,
-    statusRssUnidades,
-    regrasRss,
     calendarioRss,
     marcosAcademicos,
     selectedPeriodoId,
     filaProfessora,
     situacaoAtualTurmas,
+    encontrosTurma,
     avaliacoesCompletas,
     getSupervisaoAtual,
     getProximaSupervisao,
@@ -67,7 +66,7 @@ export const HojeView: React.FC<HojeViewProps> = ({
   );
 
   // Turma prioritária para supervisão hoje / próxima supervisão
-  const turmaEmDestaque = turmasAtivas[0];
+  const turmaEmDestaque = supervisaoAtual.turma || proximaSupervisao?.turma || turmasAtivas[0];
   const horarioDestaque = turmaEmDestaque
     ? horariosTurma.find(h => h.turma_id === turmaEmDestaque.turma_id)
     : undefined;
@@ -88,19 +87,6 @@ export const HojeView: React.FC<HojeViewProps> = ({
 
   const semanaDePraticaTexto = metricasCronograma.semanaTexto;
   const semanasEncerradasTexto = metricasCronograma.semanasEncerradasTexto;
-
-  // Status de RSS: Consome exclusivamente os cabeçalhos reais de status_rss_unidades (status_rss, saldo_rss)
-  const statusFiltrados = turmaEmDestaque
-    ? statusRssUnidades.filter(s => s.turma_id === turmaEmDestaque.turma_id)
-    : statusRssUnidades;
-
-  const unidadesComRssPendente = statusFiltrados.filter(
-    s => s.status_rss === 'PENDENTE' || s.status_rss === 'ATRASADO' || s.status_rss === 'CRITICO' || (s.saldo_rss !== undefined && Number(s.saldo_rss) < 0)
-  ).length;
-
-  const alunosRssEmDia = statusFiltrados.length > 0
-    ? statusFiltrados.filter(s => s.status_rss === 'EM_DIA' || (s.saldo_rss !== undefined && Number(s.saldo_rss) >= 0)).length
-    : (totalAlunosAtivos > 0 ? Math.max(0, totalAlunosAtivos - unidadesComRssPendente) : null);
 
   // Frequência
   const faltasInjustificadas = frequencias.filter(f => f.status === 'FALTA_SEM_JUSTIFICATIVA').length;
@@ -124,9 +110,10 @@ export const HojeView: React.FC<HojeViewProps> = ({
   const orientacoesAbertas = orientacoes.filter(o => o.status === 'ABERTA');
 
   // Próxima Leitura vinculada à data e turma (sem índice arbitrário)
-  const proximaLeitura = leiturasResponsaveis.find(
-    l => (l.data || '') >= hojeStr && (!turmaEmDestaque || l.turma_id === turmaEmDestaque.turma_id)
-  ) || leiturasResponsaveis.find(l => (l.data || '') >= hojeStr) || null;
+  const proximaLeitura = obterLeiturasAgendadas(
+    leiturasResponsaveis.filter(l => !turmaEmDestaque || l.turma_id === turmaEmDestaque.turma_id),
+    encontrosTurma
+  ).find(l => l.data_apresentacao >= hojeStr) || null;
 
   // Tarefas da fila da professora
   const tarefasPendentesFila = filaProfessora.filter((i: any) => i.status !== 'CONCLUIDO').length;
@@ -251,7 +238,7 @@ export const HojeView: React.FC<HojeViewProps> = ({
                   <span className="flex items-center gap-1.5 text-indigo-700 font-semibold">
                     <BookOpen className="w-3.5 h-3.5" />
                     Leitura: "{proximaLeitura.tema || proximaLeitura.titulo || 'Texto'}" (
-                    {proximaLeitura.responsavel_nome || proximaLeitura.responsavel_id || 'Geral'})
+                    {proximaLeitura.tipo === 'LEITURA_RECOMENDADA' ? 'Leitura coletiva' : (proximaLeitura.responsavel_nome || 'Responsável a confirmar')})
                   </span>
                 </>
               )}
@@ -319,30 +306,18 @@ export const HojeView: React.FC<HojeViewProps> = ({
           </div>
         </button>
 
-        {/* RSS (Semanas Encerradas vs Pendências) */}
+        {/* RSS é informação da turma, não notificação global. */}
         <button
-          onClick={() => onNavigateToTab('pendencias', 'rss')}
-          className="p-4 rounded-xl bg-white border border-slate-200 hover:border-amber-300 hover:shadow-xs text-left transition-all cursor-pointer group"
+          onClick={() => turmaEmDestaque && onOpenTurma(turmaEmDestaque.turma_id)}
+          disabled={!turmaEmDestaque}
+          className="p-4 rounded-xl bg-white border border-slate-200 hover:border-indigo-300 hover:shadow-xs text-left transition-all cursor-pointer group disabled:opacity-50"
         >
-          <div className="flex items-center justify-between text-slate-400 text-xs font-bold uppercase tracking-wider mb-2">
-            <span>Registros Semanais (RSS)</span>
-            <FileText className="w-4 h-4 text-amber-500" />
+          <div className="flex items-center justify-between text-slate-500 text-xs font-bold uppercase tracking-wider mb-2">
+            <span>Registros Semanais</span><FileText className="w-4 h-4 text-indigo-500"/>
           </div>
-          <div className="text-2xl font-black text-slate-900 font-mono">
-            {statusFiltrados.length > 0 ? (
-              <>
-                {unidadesComRssPendente}{' '}
-                <span className="text-xs font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full font-sans">
-                  pendências
-                </span>
-              </>
-            ) : (
-              '—'
-            )}
-          </div>
-          <div className="mt-2 text-xs text-slate-500 flex items-center justify-between">
-            <span>{alunosRssEmDia !== null ? `${alunosRssEmDia} em dia` : 'Aguardando sincronização'}</span>
-            <span className="text-slate-400">semana atual aberta</span>
+          <div className="text-base font-bold text-slate-900">Consultar RSS da turma</div>
+          <div className="mt-2 text-xs text-slate-500">
+            Entregas, semanas faltantes e histórico ficam na turma e no Modo Supervisão.
           </div>
         </button>
 

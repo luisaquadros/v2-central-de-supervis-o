@@ -31,6 +31,10 @@ export const TABELAS_AUTORIZADAS_ESCRITA = [
   'entregas',
   'feedbacks',
   'registros_supervisao',
+  'encontros_turma',
+  'preparacoes_aula',
+  'avaliacoes_completas',
+  'leituras_responsaveis',
   'grupos_pratica',
   'grupo_integrantes',
 ] as const;

@@ -8,6 +8,8 @@ export const PRIMARY_KEYS: Record<string, string> = {
   frequencias: 'frequencia_id', pontos_acompanhamento: 'ponto_id', marcos_academicos: 'marco_id',
   entregas: 'entrega_id', feedbacks: 'feedback_id', registros_supervisao: 'registro_id',
   grupos_pratica: 'grupo_id', grupo_integrantes: 'integrante_id',
+  encontros_turma: 'encontro_id', preparacoes_aula: 'preparacao_id',
+  avaliacoes_completas: 'avaliacao_id',
 };
 export function recordIdentity(table: string, row: Record<string, any>): string {
   if (table === 'frequencias' && row.matricula_id && row.data_aula)

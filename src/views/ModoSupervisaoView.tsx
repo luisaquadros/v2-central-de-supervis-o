@@ -30,12 +30,14 @@ import {
   ModalNovoPontoAcompanhamento,
 } from '../components/Modals';
 import { getHojeDataIso } from '../services/supervisaoOperacionalService';
+import { obterLeiturasAgendadas, obterLacunasRssDaAula } from '../services/supervisaoOperacionalService';
 import { Frequencia, MotivoNaoRealizado } from '../types';
 
 interface ModoSupervisaoViewProps {
   turmaId: string;
   onEncerrar: () => void;
   onOpenFichaAluno: (matriculaId: string, initialTab?: string) => void;
+  onPrepararAula?: (turmaId: string) => void;
 }
 
 interface ExcecaoAluno {
@@ -50,6 +52,7 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
   turmaId,
   onEncerrar,
   onOpenFichaAluno,
+  onPrepararAula,
 }) => {
   const {
     turmas,
@@ -60,6 +63,8 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
     grupoIntegrantes,
     getAlunosDaTurma,
     getResumoAlunoSupervisao,
+    getSituacaoRssEstudante,
+    calendarioRss,
     toggleOrientacaoStatus,
     togglePontoStatus,
     leiturasResponsaveis,
@@ -87,12 +92,11 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
   );
 
   // 2. Estudo Dirigido de Hoje programado para esta turma
-  const estudoDirigidoHoje = useMemo(() => {
-    return (
-      leiturasResponsaveis.find(l => l.turma_id === turmaId && l.data === hojeIso) ||
-      leiturasResponsaveis.find(l => l.turma_id === turmaId)
-    );
-  }, [leiturasResponsaveis, turmaId, hojeIso]);
+  const leiturasDaAula = useMemo(() => {
+    return obterLeiturasAgendadas(leiturasResponsaveis.filter(l => l.turma_id === turmaId), encontrosTurma)
+      .filter(l => l.data_apresentacao === hojeIso);
+  }, [leiturasResponsaveis, turmaId, hojeIso, encontrosTurma]);
+  const estudoDirigidoHoje = leiturasDaAula.find(l => l.reprogramada) || leiturasDaAula[0];
 
   // Resolução dinâmica e robusta de responsáveis pelo estudo dirigido/leitura de hoje
   const responsaveisEstudo = useMemo(() => {
@@ -360,10 +364,30 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
     item.aluno.nome.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
+  // RSS: diagnóstico somente na aula. Um grupo corresponde a uma unidade
+  // de envio, embora todas as integrantes possam ver as mesmas semanas.
+  const rssPorAluno = new Map(alunosLista.map(item => [
+    item.matricula.matricula_id,
+    obterLacunasRssDaAula(getSituacaoRssEstudante(item.matricula.matricula_id), calendarioRss, hojeIso),
+  ]));
+  const pendenciasRssTurma = new Map<string, { nome: string; faltantes: number[]; revisao: number[] }>();
+  alunosLista.forEach(item => {
+    const vinculo = grupoIntegrantes.find(gi => gi.matricula_id === item.matricula.matricula_id &&
+      gruposPratica.some(g => g.grupo_id === gi.grupo_id && g.turma_id === turmaId));
+    const grupo = vinculo ? gruposPratica.find(g => g.grupo_id === vinculo.grupo_id) : undefined;
+    const chave = grupo ? grupo.grupo_id : item.matricula.matricula_id;
+    const lacunas = rssPorAluno.get(item.matricula.matricula_id);
+    if (lacunas && (lacunas.faltantes.length || lacunas.emRevisao.length) && !pendenciasRssTurma.has(chave)) {
+      pendenciasRssTurma.set(chave, {
+        nome: grupo ? (grupo.nome_grupo || 'Grupo de prática') : item.aluno.nome,
+        faltantes: lacunas.faltantes, revisao: lacunas.emRevisao,
+      });
+    }
+  });
   const resumoAluno = selectedMatriculaId ? getResumoAlunoSupervisao(selectedMatriculaId) : null;
 
   return (
-    <div className="flex flex-col h-[calc(100vh-2rem)] md:h-[calc(100vh-2.5rem)] -m-4 sm:-m-6 bg-slate-100 overflow-hidden font-sans">
+    <div className="flex flex-col h-[100dvh] min-h-0 md:h-[calc(100dvh-2.5rem)] -m-4 sm:-m-6 bg-slate-100 overflow-hidden font-sans">
       {/* 1. TOP HEADER DE NAVEGAÇÃO E AÇÕES RÁPIDAS DA AULA */}
       <header className="bg-slate-900 text-white px-4 py-3 flex flex-wrap items-center justify-between gap-3 shrink-0 shadow-sm">
         <div className="flex items-center gap-3">
@@ -389,6 +413,10 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
 
         {/* Ações operacionais da aula: Não realizada, Reagendar, Encerrar */}
         <div className="flex items-center gap-2 flex-wrap">
+          {onPrepararAula && <button
+            onClick={() => onPrepararAula(turmaId)}
+            className="px-3 py-2 rounded-lg bg-indigo-200 text-slate-950 font-semibold text-xs hover:bg-indigo-100"
+          >Preparar aula</button>}
           <button
             onClick={() => setModalType('naoRealizada')}
             className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-amber-300 text-xs font-medium transition-colors cursor-pointer border border-slate-700"
@@ -451,6 +479,17 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
                   {renderStatusEstudoBadge(estudoDirigidoHoje.status_realizacao)}
                 </div>
 
+                {estudoDirigidoHoje.reprogramada && (
+                  <div className="text-[11px] font-semibold text-amber-800 mt-1">
+                    Apresentação transferida da aula cancelada de {estudoDirigidoHoje.data_original.split('-').reverse().join('/')} para hoje.
+                    Os responsáveis originais permanecem vinculados.
+                  </div>
+                )}
+                {leiturasDaAula.length > 1 && (
+                  <div className="mt-1.5 text-[11px] text-amber-900">
+                    Há {leiturasDaAula.length} leituras para esta aula: {leiturasDaAula.map(l => l.tema || l.titulo).join('; ')}.
+                  </div>
+                )}
                 {nomeGrupoEstudo && (
                   <div className="text-slate-800 font-semibold mt-0.5 text-[11px]">
                     Grupo: <span className="underline">{nomeGrupoEstudo}</span>
@@ -678,9 +717,9 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
       </div>
 
       {/* 3. MAIN SPLIT SCREEN: LISTA DE ALUNOS COM CHAMADA POR EXCEÇÃO (35%) / DETALHES DO ALUNO (65%) */}
-      <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
+      <div className="flex-1 min-h-0 flex flex-col md:flex-row overflow-hidden">
         {/* COLUNA ESQUERDA: CHAMADA POR EXCEÇÃO + LISTA RÁPIDA (Tablet 35%) */}
-        <div className={`w-full md:w-[380px] lg:w-[420px] bg-white border-r border-slate-200 flex-col shrink-0 overflow-hidden ${mobileTab === 'DETALHE' ? 'hidden md:flex' : 'flex'}`}>
+        <div className={`w-full md:w-[380px] lg:w-[420px] bg-white border-r border-slate-200 flex-col shrink-0 min-h-0 overflow-hidden ${mobileTab === 'DETALHE' ? 'hidden md:flex' : 'flex'}`}>
           {/* HEADER DA CHAMADA: RESUMO E BOTÃO DE SALVAMENTO */}
           <div className="p-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between gap-2 shrink-0">
             <div>
@@ -709,6 +748,21 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
             </button>
           </div>
 
+          {/* O RSS fica acessível na aula, sem acionar o sino de notificações. */}
+          {pendenciasRssTurma.size > 0 && (
+            <details className="px-3 py-2 border-b border-slate-200 bg-amber-50/90 text-xs">
+              <summary className="cursor-pointer text-amber-800 font-semibold">
+                RSS a conferir nesta turma ({pendenciasRssTurma.size} {pendenciasRssTurma.size === 1 ? 'unidade' : 'unidades'})
+              </summary>
+              <div className="mt-2 max-h-36 overflow-y-auto space-y-1.5">
+                {[...pendenciasRssTurma.entries()].map(([id,info]) => <div key={id} className="text-slate-800">
+                  <span className="font-semibold">{info.nome}:</span>
+                  {info.faltantes.length > 0 && ` sem registro validado nas semanas ${info.faltantes.join(', ')}.`}
+                  {info.revisao.length > 0 && ` Em revisão: ${info.revisao.join(', ')}.`}
+                </div>)}
+              </div>
+            </details>
+          )}
           {/* BUSCA RÁPIDA DE ALUNO */}
           <div className="p-2.5 border-b border-slate-100 shrink-0">
             <div className="relative">
@@ -732,7 +786,7 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
           </div>
 
           {/* LISTA COMPACTA COM CONTROLES RÁPIDOS POR EXCEÇÃO: [Faltou] [Atraso] [Celular] [+] */}
-          <div className="flex-1 overflow-y-auto divide-y divide-slate-100">
+          <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain touch-pan-y divide-y divide-slate-100 [-webkit-overflow-scrolling:touch]">
             {filteredAlunos.length === 0 ? (
               <div className="p-6 text-center text-xs text-slate-400">
                 Nenhum aluno encontrado nesta turma.
@@ -744,6 +798,7 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
                 const exc = excecoes[matId] || { faltou: false, atraso: false, celular: false };
                 const resumo = getResumoAlunoSupervisao(matId);
                 const hasAlert = resumo?.temAtencao;
+                const rss = rssPorAluno.get(matId);
 
                 return (
                   <div
@@ -777,6 +832,12 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
                           </span>
                         )}
                       </div>
+                      {rss && (rss.faltantes.length > 0 || rss.emRevisao.length > 0) && (
+                        <div className="text-[10px] text-amber-700 font-semibold mt-0.5">
+                          {rss.faltantes.length > 0 && `RSS sem validação: ${rss.faltantes.join(', ')}`}
+                          {rss.emRevisao.length > 0 && ` · Em revisão: ${rss.emRevisao.join(', ')}`}
+                        </div>
+                      )}
                       <div className="text-[10px] text-slate-400 font-mono truncate">
                         {item.aluno.identificador_academico}
                         {exc.justificativa && (
@@ -849,7 +910,7 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
         </div>
 
         {/* COLUNA DIREITA: FICHA RESUMIDA DO ALUNO SELECIONADO (65%) */}
-        <div className={`flex-1 bg-slate-50 overflow-y-auto p-4 md:p-6 space-y-4 ${mobileTab === 'LISTA' ? 'hidden md:block' : 'block'}`}>
+        <div className={`flex-1 min-h-0 bg-slate-50 overflow-y-auto overscroll-contain touch-pan-y [-webkit-overflow-scrolling:touch] p-4 md:p-6 space-y-4 ${mobileTab === 'LISTA' ? 'hidden md:block' : 'block'}`}>
           {!resumoAluno ? (
             <div className="h-full flex items-center justify-center text-slate-400 text-xs">
               Selecione um aluno na coluna à esquerda para visualizar sua ficha e registrar orientações.

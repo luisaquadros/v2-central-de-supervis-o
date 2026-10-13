@@ -92,8 +92,8 @@ const calDatasPassadas: CalendarioRss[] = [
 const resDefasadas = calcularMetricasCronogramaRss('turma-D', calDatasPassadas, [], '2026-10-06');
 assert(resDefasadas.semanasEncerradas !== null, 'Calcula semanas encerradas');
 assert(
-  (resDefasadas.semanasEncerradas ?? 0) < (resDefasadas.semanaAtual ?? 1) || resDefasadas.semanasEncerradas === 2,
-  'Invariante mantida para datas defasadas'
+  resDefasadas.semanasEncerradas === 3 && resDefasadas.semanaAtual === 3,
+  'Após o fim da prática, todas as três semanas ficam encerradas'
 );
 
 // ============================================================================
@@ -109,8 +109,8 @@ for (let i = 1; i <= 10; i++) {
     turma_id: 'turma-conflito',
     sequencia: i,
     semana: i,
-    semana_inicio: `2026-01-0${i}`,
-    semana_fim: `2026-01-0${i}`,
+    semana_inicio: new Date(Date.UTC(2026, 0, i)).toISOString().slice(0, 10),
+    semana_fim: new Date(Date.UTC(2026, 0, i)).toISOString().slice(0, 10),
     status_calendario: 'CONCLUIDA',
   });
 }
@@ -136,15 +136,14 @@ const situacaoOficial: SituacaoAtualTurma[] = [
 
 const resConflito = calcularMetricasCronogramaRss('turma-conflito', calConflito, situacaoOficial, '2026-10-06');
 
-assert(resConflito.semanaAtual === 5, 'Semana atual é estritamente 5 (materializada na situacao_atual_turmas)');
-assert(resConflito.totalSemanas === 12, 'Total de semanas é 12');
-assert(resConflito.semanaTexto === '5 / 12', 'Semana de prática exibe 5 / 12');
-assert(resConflito.semanasEncerradas === 4, 'Semanas encerradas NUNCA exibe 10 quando semana atual é 5 (ajustado para 4)');
-assert(resConflito.semanasEncerradasTexto === '4', 'Texto de semanas encerradas exibe "4"');
+assert(resConflito.semanaAtual === 11, 'Próxima janela prevista é a semana 11, não a aula de supervisão 5');
+assert(resConflito.totalSemanas === 12, 'Total corresponde às doze janelas informadas no teste');
+assert(resConflito.semanaTexto === '11 / 12', 'Exibe próxima janela prevista com total do cronograma');
+assert(resConflito.semanasEncerradas === 10, 'Todas as semanas encerradas continuam contadas após o período');
+assert(resConflito.semanasEncerradasTexto === '10', 'Texto correto de semanas encerradas');
 assert(resConflito.conflitoIdentificado === true, 'Conflito de datas defasadas na base foi identificado e sinalizado');
 assert(
-  resConflito.avisoInconsistencia?.includes('Conflito de datas na base') ||
-  resConflito.avisoInconsistencia?.includes('Inconsistência') || false,
+  resConflito.avisoInconsistencia?.includes('Número da aula de supervisão') || false,
   'Mensagem de inconsistência gerada para auditoria'
 );
 

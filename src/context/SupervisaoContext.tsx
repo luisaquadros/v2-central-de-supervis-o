@@ -43,6 +43,7 @@ import {
   AvaliacaoCompleta,
   HistoricoAuditoria,
   EncontroTurma,
+  PreparacaoAula,
   StatusEncontro,
   MotivoNaoRealizado,
   NotificacaoDerivada,
@@ -53,14 +54,15 @@ import {
   identificarProximaSupervisao,
   identificarChamadasPendentes,
   derivarNotificacoesOperacionais,
-  derivarPendenciasOperacionais,
   obterSituacaoRssEstudante,
+  classificarRssOperacional,
   gerarPendenciasCanonicas,
   ResultadoSupervisaoAtual,
   ResultadoProximaSupervisao,
   ItemChamadaPendente,
 } from '../services/supervisaoOperacionalService';
 import { getHojeDataIso } from '../services/supervisaoOperacionalService';
+import { lerSessaoAutorizada, registrarSessaoAutorizada, encerrarSessaoAutorizada } from '../services/sessionPolicy';
 import { validarEscritaTabela, gerarIdEstavel } from '../services/safeWriteService';
 import {
   inicializarCacheLocal,
@@ -327,6 +329,10 @@ interface SupervisaoContextType {
   
   // Gestão de Encontros, Aulas Não Realizadas e Reagendamentos
   encontrosTurma: EncontroTurma[];
+  preparacoesAula: PreparacaoAula[];
+  adicionarPreparacaoAula: (dados: Pick<PreparacaoAula, 'turma_id' | 'data_aula' | 'tipo' | 'texto'>) => Promise<void>;
+  alterarPreparacaoAula: (id: string, mudancas: Partial<Pick<PreparacaoAula, 'status' | 'data_aula' | 'texto' | 'tipo'>>) => Promise<void>;
+  excluirPreparacaoAula: (id: string) => Promise<void>;
   marcarEncontroNaoRealizado: (
     turmaId: string,
     data: string,
@@ -566,11 +572,8 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       } else if (tabela === 'registros_semanais') {
         setRegistrosSemanais(prev => [dado, ...prev]);
       }
-      if (!isRunningInAppsScript()) {
-        const res = await salvarRegistroResiliente(tabela === 'feedbacks' ? 'feedback_alunos' : tabela, 'INSERT', dado);
-        notifySaveSuccess(res.gravadoOnline);
-      } else notifySaveSuccess(true);
       setItemExcluidoRecente(null);
+      notifySaveSuccess();
       return true;
     } catch (err) {
       handleSaveError(err);
@@ -579,6 +582,7 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   }, [itemExcluidoRecente]);
 
   // Gestão Operacional de Encontros (Feriados, Cancelamentos e Reagendamentos)
+  const [preparacoesAula, setPreparacoesAula] = useState<PreparacaoAula[]>([]);
   const [encontrosTurma, setEncontrosTurma] = useState<EncontroTurma[]>(() => {
     try {
       if (typeof window !== 'undefined') {
@@ -642,6 +646,9 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     if (Array.isArray(data.entregas)) setEntregas(data.entregas);
     if (Array.isArray(data.feedbacksOficiais)) setFeedbacksOficiais(data.feedbacksOficiais);
     if (Array.isArray(data.registrosSupervisao)) setRegistrosSupervisao(data.registrosSupervisao);
+    if (Array.isArray(data.encontrosTurma)) setEncontrosTurma(data.encontrosTurma);
+    if (Array.isArray(data.preparacoesAula)) setPreparacoesAula(data.preparacoesAula);
+    if (Array.isArray(data.avaliacoesCompletas)) setAvaliacoesCompletas(data.avaliacoesCompletas);
     if (Array.isArray(data.sincronizacao)) setSincronizacao(data.sincronizacao);
     if (Array.isArray(data.dicionarioDados)) setDicionarioDados(data.dicionarioDados);
     if (Array.isArray(data.contratoApp)) setContratoApp(data.contratoApp);
@@ -681,6 +688,11 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       (user, _token) => {
         if (!isMounted) return;
         setCurrentUser(user);
+        // Sessão do app é independente do token OAuth do Sheets (que expira antes).
+        // Só exibe cache em até 6h se esta conta já foi validada neste dispositivo.
+        if (lerSessaoAutorizada(user.uid)) {
+          setAcessoGoogleValidado(true);
+        }
         // Ao autenticar, primeiro esvazia alterações locais pendentes e depois busca o estado atualizado
         processarFilaSincronizacao()
           .catch(() => {})
@@ -688,6 +700,7 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           .then(res => {
             if (!isMounted) return;
             if (res.sucesso && res.dados) {
+              registrarSessaoAutorizada(user.uid);
               setAcessoGoogleValidado(true);
               aplicarDados(res.dados);
               setHasLocalCache(true);
@@ -720,6 +733,7 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           const res = await sincronizarDaBaseOficial();
           if (!isMounted) return;
           if (res.sucesso && res.dados) {
+            if (currentUser) registrarSessaoAutorizada(currentUser.uid);
             setAcessoGoogleValidado(true);
             aplicarDados(res.dados);
             setHasLocalCache(true);
@@ -734,7 +748,7 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     window.addEventListener('focus', autoSyncSePossivel);
     window.addEventListener('online', autoSyncSePossivel);
 
-    const intervalId = setInterval(autoSyncSePossivel, 60 * 1000); // 1 minuto automático
+    const intervalId = setInterval(autoSyncSePossivel, 5 * 60 * 1000); // 5 min; evita excesso de consultas
 
     return () => {
       isMounted = false;
@@ -796,6 +810,7 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     // 2. SEGUNDO: Lê a base oficial atualizada com as novas alterações gravadas!
     const res = await sincronizarDaBaseOficial();
     if (res.sucesso && res.dados) {
+      if (currentUser) registrarSessaoAutorizada(currentUser.uid);
       setAcessoGoogleValidado(true);
       aplicarDados(res.dados);
       setHasLocalCache(true);
@@ -833,6 +848,7 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
   const logoutGoogle = async () => {
     await googleLogout();
+    encerrarSessaoAutorizada();
     setAcessoGoogleValidado(false);
     setCurrentUser(null);
     setConnectionStatus('LOCAL_DEV');
@@ -854,6 +870,7 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
   const handleSaveError = (err: any) => {
     console.error('Erro de persistência:', err);
+    if (typeof window !== 'undefined') window.dispatchEvent(new Event('cs:save-error'));
     setSaveStatus('ERRO_SINCRONIZACAO');
     setSaveErrorMessage(err?.message || 'Erro ao sincronizar com Google Sheets');
     setSaveStatusMessage('⚠ Erro de sincronização');
@@ -878,6 +895,56 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       handleSaveError(erro);
       throw erro;
     }
+  };
+
+  // Preparação de aula é registrada uma única vez na planilha oficial, por turma.
+  // A interface mostra itens pendentes nas próximas aulas sem duplicar linhas.
+  const adicionarPreparacaoAula = async (
+    dados: Pick<PreparacaoAula, 'turma_id' | 'data_aula' | 'tipo' | 'texto'>
+  ): Promise<void> => {
+    const texto = dados.texto.trim();
+    if (!texto || texto.length > 4000 || !/^\d{4}-\d{2}-\d{2}$/.test(dados.data_aula) ||
+        !turmas.some(t => t.turma_id === dados.turma_id)) {
+      throw new Error('Confira turma, data e observação (até 4.000 caracteres).');
+    }
+    const agora = new Date().toISOString();
+    const registro: PreparacaoAula = {
+      preparacao_id: gerarIdEstavel('prep'),
+      turma_id: dados.turma_id,
+      periodo_id: selectedPeriodoId,
+      data_aula: dados.data_aula,
+      tipo: dados.tipo,
+      texto,
+      status: 'PENDENTE',
+      criado_em: agora,
+      atualizado_em: agora,
+    };
+    const lista = [...preparacoesAula, registro];
+    await persistirMudancaWeb('preparacoes_aula', 'INSERT', registro, lista);
+    setPreparacoesAula(lista);
+  };
+
+  const alterarPreparacaoAula = async (
+    id: string,
+    mudancas: Partial<Pick<PreparacaoAula, 'status' | 'data_aula' | 'texto' | 'tipo'>>
+  ): Promise<void> => {
+    const anterior = preparacoesAula.find(p => p.preparacao_id === id);
+    if (!anterior) throw new Error('Preparação de aula não encontrada.');
+    if (mudancas.texto !== undefined && (!mudancas.texto.trim() || mudancas.texto.length > 4000)) {
+      throw new Error('A observação deve ter entre 1 e 4.000 caracteres.');
+    }
+    const registro = { ...anterior, ...mudancas, atualizado_em: new Date().toISOString() };
+    const lista = preparacoesAula.map(p => p.preparacao_id === id ? registro : p);
+    await persistirMudancaWeb('preparacoes_aula', 'UPDATE', registro, lista);
+    setPreparacoesAula(lista);
+  };
+
+  const excluirPreparacaoAula = async (id: string): Promise<void> => {
+    const registro = preparacoesAula.find(p => p.preparacao_id === id);
+    if (!registro) return;
+    const lista = preparacoesAula.filter(p => p.preparacao_id !== id);
+    await persistirMudancaWeb('preparacoes_aula', 'DELETE', registro, lista);
+    setPreparacoesAula(lista);
   };
 
   const reconectarESincronizar = async (): Promise<void> => {
@@ -1133,8 +1200,7 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         }
       } catch (err: any) {
         console.warn('Erro ao persistir orientação de forma resiliente:', err);
-        handleSaveError(err);
-        throw err;
+        notifySaveSuccess(false);
       }
       return newOri;
     }
@@ -1170,8 +1236,8 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         notifySaveSuccess(false);
       }
     } catch (err: any) {
-      handleSaveError(err);
-      throw err;
+      console.warn('Erro ao persistir atualização de orientação:', err);
+      notifySaveSuccess(false);
     }
   };
 
@@ -1383,12 +1449,32 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       }
     }
 
-    const anterior = registrosSemanais.find(r => r.matricula_id === matriculaId && Number(r.semana) === Number(semana));
-    const registro = { ...anterior, registro_id: anterior?.registro_id || generateUuid(),
-      matricula_id: matriculaId, semana, status, data_entrega: status === 'ENTREGUE' ? today : '', observacao: obs };
-    const lista = [...registrosSemanais.filter(r => r.registro_id !== registro.registro_id), registro];
-    await persistirMudancaWeb('registros_semanais', anterior ? 'UPDATE' : 'INSERT', registro, lista);
-    setRegistrosSemanais(lista);
+    setRegistrosSemanais(prev => {
+      const existingIdx = prev.findIndex(r => r.matricula_id === matriculaId && r.semana === semana);
+      if (existingIdx >= 0) {
+        const updated = [...prev];
+        updated[existingIdx] = {
+          ...updated[existingIdx],
+          status,
+          data_entrega: status === 'ENTREGUE' ? today : '',
+          observacao: obs,
+        };
+        return updated;
+      } else {
+        return [
+          ...prev,
+          {
+            registro_id: generateUuid(),
+            matricula_id: matriculaId,
+            semana,
+            status,
+            data_entrega: status === 'ENTREGUE' ? today : '',
+            observacao: obs,
+          },
+        ];
+      }
+    });
+    notifySaveSuccess();
   };
 
   const updateDocumento = async (
@@ -1889,20 +1975,16 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     setFilaSupervisao(prev => prev.filter(i => i.id !== id));
   };
 
-  const salvarAvaliacaoCompleta = async (avaliacao: any) => {
-    const id = avaliacao.avaliacao_id || gerarIdEstavel('av_c');
-    const item: AvaliacaoCompleta = { ...avaliacao, avaliacao_id: id, atualizado_em: new Date().toISOString() };
-    setAvaliacoesCompletas(prev => {
-      const idx = prev.findIndex(a => a.avaliacao_id === id);
-      if (idx >= 0) {
-        const copy = [...prev];
-        copy[idx] = item;
-        return copy;
-      }
-      return [item, ...prev];
-    });
-    setSaveStatus('SALVO_LOCAL_AGUARDANDO_SYNC');
-    setSaveStatusMessage('Avaliação salva apenas neste navegador. Exporte o backup em Configurações.');
+  const salvarAvaliacaoCompleta = async (avaliacao: AvaliacaoCompleta) => {
+    const anterior = avaliacoesCompletas.find(a => a.matricula_id === avaliacao.matricula_id &&
+      a.instrumento_id === avaliacao.instrumento_id);
+    const id = anterior?.avaliacao_id || avaliacao.avaliacao_id || gerarIdEstavel('av_c');
+    const item: AvaliacaoCompleta = { ...anterior, ...avaliacao, avaliacao_id: id, atualizado_em: new Date().toISOString() };
+    const lista = [...avaliacoesCompletas.filter(a => a.avaliacao_id !== id), item];
+    await persistirMudancaWeb('avaliacoes_completas', anterior ? 'UPDATE' : 'INSERT', item, lista);
+    setAvaliacoesCompletas(lista);
+    // NOTA: notas por critério são persistidas na tabela oficial 'avaliacoes'
+    // pelo fluxo de correção. Este registro guarda o parecer e a devolutiva.
   };
   const aprovarDevolutiva = async (id: string) => {
     setAvaliacoesCompletas(prev => prev.map(a => a.avaliacao_id === id ? { ...a, status: 'APROVADO_ENVIO', data_aprovacao: new Date().toISOString() } : a));
@@ -2041,9 +2123,8 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       .slice(0, 3);
 
     const motivosAtencao: string[] = [];
-    if (situacaoRss?.estaAtrasado) {
-      motivosAtencao.push(`1 RSS atrasado`);
-    }
+    const rssOperacional = classificarRssOperacional(situacaoRss, calendarioRss, getHojeDataIso());
+    // RSS é informação contextual da aula; não ativa alerta geral de estudante.
     if (docsPendentesCount > 0) {
       motivosAtencao.push(`${docsPendentesCount} documento(s) pendente(s)`);
     }
@@ -2058,7 +2139,7 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     }
 
     let statusAtencao: 'NORMAL' | 'ATENCAO' | 'PRIORIDADE' = 'NORMAL';
-    if (motivosAtencao.length >= 2 || faltasInjustificadasCount >= 2 || (situacaoRss?.estaAtrasado && saldoRss < -1)) {
+    if (motivosAtencao.length >= 2 || faltasInjustificadasCount >= 2) {
       statusAtencao = 'PRIORIDADE';
     } else if (motivosAtencao.length === 1) {
       statusAtencao = 'ATENCAO';
@@ -2099,41 +2180,23 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     observacao?: string
   ) => {
     setSaveStatus('SALVANDO');
-    const now = new Date().toISOString();
-    setEncontrosTurma(prev => {
-      const idx = prev.findIndex(e => e.turma_id === turmaId && e.data === data);
-      const updated: EncontroTurma = {
-        encontro_id: idx >= 0 ? prev[idx].encontro_id : generateUuid(),
-        turma_id: turmaId,
-        periodo_id: selectedPeriodoId,
-        data,
-        status: 'NAO_REALIZADO',
-        motivo_nao_realizado: motivo,
-        observacao: observacao || '',
-        atualizado_em: now,
-      };
-      if (idx >= 0) {
-        const copy = [...prev];
-        copy[idx] = updated;
-        return copy;
-      }
-      return [...prev, updated];
-    });
-
-    // Se havia estudo dirigido programado para esta data, registrar nota explicativa sem marcar como não cumprimento do aluno
-    setLeiturasResponsaveis(prev =>
-      prev.map(l => {
-        if (l.turma_id === turmaId && l.data === data) {
-          return {
-            ...l,
-            observacao: `Aula não realizada (${motivo})${observacao ? `: ${observacao}` : ''}`,
-          };
-        }
-        return l;
-      })
-    );
-
-    // Registra auditoria
+    const anterior = encontrosTurma.find(e => e.turma_id === turmaId && e.data === data);
+    const atualizado: EncontroTurma = {
+      ...anterior,
+      encontro_id: anterior?.encontro_id || generateUuid(),
+      turma_id: turmaId,
+      periodo_id: selectedPeriodoId,
+      data,
+      status: 'NAO_REALIZADO',
+      motivo_nao_realizado: motivo,
+      observacao: observacao || '',
+      atualizado_em: new Date().toISOString(),
+    };
+    const listaAtualizada = [...encontrosTurma.filter(e => !(e.turma_id === turmaId && e.data === data)), atualizado];
+    setEncontrosTurma(listaAtualizada);
+    // Não alterar realização do estudo dirigido sem confirmação da docente.
+    // As aulas canceladas não justificam automaticamente ausência de RSS/prática.
+    await persistirMudancaWeb('encontros_turma', anterior ? 'UPDATE' : 'INSERT', atualizado, listaAtualizada);
     await registrarAuditoria({
       acao: 'MARCAR_AULA_NAO_REALIZADA',
       entidade: 'encontros_turma',
@@ -2141,8 +2204,6 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       valor_novo: JSON.stringify({ motivo, observacao }),
       motivo: String(motivo),
     });
-
-    notifySaveSuccess();
   };
 
   const reagendarEncontro = async (
@@ -2213,6 +2274,31 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       );
     }
 
+    // Compartilha o cancelamento e o reagendamento com outros dispositivos.
+    const itemOriginal = encontrosTurma.find(e => e.turma_id === turmaId && e.data === dataOriginal);
+    const itemNovo = encontrosTurma.find(e => e.turma_id === turmaId && e.data === novaData);
+    const registroOriginal: EncontroTurma = {
+      ...itemOriginal, encontro_id: itemOriginal?.encontro_id || generateUuid(),
+      turma_id: turmaId, periodo_id: selectedPeriodoId, data: dataOriginal,
+      status: 'REAGENDADO', motivo_nao_realizado: motivo || 'Reagendamento',
+      data_reagendada: novaData, hora_reagendada: novoHorario, atualizado_em: now,
+    };
+    const registroNovo: EncontroTurma = {
+      ...itemNovo, encontro_id: itemNovo?.encontro_id || generateUuid(),
+      turma_id: turmaId, periodo_id: selectedPeriodoId, data: novaData,
+      status: 'PREVISTO', data_original: dataOriginal,
+      hora_inicio: novoHorario || horarioOriginal?.hora_inicio || '18:30',
+      hora_fim: horarioOriginal?.hora_fim || '21:12',
+      observacao: `Reagendado de ${dataOriginal}. Motivo: ${motivo || 'Reorganização acadêmica'}`,
+      atualizado_em: now,
+    };
+    const listaReagendada = [
+      ...encontrosTurma.filter(e => e.turma_id !== turmaId || (e.data !== dataOriginal && e.data !== novaData)),
+      registroOriginal, registroNovo
+    ];
+    await persistirMudancaWeb('encontros_turma', itemOriginal ? 'UPDATE' : 'INSERT', registroOriginal, listaReagendada);
+    await persistirMudancaWeb('encontros_turma', itemNovo ? 'UPDATE' : 'INSERT', registroNovo, listaReagendada);
+
     await registrarAuditoria({
       acao: 'REAGENDAR_SUPERVISAO',
       entidade: 'encontros_turma',
@@ -2222,12 +2308,14 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       motivo: motivo || 'Reagendamento de aula',
     });
 
-    notifySaveSuccess();
   };
 
   const reverterNaoRealizadoOuReagendado = async (turmaId: string, data: string) => {
-    setEncontrosTurma(prev => prev.filter(e => !(e.turma_id === turmaId && e.data === data)));
-    notifySaveSuccess();
+    const anterior = encontrosTurma.find(e => e.turma_id === turmaId && e.data === data);
+    if (!anterior) return;
+    const atualizados = encontrosTurma.filter(e => !(e.turma_id === turmaId && e.data === data));
+    setEncontrosTurma(atualizados);
+    await persistirMudancaWeb('encontros_turma', 'DELETE', anterior, atualizados);
   };
 
   // ==========================================
@@ -2241,24 +2329,24 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     motivoSubstituicao?: string
   ) => {
     setSaveStatus('SALVANDO');
-    setLeiturasResponsaveis(prev =>
-      prev.map(l => {
-        if (l.leitura_id === leituraId || (l.data && l.data === leituraId)) {
-          return {
-            ...l,
-            status_realizacao: status,
-            responsaveis_efetivos:
-              responsaveisEfetivosIds !== undefined
-                ? responsaveisEfetivosIds
-                : (l.responsaveis_efetivos || l.responsaveis_previstos || []),
-            motivo_substituicao:
-              motivoSubstituicao !== undefined ? motivoSubstituicao : l.motivo_substituicao,
-          };
-        }
-        return l;
-      })
-    );
-    notifySaveSuccess();
+    const original = leiturasResponsaveis.find(l => l.leitura_id === leituraId);
+    if (!original || !original.leitura_id) {
+      handleSaveError(new Error('Leitura não encontrada na base oficial.'));
+      return;
+    }
+    const atualizado: LeituraResponsavel = {
+      ...original, status_realizacao: status,
+      responsaveis_efetivos: responsaveisEfetivosIds !== undefined
+        ? responsaveisEfetivosIds
+        : (original.responsaveis_efetivos || original.responsaveis_previstos || []),
+      motivo_substituicao: motivoSubstituicao !== undefined ? motivoSubstituicao : original.motivo_substituicao,
+    };
+    const lista = leiturasResponsaveis.map(l => l.leitura_id === leituraId ? atualizado : l);
+    setLeiturasResponsaveis(lista);
+    await persistirMudancaWeb('leituras_responsaveis', 'UPDATE', {
+      ...atualizado,
+      leitura_agenda_id: (atualizado as any).leitura_agenda_id || atualizado.leitura_id,
+    }, lista);
   };
 
   // ==========================================
@@ -2396,8 +2484,24 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       return [...prev, encAtualizado];
     });
 
-    // Each record is committed atomically with its outbox entry by the sync service.
+    // 1. Persistência local imediata e segura em cache persistente (IndexedDB)
     const novasFreqsArray = Object.values(mapNovasFreqs);
+    const todasFreqsAtualizadas = [
+      ...novasFreqsArray,
+      ...frequencias.filter(
+        f => !(matriculasDaTurma.some(m => m.matricula_id === f.matricula_id) && f.data_aula === dataAula)
+      ),
+    ];
+    await salvarTabelaUnicaNoIndexedDb('frequencias', todasFreqsAtualizadas).catch(err =>
+      console.warn('Erro ao salvar frequências no IndexedDB:', err)
+    );
+
+    if (novasOcorrencias.length > 0) {
+      await salvarTabelaUnicaNoIndexedDb('ocorrencias', [...novasOcorrencias, ...ocorrencias]).catch(err =>
+        console.warn('Erro ao salvar ocorrencias no IndexedDB:', err)
+      );
+    }
+
     // 2. Persistência remota com tratamento rigoroso para token expirado / offline
     const token = await getAccessToken();
     let todasGravadasRemotamente = true;
@@ -2421,8 +2525,10 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             todasGravadasRemotamente = false;
           }
         } catch (err: any) {
-          handleSaveError(err);
-          throw err;
+          todasGravadasRemotamente = false;
+          if (err?.message?.includes('Sessão expirada') || err?.message?.includes('401')) {
+            houveTokenExpirado = true;
+          }
         }
       }
 
@@ -2433,8 +2539,10 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             todasGravadasRemotamente = false;
           }
         } catch (err: any) {
-          handleSaveError(err);
-          throw err;
+          todasGravadasRemotamente = false;
+          if (err?.message?.includes('Sessão expirada') || err?.message?.includes('401')) {
+            houveTokenExpirado = true;
+          }
         }
       }
     }
@@ -2569,36 +2677,6 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     periodos,
   ]);
 
-  const getPendenciasOperacionais = useCallback((): ItemPendenciaOperacional[] => {
-    const turmasDoPeriodo = getTurmasDoPeriodo(selectedPeriodoId);
-    return derivarPendenciasOperacionais(
-      turmasDoPeriodo,
-      matriculas,
-      alunos,
-      frequencias,
-      documentos,
-      registrosSemanais,
-      orientacoes,
-      marcosAcademicos,
-      leiturasResponsaveis,
-      encontrosTurma,
-      horariosTurma
-    );
-  }, [
-    getTurmasDoPeriodo,
-    selectedPeriodoId,
-    matriculas,
-    alunos,
-    frequencias,
-    documentos,
-    registrosSemanais,
-    orientacoes,
-    marcosAcademicos,
-    leiturasResponsaveis,
-    encontrosTurma,
-    horariosTurma,
-  ]);
-
   const getPendenciasCanonicas = useCallback((periodoId?: string): ItemPendenciaOperacional[] => {
     const pId = periodoId || selectedPeriodoId;
     return gerarPendenciasCanonicas(
@@ -2621,7 +2699,7 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       new Date(),
       gruposPratica,
       grupoIntegrantes
-    );
+    ).filter(item => item.tipo !== 'RSS_ATRASADO');
   }, [
     selectedPeriodoId,
     turmas,
@@ -2642,6 +2720,13 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     gruposPratica,
     grupoIntegrantes
   ]);
+
+  // A visão diária e a área de pendências usam UM ÚNICO cálculo de RSS.
+  // Lacunas antigas ficam nas fichas, sem se tornarem novas urgências.
+  const getPendenciasOperacionais = useCallback(
+    (): ItemPendenciaOperacional[] => getPendenciasCanonicas(),
+    [getPendenciasCanonicas]
+  );
 
   const resetDatabaseToSeed = () => {
     setPeriodos(initialPeriodos);
@@ -2685,8 +2770,7 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const exportDatabaseAsJson = (): string => {
     const backup = {
       exportDate: new Date().toISOString(),
-      version: '1.2.2',
-      localOnly: { caixaEntrada, filaProfessora, filaSupervisao, avaliacoesCompletas, encontrosTurma },
+      version: '1.2.1',
       tables: {
         periodos,
         disciplinas,
@@ -2846,6 +2930,10 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         registrarAuditoria,
         // Operação: Encontros, Aulas Não Realizadas e Reagendamentos
         encontrosTurma,
+        preparacoesAula,
+        adicionarPreparacaoAula,
+        alterarPreparacaoAula,
+        excluirPreparacaoAula,
         marcarEncontroNaoRealizado,
         reagendarEncontro,
         reverterNaoRealizadoOuReagendado,

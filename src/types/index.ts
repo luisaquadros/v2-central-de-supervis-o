@@ -180,6 +180,19 @@ export interface SituacaoAtualTurma {
   [key: string]: any;
 }
 
+/** Preparação compartilhada entre dispositivos, sem dados identificáveis de pacientes. */
+export interface PreparacaoAula {
+  preparacao_id: string;
+  turma_id: string;
+  periodo_id: string;
+  data_aula: string; // YYYY-MM-DD
+  tipo: 'PAUTA' | 'LEMBRETE' | 'OBSERVACAO';
+  texto: string;
+  status: 'PENDENTE' | 'CONCLUIDO';
+  criado_em: string;
+  atualizado_em: string;
+}
+
 export interface LeituraResponsavel {
   leitura_id?: string;
   turma_id?: string;

@@ -54,9 +54,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const currentPeriodo = periodos.find(p => p.periodo_id === selectedPeriodoId);
 
   const navItems = [
-    { id: 'hoje' as NavTab, label: 'Hoje / Dashboard', icon: LayoutDashboard },
-    { id: 'frequencia' as NavTab, label: 'Frequência', icon: CalendarCheck },
+    { id: 'hoje' as NavTab, label: 'Hoje', icon: LayoutDashboard },
     { id: 'turmas' as NavTab, label: 'Turmas', icon: Users },
+    { id: 'frequencia' as NavTab, label: 'Frequência', icon: CalendarCheck },
     { id: 'alunos' as NavTab, label: 'Alunos', icon: GraduationCap },
     { id: 'avaliacao' as NavTab, label: 'Avaliação', icon: Award },
     { id: 'calendario' as NavTab, label: 'Calendário', icon: Calendar },
@@ -84,9 +84,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {/* Brand / Header */}
         <div className="p-4 border-b border-slate-100">
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-slate-900 text-white flex items-center justify-center font-bold text-sm tracking-wide">
-              CS
-            </div>
+            <img src="/central-supervisao.svg" alt="" aria-hidden="true" className="w-9 h-9 rounded-xl shadow-sm shrink-0" />
             <div>
               <h1 className="text-sm font-bold tracking-tight text-slate-900 leading-tight">
                 Central de Supervisão
@@ -166,8 +164,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <div className="border-t border-slate-100" />
         </div>
 
-        {/* Secondary Navigation */}
-        <nav className="p-3 space-y-1">
+        {/* Administração menos frequente, recolhida sem retirar funções. */}
+        <details className="mx-3 rounded-lg border border-slate-200" open={currentTab === 'semestres' || currentTab === 'configuracoes' ? true : undefined}>
+        <summary className="px-3 py-2.5 text-xs font-semibold text-slate-600 cursor-pointer">Administração e ajustes</summary>
+        <nav className="px-2 pb-2 space-y-1">
           {secondaryItems.map(item => {
             const Icon = item.icon;
             const isActive = currentTab === item.id;
@@ -193,6 +193,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             );
           })}
         </nav>
+        </details>
       </div>
 
       {/* Footer Info & Connection Status */}
@@ -202,7 +203,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <Layers className="w-3.5 h-3.5 text-slate-500" />
             <span>Google Sheets</span>
           </div>
-          <span className="font-mono text-[10px] text-slate-400">30 tabelas</span>
+          <span className="font-mono text-[10px] text-slate-400">Base oficial</span>
         </div>
 
         {/* Connection status badge */}

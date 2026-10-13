@@ -32,11 +32,16 @@ for(const m of [matA,matB,matC]){
   assert.equal(sit.registrosEstudante.length,4,'todos integrantes veem os RSS do grupo');
   assert.equal(sit.saldoRss,-1,'pendência é coletiva do grupo, não do autor');
 }
-function pendencias(esperados:number){
-  return gerarPendenciasCanonicas('2026-2',[turma] as any,[matA,matB,matC] as any,students as any,[],[],docs as any,[],[],[],[],[],
-    [{turma_id:'t-grupo',total_previsto:12}] as any,[],[],
+function pendencias(esperados:number, revisao = false){
+  const dados = revisao ? docs : docs.filter(r => r.registro_id !== 'g-week-6-review');
+  const cal = [
+    {turma_id:'t-grupo', sequencia:5, semana_inicio:'2026-09-28', semana_fim:'2026-10-04'},
+    {turma_id:'t-grupo', sequencia:6, semana_inicio:'2026-10-05', semana_fim:'2026-10-11'},
+  ];
+  return gerarPendenciasCanonicas('2026-2',[turma] as any,[matA,matB,matC] as any,students as any,[],[],dados as any,[],[],[],[],[],
+    [{turma_id:'t-grupo',total_previsto:12}] as any,[],cal as any,
     [{...status,rss_esperados_ate_hoje:esperados,status_rss:esperados===1?'EM_DIA':'ATRASADO'}] as any,
-    new Date('2026-10-13T12:00:00'),[group] as any,members as any
+    new Date(esperados===1 ? '2026-10-06T12:00:00' : '2026-10-13T12:00:00'),[group] as any,members as any
   ).filter(p=>p.tipo==='RSS_ATRASADO');
 }
 const missing=pendencias(2);
@@ -45,6 +50,7 @@ assert.equal(missing[0].id,'pend-rss-grupo-g-1');
 assert(missing[0].titulo.includes('Grupo teste'));
 assert(!missing[0].titulo.includes('Aluna'));
 assert.equal(pendencias(1).length,0,'grupo em dia não pode gerar qualquer pendência para os integrantes');
+assert.equal(pendencias(2,true).length,0,'semana em revisão não é falta confirmada nem alerta punitivo');
 
 assert.equal(normalizarDataAcademica('12/10/2026'),'2026-10-12');
 assert.equal(normalizarDataAcademica('46307,64637'),'2026-10-12');
