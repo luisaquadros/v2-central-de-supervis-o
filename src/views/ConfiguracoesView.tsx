@@ -1,5 +1,6 @@
 import { valorConfiguracaoVisivel } from '../services/configuracoesSeguras';
 import { lerCentralControleSomenteLeitura, type DiagnosticoCentralControle } from '../services/centralControleDiagnostico';
+import { BackupPainel } from '../components/BackupPainel';
 import React, { useState } from 'react';
 import {
   Settings,
@@ -22,8 +23,6 @@ export const ConfiguracoesView: React.FC = () => {
   const {
     criterios,
     configuracoes,
-    resetDatabaseToSeed,
-    exportDatabaseAsJson,
     importarAlunosLote,
     turmas,
     alunos,
@@ -39,7 +38,6 @@ export const ConfiguracoesView: React.FC = () => {
   } = useSupervisao();
 
   const [activeSubTab, setActiveSubTab] = useState<'geral' | 'importar'>('geral');
-  const [confirmReset, setConfirmReset] = useState(false);
   const [importandoFila, setImportandoFila] = useState(false);
   const [testandoConector,setTestandoConector] = useState(false);
   const [conectorDiagnostico,setConectorDiagnostico] = useState<DiagnosticoCentralControle|null>(null);
@@ -56,16 +54,6 @@ export const ConfiguracoesView: React.FC = () => {
     null
   );
 
-  const handleExportJson = () => {
-    const dataStr = exportDatabaseAsJson();
-    const blob = new Blob([dataStr], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `central_supervisao_backup_${new Date().toISOString().split('T')[0]}.json`;
-    link.click();
-    URL.revokeObjectURL(url);
-  };
 
   const handleImportSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -303,48 +291,7 @@ export const ConfiguracoesView: React.FC = () => {
             </button>
           </section>
 
-          {/* Backup e Reset */}
-          <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs space-y-3">
-            <h3 className="text-sm font-bold text-slate-900">Backup e Manutenção</h3>
-            <div className="flex flex-wrap items-center gap-3">
-              <button
-                onClick={handleExportJson}
-                className="px-4 py-2.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white font-semibold flex items-center gap-2 cursor-pointer shadow-xs"
-              >
-                <Download className="w-4 h-4" />
-                <span>Exportar Dados em JSON (30 Tabelas)</span>
-              </button>
-
-              {!confirmReset ? (
-                <button
-                  onClick={() => setConfirmReset(true)}
-                  className="px-4 py-2.5 rounded-lg border border-red-200 text-red-700 hover:bg-red-50 font-semibold flex items-center gap-2 cursor-pointer"
-                >
-                  <RefreshCw className="w-4 h-4" />
-                  <span>Redefinir Estrutura Padrão (Sem Mocks)</span>
-                </button>
-              ) : (
-                <div className="flex items-center gap-2">
-                  <span className="text-red-700 font-medium">Confirmar restauração?</span>
-                  <button
-                    onClick={() => {
-                      resetDatabaseToSeed();
-                      setConfirmReset(false);
-                    }}
-                    className="px-3 py-1.5 bg-red-600 text-white font-bold rounded-lg cursor-pointer hover:bg-red-700"
-                  >
-                    Sim, Restaurar
-                  </button>
-                  <button
-                    onClick={() => setConfirmReset(false)}
-                    className="px-3 py-1.5 border border-slate-300 rounded-lg text-slate-600 cursor-pointer"
-                  >
-                    Cancelar
-                  </button>
-                </div>
-              )}
-            </div>
-          </div>
+          <BackupPainel />
         </div>
       )}
 

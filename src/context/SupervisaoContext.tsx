@@ -115,6 +115,7 @@ import {
   initialMapeamentoFontes,
   initialAuditoriaBase,
 } from '../data/initialData';
+import { gerarBackup, validarBackup, compararComBackup, operacaoDeRestauracao, type TabelasBackup, type ArquivoBackup, type RelatorioBackup, type DiferencaRegistro } from '../services/backupService';
 import { OFFICIAL_SPREADSHEET_ID, OFFICIAL_SPREADSHEET_NAME, OFFICIAL_SPREADSHEET_URL } from '../services/googleSheetsService';
 import type { DadosIniciais } from '../services/dadosIniciais';
 import type { User } from 'firebase/auth';
@@ -399,8 +400,9 @@ interface SupervisaoContextType {
   limparItemDesfazer: () => void;
 
   // Backup / Export
-  resetDatabaseToSeed: () => void;
-  exportDatabaseAsJson: () => string;
+  exportDatabaseAsJson: () => Promise<string>;
+  conferirBackup: (bruto: unknown) => Promise<{ relatorio: RelatorioBackup; diferencas: DiferencaRegistro[] }>;
+  restaurarRegistroDoBackup: (d: DiferencaRegistro) => Promise<void>;
 }
 
 const SupervisaoContext = createContext<SupervisaoContextType | undefined>(undefined);
@@ -2679,50 +2681,8 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     [getPendenciasCanonicas]
   );
 
-  const resetDatabaseToSeed = () => {
-    setPeriodos(initialPeriodos);
-    setDisciplinas(initialDisciplinas);
-    setTurmas(initialTurmas);
-    setAlunos(initialAlunos);
-    setMatriculas(initialMatriculas);
-    setOrientacoes(initialOrientacoes);
-    setRegistrosSemanais(initialRegistrosSemanais);
-    setDocumentos(initialDocumentos);
-    setAvaliacoes(initialAvaliacoes);
-    setFeedbacks(initialFeedbacks);
-    setCriterios(initialCriteriosAvaliacao);
-    setOcorrencias(initialOcorrencias);
-    setConfiguracoes(initialConfiguracoes);
-    setTurmasOrigem(initialTurmasOrigem);
-    setFrequencias(initialFrequencias);
-    setHorariosTurma(initialHorariosTurma);
-    setPontosAcompanhamento(initialPontosAcompanhamento);
-    setMarcosAcademicos(initialMarcosAcademicos);
-    setRegrasRss(initialRegrasRss);
-    setCalendarioRss(initialCalendarioRss);
-    setStatusRssUnidades(initialStatusRssUnidades);
-    setSituacaoAtualTurmas(initialSituacaoAtualTurmas);
-    setLeiturasResponsaveis(initialLeiturasResponsaveis);
-    setRegrasPrazo(initialRegrasPrazo);
-    setGruposPratica(initialGruposPratica);
-    setGrupoIntegrantes(initialGrupoIntegrantes);
-    setEntregas(initialEntregas);
-    setFeedbacksOficiais(initialFeedbacksOficiais);
-    setRegistrosSupervisao(initialRegistrosSupervisao);
-    setSincronizacao(initialSincronizacao);
-    setDicionarioDados(initialDicionarioDados);
-    setContratoApp(initialContratoApp);
-    setMapeamentoFontes(initialMapeamentoFontes);
-    setAuditoriaBase(initialAuditoriaBase);
-    const ativo = initialPeriodos.find(p => p.status === 'ATIVO') || initialPeriodos[0];
-    if (ativo) setSelectedPeriodoId(ativo.periodo_id);
-  };
 
-  const exportDatabaseAsJson = (): string => {
-    const backup = {
-      exportDate: new Date().toISOString(),
-      version: '1.2.1',
-      tables: {
+  const tabelasParaBackup = (): TabelasBackup => ({
         periodos,
         disciplinas,
         turmas,
@@ -2757,9 +2717,22 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         contrato_app: contratoApp,
         mapeamento_fontes: mapeamentoFontes,
         auditoria_base: auditoriaBase,
-      },
-    };
-    return JSON.stringify(backup, null, 2);
+  }) as unknown as TabelasBackup;
+
+  const exportDatabaseAsJson = async (): Promise<string> =>
+    JSON.stringify(await gerarBackup(tabelasParaBackup()), null, 2);
+
+  /** Confere o arquivo (somente leitura) e lista o que difere dos dados atuais. */
+  const conferirBackup = async (bruto: unknown): Promise<{ relatorio: RelatorioBackup; diferencas: DiferencaRegistro[] }> => {
+    const relatorio = await validarBackup(bruto);
+    const diferencas = relatorio.ok ? compararComBackup((bruto as ArquivoBackup).tables, tabelasParaBackup()) : [];
+    return { relatorio, diferencas };
+  };
+
+  /** Restaura UM registro pelo mesmo caminho das demais gravações (fila, coordenador, log). */
+  const restaurarRegistroDoBackup = async (d: DiferencaRegistro): Promise<void> => {
+    const op = operacaoDeRestauracao(d);
+    await persistirMudancaWeb(d.tabela, op.tipo, op.registro, []);
   };
 
   return (
@@ -2902,8 +2875,9 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         getPendenciasOperacionais,
         getPendenciasCanonicas,
     marcarPendenciaResolvida,
-        resetDatabaseToSeed,
         exportDatabaseAsJson,
+        conferirBackup,
+        restaurarRegistroDoBackup,
       }}
     >
       {children}
