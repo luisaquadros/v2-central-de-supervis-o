@@ -1085,11 +1085,15 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       // Não anunciar sucesso antes de a escrita ser entregue ao Sheets ou à fila segura.
       // Sub-registros possuem chaves próprias e precisam ser gravados separadamente.
       await persistirMudancaWeb('turmas', 'INSERT', novaTurma, [...turmas, novaTurma]);
+      let horariosSnapshot = [...horariosTurma];
       for (const horario of novosHorarios) {
-        await persistirMudancaWeb('horarios_turma', 'INSERT', horario, [...horariosTurma, horario]);
+        horariosSnapshot = [...horariosSnapshot, horario];
+        await persistirMudancaWeb('horarios_turma', 'INSERT', horario, horariosSnapshot);
       }
+      let origensSnapshot = [...turmasOrigem];
       for (const origem of novasOrigens) {
-        await persistirMudancaWeb('turmas_origem', 'INSERT', origem, [...turmasOrigem, origem]);
+        origensSnapshot = [...origensSnapshot, origem];
+        await persistirMudancaWeb('turmas_origem', 'INSERT', origem, origensSnapshot);
       }
       setTurmas(prev => [...prev, novaTurma]);
       if (novosHorarios.length > 0) setHorariosTurma(prev => [...prev, ...novosHorarios]);
@@ -1166,8 +1170,10 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       if (!isRunningInAppsScript()) {
         const anteriores = horariosTurma.filter(h => h.turma_id === turmaId);
         const proximaLista = [...horariosTurma.filter(h => h.turma_id !== turmaId), ...novosHorarios];
+        // Gravar primeiro os substitutos: se a conexão falhar, os horários antigos
+        // continuam disponíveis na planilha oficial.
+        for (const h of novosHorarios) await persistirMudancaWeb('horarios_turma', 'INSERT', h, [...horariosTurma, ...novosHorarios]);
         for (const h of anteriores) await persistirMudancaWeb('horarios_turma', 'DELETE', h, proximaLista);
-        for (const h of novosHorarios) await persistirMudancaWeb('horarios_turma', 'INSERT', h, proximaLista);
       }
       setHorariosTurma(prev => [...prev.filter(h => h.turma_id !== turmaId), ...novosHorarios]);
     }
@@ -1184,8 +1190,9 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       if (!isRunningInAppsScript()) {
         const anteriores = turmasOrigem.filter(o => o.turma_id === turmaId);
         const proximaLista = [...turmasOrigem.filter(o => o.turma_id !== turmaId), ...novasOrigens];
+        // Preservar origens existentes até confirmar as novas.
+        for (const o of novasOrigens) await persistirMudancaWeb('turmas_origem', 'INSERT', o, [...turmasOrigem, ...novasOrigens]);
         for (const o of anteriores) await persistirMudancaWeb('turmas_origem', 'DELETE', o, proximaLista);
-        for (const o of novasOrigens) await persistirMudancaWeb('turmas_origem', 'INSERT', o, proximaLista);
       }
       setTurmasOrigem(prev => [...prev.filter(o => o.turma_id !== turmaId), ...novasOrigens]);
     }
