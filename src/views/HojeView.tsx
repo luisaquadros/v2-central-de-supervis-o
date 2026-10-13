@@ -1,3 +1,4 @@
+import { resumirDocumentacaoOficial } from '../services/documentacaoAcademicaService';
 import React from 'react';
 import {
   Play,
@@ -40,6 +41,7 @@ export const HojeView: React.FC<HojeViewProps> = ({
     matriculas,
     orientacoes,
     documentos,
+    entregas,
     registrosSemanais,
     frequencias,
     horariosTurma,
@@ -94,8 +96,9 @@ export const HojeView: React.FC<HojeViewProps> = ({
   const frequenciasParaRevisar = faltasInjustificadas + justificativasPendentes;
 
   // Documentos
-  const docsPendentes = documentos.filter(d => d.status === 'PENDENTE').length;
-  const docsCompletos = documentos.filter(d => d.status === 'ENTREGUE').length;
+  const docsResumo = resumirDocumentacaoOficial(entregas, documentos);
+  const docsPendentes = docsResumo.pendentes;
+  const docsCompletos = docsResumo.entregues;
 
   // Avaliação Semestral: cálculo real a partir de avaliacoesCompletas e matrículas
   const totalMatriculas = matriculas.filter(m => m.status === 'MATRICULADO').length;
@@ -418,16 +421,17 @@ export const HojeView: React.FC<HojeViewProps> = ({
             <CheckCircle className="w-4 h-4 text-emerald-500" />
           </div>
           <div className="text-2xl font-black text-slate-900 font-mono">
-            {documentos.length === 0 ? (
+            {docsResumo.total === 0 ? (
               '—'
             ) : docsPendentes > 0 ? (
               <span className="text-amber-600">{docsPendentes} pendentes</span>
             ) : (
-              <span className="text-emerald-700">{docsCompletos} entregues</span>
+              <span className="text-slate-800">{docsResumo.conferir} a conferir</span>
             )}
           </div>
           <div className="mt-2 text-xs text-slate-500">
-            {documentos.length === 0 ? 'Aguardando sincronização' : `${docsCompletos} entregues e conferidos`}
+            {docsResumo.total === 0 ? 'Aguardando sincronização' :
+              `${docsCompletos} entregues; ${docsResumo.enviados} enviados; ${docsResumo.conferir} a conferir`}
           </div>
         </button>
 
