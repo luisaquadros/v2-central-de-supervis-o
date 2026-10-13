@@ -1,0 +1,207 @@
+# Central de Supervisão — Documento Mestre
+
+Atualizado em 13/10/2026 · Branch `fix/backend-persistencia-integridade` (PR #46) · Substitui `DIAGNOSTICO_FASE0` e `ENTREGA_E1_E2` (ficam no histórico do git).
+
+**Base normativa:** PRD v1.1, Adendo v1.2 e decisões D1–D7 informadas em 13/10/2026.
+**Regra de leitura:** ✅ implementado e testado · 🟡 parcial · ⏸ pronto, aguardando validação/ativação real · ❌ não feito · ❓ depende de decisão.
+
+---
+
+## 1. Antes de publicar (ação obrigatória)
+
+| # | Ação | Onde | Se não fizer |
+|---|---|---|---|
+| 1 | Definir `ADMIN_EMAILS` (e-mail da professora administradora) | Cloudflare → Worker → Variables | **Nenhuma gravação é aceita** (falha fechada, D4) |
+| 2 | Conferir o Apps Script (Gatilhos, Implantações, Execuções), também em *Extensões → Apps Script* da planilha | script.google.com | Este PR remove `gas/`; se algo estiver em uso, não mesclar (reverter `59ea391`) |
+| 3 | *(só para monitoras e sincronização)* criar conta de serviço, guardar o JSON em `GOOGLE_SERVICE_ACCOUNT_JSON` (segredo), compartilhar a planilha como **Editora** e as pastas/arquivos monitorados como **Leitora** com o e-mail dela | Google Cloud + Cloudflare | Monitoras e sincronização retornam 503 |
+| 4 | *(só para monitoras)* definir `ACESSOS_JSON` (ver §5) | Cloudflare | Não há monitoras |
+| 5 | **Ativar a sincronização** apenas depois do teste real (§8) | Variável `SINCRONIZACAO_DOCUMENTOS=ligada` + bloco `triggers` | Sincronização permanece desligada |
+
+---
+
+## 2. Arquitetura efetivamente implementada
+
+```
+Navegador (React + Firebase Auth/Google)
+ ├─ leitura  → Sheets API direto (administradora)  |  /api/leitura (monitora, filtrada)
+ ├─ gravação → fila local (IndexedDB) → /api/critical-write
+ └─ painéis  → /api/acesso · /api/documentos/estado · /api/documentos/sincronizar
+Cloudflare Worker (src/server/worker.ts — só exporta handler e Durable Object)
+ ├─ autenticarPerfil: token de ID do Firebase verificado (RS256) + perfil de ADMIN_EMAILS/ACESSOS_JSON
+ ├─ WriteCoordinator (Durable Object): serializa, compara versão (CAS), idempotência por operacaoId,
+ │    autoriza tabela/turma, grava, escreve log_alteracoes, sincroniza metadados do Drive
+ └─ scheduled(): dispara a sincronização só nos crons 0 11 * * * e 0 21 * * * e só se ligada
+Google Sheets (planilha 1DwhmASMStNtT_L2YinG-jkP9vYVv5ETdc-azYqSSIc4) · Drive API (somente metadados)
+```
+
+| Componente | Arquivo | Papel |
+|---|---|---|
+| Autorização | `autorizacao.ts`, `acessos.ts` | identidade e perfil no servidor |
+| Conta de serviço | `contaServico.ts` | JWT-bearer; usada por monitoras, leitura filtrada e sincronização |
+| Escrita crítica | `coordenacaoCritica.ts`, `worker.ts` | versão, log, tabelas coordenadas |
+| Sincronização Drive | `sincronizacaoDocumentos.ts` | metadados → `monitoramento_documentos` |
+| Cliente | `escritaCoordenadaService.ts`, `leituraServidor.ts`, `syncService.ts` | fila, perfil, leitura via servidor |
+
+**Planilha em uso (D5).** O Worker e o app usam **uma só** planilha, fixada no código: *Central de Supervisão — DESENVOLVIMENTO* (`1DwhmAS…`). No Drive existem também: *Central de Controle dos Estágios 2026.2* e sua versão *HOMOLOGAÇÃO* (fontes de importação, somente leitura), *Base de Integração* e *[2.2026] Registro Semanal (respostas)* (origem do RSS). **Não existe outra planilha "de produção" da Central.** ❓ Decisão pendente: manter esta como canônica ou criar cópia oficial. Nenhuma migração de base foi feita.
+
+**Remoções.** `gas/`, `gasService.ts` e as ramificações `isRunningInAppsScript` (só rodavam dentro do Apps Script) foram removidos; o caminho do navegador é o único.
+
+---
+
+## 3. Modelo de dados e origem de cada informação
+
+| Informação | Aba | Quem escreve | Quem lê | Observação |
+|---|---|---|---|---|
+| Estudante / matrícula / turma / horário | `alunos`, `matriculas`, `turmas`, `horarios_turma` | app (coordenador, com versão) | todos (monitora filtrada) | ID estável; vínculo nunca por nome |
+| Condição na turma | `matriculas.papel_na_turma` | professora | app | Ex.: `REPRESENTANTE`, `SUPERVISAO_HORARIO_ALTERNATIVO` (valores combináveis por `; , \|`). **Sem cadastro paralelo** |
+| Encontro / frequência | `encontros_turma`, `frequencias` | app (coordenador) | todos | chamada por exceção (ver §4) |
+| Entregas de documentos | `entregas` | app (coordenador) | todos | status simples entregue/não; independente do Drive |
+| **Metadados de documentos do Drive** | `monitoramento_documentos` | **somente o Worker** (4 colunas) + cadastro manual das linhas | app | `titular_tipo` MATRICULA ou GRUPO + `titular_id` (IDs estáveis) |
+| Resultado da sincronização | `sincronizacao` (linhas `DRIVE_METADADOS`) + histórico no Durable Object | Worker | painel | |
+| Trilha de auditoria | `log_alteracoes` (criada na 1ª gravação) | Worker | administradora | identidade verificada; **sem texto livre** |
+| RSS | `registros_semanais` (fórmula, somente leitura) | formulário/planilha | app | original imutável ainda não preservado (E4) |
+| Avaliações e rubricas | `avaliacoes`, `avaliacoes_completas`, `criterios_avaliacao` | app (coordenador) | só administradora | rubrica versionada: ❌ (E5) |
+| Cadastros ainda no caminho direto | `periodos`, `disciplinas`, `turmas_origem`, `configuracoes`, `marcos_academicos`, `criterios_avaliacao`, `grupos_pratica`, `grupo_integrantes`, `registros_semanais` | navegador da administradora | todos | migrar uma a uma |
+
+Colunas escritas pela sincronização: `data_modificacao_drive`, `consultado_em`, `status`, `erro_codigo`. **Nunca** `validacao_manual`, observações, `origem_metadado` ou qualquer outra. Não cria nem remove linhas.
+
+---
+
+## 4. Regras de negócio
+
+**Confirmadas e implementadas**
+- Chamada por exceção: o app não presume presença antes de a professora salvar; **matrícula com `SUPERVISAO_HORARIO_ALTERNATIVO` não recebe presença nem falta automática** nos encontros coletivos (só há registro se ela marcar explicitamente).
+- Recente (documento) = modificado nos últimos **7 dias** (configurável pela chave `janela_documentos_dias` em `configuracoes`; independente da janela do RSS). **Modificação não indica entrega, versão correta nem qualidade.**
+- Falta de permissão (`SEM_PERMISSAO`) é distinta de arquivo ausente (`NAO_ENCONTRADO_NA_PASTA`).
+- Clínica Ampliada: **um documento por grupo**, exibido uma vez na turma e como "coletivo" na ficha dos integrantes. Consultoria Organizacional: documentos **individuais** por matrícula.
+- Notas oficiais não são calculadas nem alteradas por esta entrega; nenhum registro histórico é excluído automaticamente.
+- Restauração de backup é sempre por registro, com confirmação, e nunca apaga o que foi criado depois.
+
+**Decididas, ainda não implementadas**
+- D1: ao **encerrar** a chamada, mostrar prévia dos que serão considerados presentes e exigir confirmação explícita; enquanto aberta, `NAO_REGISTRADO` (E3). Hoje "Salvar chamada" ainda grava os não marcados como presentes.
+- D2: faltas, atrasos, justificativas e dispensas registrados separadamente, sem presumir abono ou reposição (E3).
+- D3: critérios, pesos e competências configuráveis por turma; rubrica versionada; prazo de homologação 14 dias corridos após o início das aulas; sem notas oficiais com critérios não confirmados (E5).
+
+**Pendentes de decisão institucional ❓:** regulamento de faltas/atrasos/reposição (D2), pesos oficiais (D3), planilha canônica (D5), política de edição offline além de "fila ≠ salvo" (D6), retenção e exportação (D7), monitoras e coordenação além do descrito.
+
+---
+
+## 5. Permissões e segurança
+
+**Perfis** (decididos no servidor; configuração no Worker, não na planilha, para que quem edita a planilha não conceda acesso a si mesmo):
+
+| Perfil | Como é definido | Pode |
+|---|---|---|
+| `PROFESSORA_ADMIN` | `ADMIN_EMAILS` ou `ACESSOS_JSON.administradoras` | tudo; lê a planilha com o próprio acesso Google; sincroniza; vê log e backup |
+| `MONITORA` | `ACESSOS_JSON.monitoras[]` = `{email, turmas[], operacoes[]}` | só as **operações delegadas** nas **turmas listadas** |
+| Estudante | — | **sem acesso** nesta versão |
+
+`ACESSOS_JSON` (exemplo): `{"monitoras":[{"email":"m@x.com","turmas":["<turma_id>"],"operacoes":["CHAMADA","DOCUMENTOS_VER"]}]}`.
+Entradas inválidas (sem turma, sem operação, `"*"`, e-mail ruim) são **ignoradas** e aparecem como aviso para a administradora.
+
+| Operação delegável | Grava | Lê (filtrado à turma) |
+|---|---|---|
+| `CHAMADA` | `frequencias`, `encontros_turma` | `encontros_turma`, `frequencias` (sem `justificativa`/`observacao`) |
+| `ENTREGAS` | `entregas` | `entregas` |
+| `DOCUMENTOS_VER` | — | `monitoramento_documentos` (sem observações manuais) e estado da sincronização |
+| (sempre) | — | períodos, disciplinas, turmas, horários, matrículas, alunos (sem e-mail), grupos |
+
+**Nunca para monitora:** avaliações, ocorrências, devolutivas/feedbacks, registros de supervisão, orientações, pontos de acompanhamento, RSS, critérios, configurações, log, backup, cadastro; exclusões; sincronização manual. Turma indeterminada = negado; o servidor confere a turma do registro novo **e** a do registro existente.
+
+**Medidas**
+- Identidade: token de ID do Firebase verificado no Worker (assinatura, emissor, público, validade, e-mail verificado; rotação de chaves tratada). O e-mail enviado no corpo é ignorado.
+- Falha fechada: sem `ADMIN_EMAILS`/`ACESSOS_JSON` → 503. Monitora/sincronização sem conta de serviço → 503.
+- A monitora **não usa credencial Google própria**: o servidor grava e lê com a conta de serviço depois de validar perfil, tabela e turma.
+- Log de alterações com identidade verificada; texto livre nunca vai ao log; falha do log não desfaz a gravação (reenvio automático).
+- Sincronização: só `id, modifiedTime, trashed, parents`; sem nome, conteúdo, revisões ou links; uma execução por vez.
+- Variáveis de teste (`SHEETS_API_BASE`, `DRIVE_API_BASE`, `TOKEN_URL`, `JWKS_URL`) só valem se apontarem para `127.0.0.1`/`localhost`.
+
+**Limites conhecidos (não resolvidos)**
+1. A **administradora** ainda lê/escreve cadastros não migrados direto na planilha com o próprio token; o controle dela é o compartilhamento Google.
+2. Quem tiver acesso de edição à planilha pelo Google contorna o app. Para as monitoras, **não compartilhe a planilha com elas** (o servidor usa a conta de serviço).
+3. O cache local (IndexedDB) é do navegador, não da conta: ao entrar como monitora, as tabelas retidas são sobrescritas por vazio; falta limpar o cache inteiro na troca de usuário.
+4. Texto livre de RSS/ocorrências ainda é exibido por inteiro à administradora (E2/E4).
+
+---
+
+## 6. Estado por funcionalidade
+
+| Funcionalidade | Estado | Observações |
+|---|---|---|
+| Autorização e identidade no servidor | ✅ | §5 |
+| Perfis PROFESSORA_ADMIN e MONITORA por turma | ✅ servidor · 🟡 interface | monitora não vê Avaliação/Semestres/Configurações; revisar fichas com abas vazias |
+| Leitura filtrada para monitora (`/api/leitura`) | ✅ | exige conta de serviço |
+| Controle de versão + log em 18 tabelas | ✅ | 7 originais + 7 de acompanhamento + `alunos`, `matriculas`, `turmas`, `horarios_turma` (um commit cada, reversível) |
+| Cadastros restantes (9 tabelas) | ❌ | caminho direto |
+| Backup v2.0 (checksum) · conferência · restauração por registro | ✅ | restauração testada só em planilha simulada |
+| `monitoramento_documentos` na turma e na ficha (aluno e grupo) | ✅ | existência, data de modificação, data de verificação, status, erros e "a conferir" |
+| Condição `SUPERVISAO_HORARIO_ALTERNATIVO` (Olyver: matrículas 2B e 3B) | ✅ regra e interface · ⏸ dados reais | selo na turma, ficha e chamada; sem presença/falta automática |
+| Conferência dos vínculos da aba real (Configurações) | ✅ | roda no navegador da administradora |
+| Sincronização Drive→planilha ("Sincronizar agora", lock, histórico, falhas) | ✅ simulado · ⏸ real | só administradora |
+| Cron 08:00 e 18:00 (Brasília) | ⏸ | lógica e horários testados; **não declarados** em `wrangler.jsonc` |
+| Chamada com `NAO_REGISTRADO` até encerrar (D1) | ❌ | E3 |
+| Participação, diário, marcos, rubricas, competências, devolutiva com evidência | ❌ | E3–E5 |
+| RSS original imutável e conferência de vínculos | ❌ | E4 |
+| Resumos por turma (RSS 7 dias, documentos) e quadro "Marcar entregas" | ✅ | consulta, sem notificação |
+
+---
+
+## 7. Testes e evidências
+
+Comandos: `npm run lint` · `npm test` (30 arquivos) · `npm run build` · `npm run test:worker-real` (também no CI).
+
+| Prova | Cobertura | Resultado |
+|---|---|---|
+| `testAutorizacao` | token expirado/forjado/`alg:none`/outra chave, rotação de chaves, falha fechada, identidade do corpo ignorada, Origin, exports do Worker | ✅ |
+| `testPerfis` | configuração, matriz de escrita, leitura filtrada, conta de serviço (assinatura JWT conferida), monitora × administradora ponta a ponta | ✅ |
+| `testMigracaoCadastro` | por tabela (`alunos`, `matriculas`, `turmas`, `horarios_turma`): edição, preservação de colunas, conflito, exclusão com versão | ✅ |
+| `testAuditoriaLog`, `testE1Integracao`, `testBackup` | log sem texto livre, idempotência, conflito, restauração | ✅ |
+| `testMonitoramentoDocumentos` | recência por data, Olyver (duas matrículas, documentos separados), grupo coletivo uma vez, condição de horário alternativo | ✅ |
+| `testSincronizacaoDocumentos` | só metadados, 4 colunas, sem duplicar, uma por vez, 08:00/18:00, falhas, histórico; mutação deliberada foi detectada | ✅ |
+| **`test:worker-real`** (workerd + planilha, Drive e Google simulados em loopback, conta de serviço falsa) | sem identidade 401; conta sem papel 403; administradora 200 + log; reenvio idempotente; versão antiga 409; simultâneas 200+409; **monitora**: grava só com a conta de serviço, outra turma 403 `FORA_DA_TURMA`, nota 403, leitura de avaliações 403, leitura filtrada (sem e-mail/justificativa/observação); **sincronização** manual (403 monitora), duas simultâneas 200+409, **cron `0 11 * * *` e `0 21 * * *` executam, outro cron é ignorado**, histórico `AGENDADO`; corpo > 128 KB 413 | ✅ |
+| Navegador (planilha simulada, dados anonimizados) | painel de documentos na turma e na ficha (grupo uma vez; individual por matrícula); selo de horário alternativo; chamada enviou 13 de 14 matrículas (a alternativa ficou de fora); backup baixar/conferir/restaurar; botão "Sincronizar agora" | ✅ |
+
+**Defeito encontrado pelo runtime real:** `worker.ts` exportava auxiliares e o Cloudflare não inicia Worker assim; o CI anterior (`build` + `--dry-run`) não detectava. Corrigido e coberto por teste.
+
+### Não validado com a planilha oficial e o Worker real ❗
+- Nenhuma execução contra a planilha oficial, o Google, o Drive ou o Firebase **reais**. Os testes usam simulações fiéis à API.
+- **Aba `monitoramento_documentos` real:** só foi possível confirmar pelo Drive que existe com **17 colunas × 3 linhas** (cabeçalho + 2 linhas). Os valores das células e os nomes exatos das colunas **não foram lidos**; a leitura é por nome de coluna e tolera extras, mas os cabeçalhos reais precisam conferir. Use *Configurações → Conferência de documentos e horário alternativo* (roda no seu navegador, sem enviar nada).
+- **Vínculos do Olyver:** não verificados na planilha real (a matrícula 3B/2B e o valor em `papel_na_turma`). A mesma conferência lista as matrículas marcadas.
+- Conta de serviço, `ACESSOS_JSON` e Cron Triggers reais.
+
+---
+
+## 8. Ativar a sincronização (somente após validar)
+
+1. Preview do Worker com `GOOGLE_SERVICE_ACCOUNT_JSON` (segredo) e **cópia** da planilha; planilha e arquivos compartilhados com a conta de serviço.
+2. Abrir *Configurações → Conferência* e corrigir erros de vínculo.
+3. Definir `SINCRONIZACAO_DOCUMENTOS=ligada` e clicar **Sincronizar agora**; conferir as 4 colunas, que as observações manuais ficaram intactas e a linha `DRIVE_METADADOS` em `sincronizacao`.
+4. Só então adicionar a `wrangler.jsonc`:
+```jsonc
+"triggers": { "crons": ["0 11 * * *", "0 21 * * *"] }   // 08:00 e 18:00 em Brasília (UTC−3, sem horário de verão)
+```
+O teste `testSincronizacaoDocumentos` recusa qualquer outro valor. **Desligar:** remover a variável (o cron passa a ignorar) ou o bloco `triggers`.
+
+---
+
+## 9. Plano de reversão
+
+| Mudança | Como reverter |
+|---|---|
+| Autorização/perfis | `git revert` dos commits E2; sem `ADMIN_EMAILS` nada grava (não reabre acesso) |
+| Cada tabela coordenada | remover o nome de `TABELAS_CRITICAS` (um commit por tabela) |
+| Log | apagar a aba `log_alteracoes` |
+| Sincronização | desligar a variável; apagar linhas `DRIVE_METADADOS` se desejado; as 4 colunas voltam a ser editáveis à mão |
+| Apps Script | `git revert 59ea391` |
+| Restauração de registro | cada uma tem linha no log com antes/depois |
+
+---
+
+## 10. Próximas etapas priorizadas
+
+1. **Validação real (bloqueia o resto):** itens de §1 e §8 numa cópia da planilha; conferir cabeçalhos e vínculos do Olyver.
+2. **E2 restante:** limpar cache local na troca de usuário; migrar as 9 tabelas de cadastro; esconder abas confidenciais da ficha para monitora; decidir D5.
+3. **E3:** chamada com `NAO_REGISTRADO` até encerrar + prévia de presentes (D1); falta/atraso/justificativa/dispensa separados (D2, depende do regulamento); diário e participação.
+4. **E4:** RSS original imutável, tela de conferência de vínculos, janela operacional de 7 dias sem cortar histórico.
+5. **E5:** rubricas versionadas, competências, devolutiva com evidência (D3).
+6. **E6:** menu (Agenda/Acervo), pendências tipadas, fechamento semestral.
