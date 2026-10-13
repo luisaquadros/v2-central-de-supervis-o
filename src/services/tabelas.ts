@@ -69,7 +69,7 @@ export const COLUNAS_DAS_ABAS_DO_APP: Partial<Record<TabelaBase, string[]>> = {
 /** Colunas que o app pode acrescentar ao fim de abas já existentes (nunca renomeia nem apaga). */
 export const COLUNAS_EXTRAS_PERMITIDAS: Partial<Record<TabelaBase, string[]>> = {
   ...COLUNAS_DAS_ABAS_DO_APP,
-  frequencias: ['atraso', 'celular', 'observacao'],
+  frequencias: ['atraso', 'celular', 'observacao', 'conversa', 'saiu_cedo', 'participou', 'apresentacao'],
   leituras_responsaveis: ['status_realizacao', 'responsaveis_efetivos', 'motivo_substituicao'],
   matriculas: ['origem_id'],
 };

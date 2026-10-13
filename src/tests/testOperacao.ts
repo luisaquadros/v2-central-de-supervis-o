@@ -21,6 +21,8 @@ import {
 import { normalizarLinhasDaAba } from '../services/normalizacaoPlanilha';
 import { validarEscritaTabela } from '../services/safeWriteService';
 import { normalizarNota, formatarNotaParaExibicao } from '../utils/gradeUtils';
+import { montarChamada, planejarImportacao, type PacoteImportacao } from '../services/chamadaService';
+import { dadosVazios } from '../services/tabelas';
 
 let total = 0;
 const ok = (cond: unknown, msg: string) => { assert.ok(cond, msg); total++; };
@@ -177,5 +179,52 @@ igual(normalizarNota(''), 'ausente', 'nota vazia é ausente (nunca zero)');
 igual(normalizarNota('abc'), 'invalido', 'nota inválida');
 igual(formatarNotaParaExibicao('8,5'), '8,5', 'exibição no padrão brasileiro');
 igual(formatarNotaParaExibicao(null), '—', 'ausente aparece como —');
+
+// ---------------------------------------------------------------------------
+// 8. Chamada com a notação do caderno e importação em lote
+// ---------------------------------------------------------------------------
+{
+  const base = {
+    ...dadosVazios(), turmas, horarios, matriculas: mats, alunos,
+    criterios: [{ criterio_id: 'c-prova', turma_id: 't-ad', codigo_criterio: 'PROVA_TEORICA', nome: 'Prova teórica', nota_maxima: 2 }],
+    avaliacoes: [{ avaliacao_id: 'av1', matricula_id: 'm1', criterio_id: 'c-prova', nota: 1.9, observacao: '', valor_original: '9,5' }],
+    entregas: [{ entrega_id: 'e1', matricula_id: 'm1', turma_id: 't-ad', codigo_entrega: 'TERMO_COMPROMISSO', status: 'A conferir', situacao: 'A_CONFERIR' }],
+  } as any;
+  let seq = 0;
+  const novoId = (p: string) => `${p}-${++seq}`;
+  const r = montarChamada(base, {
+    turmaId: 't-ad', dataAula: '2026-09-29', agora: '2026-09-29T11:00:00', novoId, matriculaIds: ['m1', 'm2'],
+    marcacoes: { m1: { faltou: false, atraso: true, celular: false, conversa: true, participou: true, apresentacao: 'OTIMA' }, m2: { faltou: true, justificada: true, atraso: false, celular: false } },
+  });
+  const f1 = r.frequencias.find(f => f.matricula_id === 'm1')!;
+  igual([f1.status, f1.atraso, f1.conversa, f1.participou, f1.apresentacao], ['PRESENTE', true, true, true, 'OTIMA'], 'notação do caderno vira campos da frequência');
+  igual(r.frequencias.find(f => f.matricula_id === 'm2')!.status, 'FALTA_JUSTIFICADA', 'J no caderno = falta justificada');
+  igual(r.ocorrenciasNovas.map(o => o.tipo).sort(), ['ATRASO', 'CONVERSA_PARALELA'], 'atraso e conversa viram ocorrência');
+  igual([r.encontro.total_presentes, r.encontro.total_faltas, r.encontro.chamada_salva], [1, 1, true], 'aula fica realizada com totais');
+
+  const pacote: PacoteImportacao = {
+    versao: 1, fonte: 'teste',
+    chamadas: [{ turma_id: 't-ad', data: '2026-09-22', marcacoes: [{ matricula_id: 'm1', faltou: false, atraso: false, celular: false, participou: true }] }],
+    notas: [
+      { matricula_id: 'm1', turma_id: 't-ad', codigo_criterio: 'PROVA_TEORICA', valor: 9.8, escala: 10 },
+      { matricula_id: 'm2', turma_id: 't-ad', codigo_criterio: 'PROVA_TEORICA', valor: 7, escala: 10 },
+    ],
+    entregas: [{ matricula_id: 'm1', turma_id: 't-ad', codigo: 'TERMO_COMPROMISSO' }, { matricula_id: 'm1', turma_id: 't-ad', codigo: 'RELATORIO_PARCIAL', data_envio: '2026-09-29' }],
+  };
+  const ctx = { agora: '2026-10-13T12:00:00', novoId, responsaveisDaLeitura: () => [], leiturasDaAula: () => [] };
+  const plano = planejarImportacao(base, pacote, ctx);
+  igual(plano.resumo.notasNovas, 1, 'nota que não existia entra');
+  igual(plano.resumo.notasDiferentes.map(n => [n.planilha, n.caderno]), [['9,5', '9,8']], 'nota diferente da planilha aparece para decidir');
+  ok(!plano.alteracoes.some(a => a.tabela === 'avaliacoes' && a.registro.matricula_id === 'm1'), 'por padrão, nota diferente não é trocada');
+  const nova = plano.alteracoes.find(a => a.tabela === 'avaliacoes')!;
+  igual([nova.registro.nota, nova.registro.valor_original], [1.4, '7'], 'nota de 0 a 10 vira o peso do critério (7 → 1,4 de 2)');
+  igual([plano.resumo.entregasAtualizadas, plano.resumo.entregasNovas], [1, 1], 'termo "ok" vira entregue; relatório parcial é criado');
+  const comTroca = planejarImportacao(base, pacote, { ...ctx, substituirNotas: new Set(['m1|c-prova']) });
+  ok(comTroca.alteracoes.some(a => a.tabela === 'avaliacoes' && a.tipo === 'UPDATE' && a.registro.nota === 1.96), 'nota marcada pela professora é trocada');
+  const depois = plano.aplicar(base);
+  const deNovo = planejarImportacao(depois, pacote, ctx);
+  igual([deNovo.resumo.notasNovas, deNovo.resumo.entregasNovas, deNovo.resumo.entregasAtualizadas], [0, 0, 0], 'importar de novo não duplica');
+  igual(depois.frequencias.filter((f: any) => f.data_aula === '2026-09-22').length, 1, 'só quem está no caderno daquele dia ganha registro');
+}
 
 console.log(`[PASS] ${total} verificações de agenda, feriados, pendências (sem RSS), RSS por turma, estudo dirigido e notas.`);

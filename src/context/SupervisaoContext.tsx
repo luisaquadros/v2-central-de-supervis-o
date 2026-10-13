@@ -52,6 +52,10 @@ import {
   RssDaTurma,
   LIMITE_FALTAS_RISCO,
 } from '../services/supervisaoOperacionalService';
+import {
+  aplicarChamada, alteracoesDaChamada, montarChamada, planejarImportacao,
+  type MarcacaoChamada, type PacoteImportacao, type ResumoImportacao,
+} from '../services/chamadaService';
 import { gerarIdEstavel } from '../services/safeWriteService';
 import {
   AlteracaoResiliente,
@@ -88,13 +92,7 @@ export interface DadosTurmaInput {
 }
 
 /** Marcação de um estudante na chamada (todos começam presentes). */
-export interface MarcacaoChamada {
-  faltou: boolean;
-  atraso: boolean;
-  celular: boolean;
-  justificativa?: string;
-  observacao?: string;
-}
+export type { MarcacaoChamada } from '../services/chamadaService';
 
 export type TabelaExcluivel =
   | 'orientacoes' | 'ocorrencias' | 'feedbacks' | 'pontos_acompanhamento' | 'tarefas_professora' | 'preparacoes_aula';
@@ -208,6 +206,9 @@ interface SupervisaoContextType {
 
   // Frequência
   salvarChamada: (turmaId: string, dataAula: string, marcacoes: Record<string, MarcacaoChamada>) => Promise<{ presentes: number; faltas: number }>;
+  previsualizarImportacao: (pacote: PacoteImportacao) => ResumoImportacao;
+  /** `substituirNotas`: chaves das notas diferentes que devem ser trocadas pelo valor do arquivo. */
+  importarRegistros: (pacote: PacoteImportacao, substituirNotas?: string[]) => Promise<ResumoImportacao>;
   atualizarFrequencia: (matriculaId: string, dataAula: string, status: Frequencia['status'], justificativa?: string) => Promise<void>;
   decidirJustificativa: (frequenciaId: string, aceita: boolean) => Promise<void>;
 
@@ -933,90 +934,35 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   // ------------------------------------------------------------------
 
   const salvarChamada = useCallback(async (turmaId: string, dataAula: string, marcacoes: Record<string, MarcacaoChamada>) => {
-    const d0 = dadosRef.current;
-    const agora = agoraIso();
     const alunosTurma = alunosPorTurma.get(turmaId) || [];
-    const horario = d0.horarios.find(h => h.turma_id === turmaId && h.ativo);
-    const horaAula = horario?.hora_inicio || '08:00';
-    const origemPadrao = d0.turmasOrigem.find(o => o.turma_id === turmaId && o.ativo)?.origem_id || '';
-    const freqs: Frequencia[] = [];
-    const ocorrenciasNovas: Ocorrencia[] = [];
-    const ocorrenciasRemover: Ocorrencia[] = [];
-    let faltas = 0;
-
-    for (const { matricula } of alunosTurma) {
-      const id = matricula.matricula_id;
-      const m = marcacoes[id] || { faltou: false, atraso: false, celular: false };
-      const existente = d0.frequencias.find(f => f.matricula_id === id && f.data_aula === dataAula);
-      let status: Frequencia['status'] = 'PRESENTE';
-      if (m.faltou) {
-        faltas++;
-        status = existente?.status === 'FALTA_JUSTIFICADA' ? 'FALTA_JUSTIFICADA'
-          : m.justificativa ? 'JUSTIFICATIVA_PENDENTE' : 'FALTA_SEM_JUSTIFICATIVA';
-      }
-      freqs.push({
-        frequencia_id: existente?.frequencia_id || novoId('freq'),
-        matricula_id: id,
-        data_aula: dataAula,
-        status,
-        justificativa: m.faltou ? (m.justificativa || existente?.justificativa || '') : '',
-        origem_id: existente?.origem_id || matricula.origem_id || origemPadrao,
-        atraso: !m.faltou && m.atraso,
-        celular: !m.faltou && m.celular,
-        observacao: m.observacao || '',
-        criado_em: existente?.criado_em || agora,
-        atualizado_em: agora,
-      });
-      // Ocorrências da chamada têm id fixo por aluno/data: salvar de novo não duplica.
-      for (const [marcado, tipo, sufixo] of [[m.atraso, 'ATRASO', 'atraso'], [m.celular, 'USO_INADEQUADO_DISPOSITIVO', 'celular']] as const) {
-        const ocorrenciaId = `oc-${id}-${dataAula}-${sufixo}`;
-        const anterior = d0.ocorrencias.find(o => o.ocorrencia_id === ocorrenciaId);
-        if (marcado && !m.faltou) {
-          ocorrenciasNovas.push({
-            ocorrencia_id: ocorrenciaId, matricula_id: id, data_hora: `${dataAula}T${horaAula}:00`, tipo,
-            observacao: m.observacao || (tipo === 'ATRASO' ? 'Chegou após o início da supervisão' : 'Uso de celular durante a supervisão'),
-          });
-        } else if (anterior) {
-          ocorrenciasRemover.push(anterior);
-        }
-      }
-    }
-
-    const encontroExistente = d0.encontros.find(e => e.turma_id === turmaId && e.data === dataAula);
-    const encontro: EncontroTurma = {
-      ...encontroExistente,
-      encontro_id: encontroExistente?.encontro_id || `aula-${dataAula}-${turmaId}`,
-      turma_id: turmaId,
-      periodo_id: d0.turmas.find(t => t.turma_id === turmaId)?.periodo_id || selectedPeriodoId,
-      data: dataAula,
-      status: 'REALIZADO',
-      chamada_salva: true,
-      total_presentes: alunosTurma.length - faltas,
-      total_faltas: faltas,
-      atualizado_em: agora,
-      fonte: encontroExistente?.fonte || 'APP',
-    };
-    const idsNovas = new Set(ocorrenciasNovas.map(o => o.ocorrencia_id));
-    const idsRemover = new Set(ocorrenciasRemover.map(o => o.ocorrencia_id));
-
-    await mutar(
-      d => ({
-        ...d,
-        frequencias: [...d.frequencias.filter(f => !(f.data_aula === dataAula && freqs.some(n => n.matricula_id === f.matricula_id))), ...freqs],
-        ocorrencias: [...ocorrenciasNovas, ...d.ocorrencias.filter(o => !idsNovas.has(o.ocorrencia_id) && !idsRemover.has(o.ocorrencia_id))],
-        encontros: [...d.encontros.filter(e => !(e.turma_id === turmaId && e.data === dataAula)), encontro],
-      }),
-      [
-        ...freqs.map(f => ({ tabela: 'frequencias', tipo: 'INSERT' as const, registro: f })),
-        ...ocorrenciasNovas.map(o => ({ tabela: 'ocorrencias', tipo: 'INSERT' as const, registro: o })),
-        ...ocorrenciasRemover.map(o => ({ tabela: 'ocorrencias', tipo: 'DELETE' as const, registro: o })),
-        { tabela: 'encontros_turma', tipo: encontroExistente ? 'UPDATE' : 'INSERT', registro: encontro,
-          campos: encontroExistente ? ['status', 'chamada_salva', 'total_presentes', 'total_faltas', 'atualizado_em'] : undefined },
-      ],
-      `Chamada salva: ${alunosTurma.length - faltas} presentes, ${faltas} falta(s)`
-    );
-    return { presentes: alunosTurma.length - faltas, faltas };
+    const r = montarChamada(dadosRef.current, {
+      turmaId, dataAula, marcacoes, agora: agoraIso(), novoId, periodoPadrao: selectedPeriodoId,
+      matriculaIds: alunosTurma.map(a => a.matricula.matricula_id),
+    });
+    const faltas = r.encontro.total_faltas || 0;
+    const presentes = r.encontro.total_presentes || 0;
+    await mutar(d => aplicarChamada(d, r), alteracoesDaChamada(r), `Chamada salva: ${presentes} presentes, ${faltas} falta(s)`);
+    return { presentes, faltas };
   }, [alunosPorTurma, mutar, selectedPeriodoId]);
+
+  // Importação em lote (caderno transcrito): mesma lógica da chamada, com prévia antes de gravar.
+  const planejar = useCallback((pacote: PacoteImportacao, substituirNotas: string[] = []) => {
+    const d0 = dadosRef.current;
+    return planejarImportacao(d0, pacote, {
+      agora: agoraIso(), novoId, substituirNotas: new Set(substituirNotas),
+      responsaveisDaLeitura: l => resolverResponsaveisLeitura(l, alunosPorTurma.get(l.turma_id || '') || []),
+      leiturasDaAula: (turmaId, data) => leiturasDoEncontro(turmaId, data, d0.leiturasResponsaveis, d0.encontros),
+    });
+  }, [alunosPorTurma]);
+
+  const previsualizarImportacao = useCallback((pacote: PacoteImportacao) => planejar(pacote).resumo, [planejar]);
+
+  const importarRegistros = useCallback(async (pacote: PacoteImportacao, substituirNotas: string[] = []) => {
+    const plano = planejar(pacote, substituirNotas);
+    if (plano.alteracoes.length === 0) return plano.resumo;
+    await mutar(plano.aplicar, plano.alteracoes, `Importação concluída: ${plano.resumo.aulas} aula(s), ${plano.resumo.notasNovas + plano.resumo.notasAlteradas} nota(s), ${plano.resumo.entregasNovas + plano.resumo.entregasAtualizadas} entrega(s)`);
+    return plano.resumo;
+  }, [planejar, mutar]);
 
   const atualizarFrequencia = useCallback(async (matriculaId: string, dataAula: string, status: Frequencia['status'], justificativa?: string) => {
     const d0 = dadosRef.current;
@@ -1355,6 +1301,8 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     addPontoAcompanhamento,
     togglePontoStatus,
     salvarChamada,
+    previsualizarImportacao,
+    importarRegistros,
     atualizarFrequencia,
     decidirJustificativa,
     atualizarEntregas,

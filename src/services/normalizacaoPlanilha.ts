@@ -245,8 +245,8 @@ export function normalizarLinhasDaAba(tabela: string, rows: Record<string, any>[
         break;
       case 'frequencias':
         r.data_aula = normalizarDataAcademica(r.data_aula);
-        r.atraso = r.atraso === true;
-        r.celular = r.celular === true;
+        for (const k of ['atraso', 'celular', 'conversa', 'saiu_cedo', 'participou']) r[k] = r[k] === true;
+        r.apresentacao = codigoComparavel(r.apresentacao) || '';
         break;
       case 'encontros_turma':
         r.data = normalizarDataAcademica(r.data);

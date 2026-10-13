@@ -553,6 +553,8 @@ export function gerarRssDaTurma(
 
 export const NOMES_TIPO_ENTREGA: Record<string, string> = {
   TERMO_COMPROMISSO: 'Termo de Compromisso',
+  RELATORIO_PARCIAL: 'Relatório parcial',
+  RELATORIO_FINAL: 'Relatório final',
   MANUAL_ESTAGIO: 'Manual do Estágio',
   DOCUMENTACAO_EXTERNA: 'Documentação externa',
   TCLE: 'TCLE',

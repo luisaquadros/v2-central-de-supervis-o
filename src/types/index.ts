@@ -72,6 +72,9 @@ export interface Avaliacao {
   criterio_id: string;
   nota: number;
   observacao: string;
+  /** Nota como foi dada (ex.: prova "7,5" de 0 a 10), antes da conversão para o peso do critério. */
+  valor_original?: string;
+  origem?: string;
 }
 
 export interface FeedbackAluno {
@@ -261,7 +264,7 @@ export interface Ocorrencia {
   ocorrencia_id: string;
   matricula_id: string;
   data_hora: string;
-  tipo: 'ATRASO' | 'USO_INADEQUADO_DISPOSITIVO' | 'OUTRO';
+  tipo: 'ATRASO' | 'USO_INADEQUADO_DISPOSITIVO' | 'CONVERSA_PARALELA' | 'SAIDA_ANTECIPADA' | 'OUTRO';
   observacao: string;
   /** Data como estava escrita na planilha, quando não era uma data simples ("29/09 e 05/10/2026"). */
   data_texto?: string;
@@ -296,6 +299,11 @@ export interface Frequencia {
   origem_id: string; // FK -> TurmaOrigem
   atraso?: boolean;
   celular?: boolean;
+  conversa?: boolean;
+  saiu_cedo?: boolean;
+  participou?: boolean;
+  /** Estudo dirigido apresentado nesta aula e a impressão da professora. */
+  apresentacao?: '' | 'APRESENTOU' | 'OTIMA' | 'MEDIA' | 'MINIMA';
   observacao?: string;
   criado_em: string;
   atualizado_em: string;

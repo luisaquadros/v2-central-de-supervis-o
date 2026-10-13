@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
-import { CheckCircle2, Download, ExternalLink, LogOut, RefreshCw, TriangleAlert } from 'lucide-react';
+import { CheckCircle2, Download, ExternalLink, FileUp, LogOut, RefreshCw, TriangleAlert } from 'lucide-react';
+import { ImportarRegistrosModal } from '../components/ImportarRegistrosModal';
 import { useSupervisao } from '../context/SupervisaoContext';
 import { formatarDataBr } from '../services/supervisaoOperacionalService';
 import { TABELAS_LIDAS } from '../services/tabelas';
@@ -14,6 +15,7 @@ export const AjustesView: React.FC = () => {
   } = useSupervisao();
   const [novo, setNovo] = useState({ nome: '', inicio: '', fim: '', copiarDe: '' });
   const [criando, setCriando] = useState(false);
+  const [importar, setImportar] = useState(false);
 
   const turmasPeriodo = getTurmasDoPeriodo();
   const problemas = useMemo(() => {
@@ -131,6 +133,12 @@ export const AjustesView: React.FC = () => {
             </Botao>
           </details>
         </div>
+      </Secao>
+
+      <Secao titulo="Importar registros">
+        <p className="text-slate-700 mb-3">Traga de uma vez frequência, notas e entregas anotadas fora do app (por exemplo, o caderno transcrito). Você vê a prévia antes de gravar.</p>
+        <Botao icone={<FileUp className="w-4 h-4" />} onClick={() => setImportar(true)}>Importar arquivo</Botao>
+        {importar && <ImportarRegistrosModal aoFechar={() => setImportar(false)} />}
       </Secao>
 
       <Secao titulo="Cópia de segurança">
