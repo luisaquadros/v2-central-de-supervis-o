@@ -1949,6 +1949,46 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     return novaEntrega;
   };
 
+  const gravarItemOperacional = async <T extends {id: string}>(
+    tipo: TipoOperacional, item: T, excluido = false,
+  ): Promise<void> => {
+    const chave = chaveItemOperacional(tipo, item.id);
+    const existente = configuracoes.find(c => c.chave === chave);
+    const registro = prepararRegistroOperacional(tipo, item, selectedPeriodoId, existente, excluido);
+    await persistirMudancaWeb('configuracoes', existente ? 'UPDATE' : 'INSERT',
+      registro, [...configuracoes.filter(c => c.chave !== chave), registro]);
+    setConfiguracoes(prev => [...prev.filter(c => c.chave !== chave), registro]);
+  };
+
+  const itensOperacionaisLocaisPendentes =
+    contarLegadosLocais(caixaEntrada, configuracoes, 'CAIXA_ENTRADA') +
+    contarLegadosLocais(filaProfessora, configuracoes, 'FILA_PROFESSORA') +
+    contarLegadosLocais(filaSupervisao, configuracoes, 'FILA_SUPERVISAO');
+
+  const importarItensOperacionaisLocais = async (): Promise<number> => {
+    if (!await getAccessToken()) throw new Error('Conecte ao Google Sheets antes da importação.');
+    const grupos = [
+      ['CAIXA_ENTRADA', caixaEntrada],
+      ['FILA_PROFESSORA', filaProfessora],
+      ['FILA_SUPERVISAO', filaSupervisao],
+    ] as const;
+    const conhecidos = new Set(configuracoes.map(c => c.chave));
+    let count = 0;
+    for (const [tipo, items] of grupos) {
+      for (const item of items) {
+        const chave = chaveItemOperacional(tipo, item.id);
+        if (conhecidos.has(chave)) continue;
+        const registro = prepararRegistroOperacional(tipo, item, selectedPeriodoId);
+        const res = await salvarRegistroResiliente('configuracoes', 'INSERT', registro);
+        if (!res.gravadoOnline) throw new Error('Importação parcial: itens mantidos no dispositivo. Reconecte antes de continuar.');
+        setConfiguracoes(prev => [...prev.filter(c => c.chave !== chave), registro]);
+        conhecidos.add(chave);
+        count++;
+      }
+    }
+    return count;
+  };
+
   // Métodos de apoio / transição
   const addCaixaEntradaItem = async (item: any) => {
     const novo = { id: gerarIdEstavel('cx'), criado_em: new Date().toISOString(), status: 'PENDENTE' as const, ...item };
