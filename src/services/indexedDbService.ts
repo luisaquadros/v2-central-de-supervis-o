@@ -39,6 +39,7 @@ export interface SyncQueueItem {
   tentativas: number;
   erro?: string | null;
   versao_conflito?: Record<string, any>;
+  versao_base?: Record<string, any> | null;
 }
 
 const DB_NAME = 'CentralSupervisao_DB_v1';
@@ -363,6 +364,9 @@ export async function salvarAlteracaoAtomica(
         try { return recordIdentity(tabela, r) === identity; } catch { return false; }
       };
       const old = rows.find(matches);
+      // Snapshot anterior ao primeiro ajuste; necessário para detectar edição obsoleta
+      // quando outro dispositivo já alterou a versão na base oficial.
+      item.versao_base = old ? JSON.parse(JSON.stringify(old)) : null;
       tables.put(tipo === 'DELETE' ? rows.filter(r => !matches(r)) :
         [...rows.filter(r => !matches(r)), { ...old, ...payload }], tabela);
       // Coalesce pending versions of this record while holding the sync lock.
@@ -375,6 +379,9 @@ export async function salvarAlteracaoAtomica(
               tx.abort(); // Desfaz também a alteração provisória da tabela local.
               return;
             }
+            // Múltiplas edições locais preservam a versão mais antiga ainda não enviada.
+            item.versao_base = prior.versao_base ?? null;
+            if (prior.tipo === 'INSERT' && tipo !== 'DELETE') item.tipo = 'INSERT';
             if (tipo !== 'DELETE' && prior.tipo !== 'DELETE') item.payload = { ...prior.payload, ...item.payload };
             queue.delete(prior.id);
           }

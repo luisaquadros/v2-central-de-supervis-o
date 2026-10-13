@@ -34,3 +34,5 @@ jobs:
         run: npm test
       - name: Gerar versao de producao
         run: npm run build
+      - name: Validar empacotamento Cloudflare Worker e Durable Object
+        run: npx --yes wrangler@4 deploy --dry-run --outdir=/tmp/central-supervisao-worker-check

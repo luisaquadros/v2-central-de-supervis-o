@@ -1,3 +1,5 @@
+import { TABELAS_CRITICAS } from '../server/coordenacaoCritica';
+import { gravarCriticoCoordenado } from './escritaCoordenadaService';
 /**
  * CENTRAL DE SUPERVISÃO - CAMADA DE SINCRONIZAÇÃO E CONTROLE DE FILA (syncService)
  *
@@ -367,8 +369,15 @@ export function salvarRegistroResiliente(
     if (!validacao.valido) throw new Error(validacao.motivo);
     const item = await salvarAlteracaoAtomica(tabela, tipo, registro);
     await processarFilaInterna();
-    const pending = (await carregarFilaSincronizacao()).some(i => i.id === item.id);
-    return { gravadoOnline: !pending, enfileiradoOffline: pending, queueItem: pending ? item : undefined };
+    const filaAposGravar = await carregarFilaSincronizacao();
+    const itemRestante = filaAposGravar.find(i => i.id === item.id);
+    if (itemRestante?.status === 'CONFLITO') {
+      // Registro e versão original continuam na fila, mas o usuário deve
+      // ver o conflito; nunca confirmar como mero salvamento offline.
+      throw new Error(itemRestante.erro || 'CONFLITO_VERSAO: revisão necessária antes da sincronização.');
+    }
+    const pending = !!itemRestante;
+    return { gravadoOnline: !pending, enfileiradoOffline: pending, queueItem: itemRestante };
   });
 }
 
@@ -420,7 +429,9 @@ async function processarFilaInterna(): Promise<{
     try {
       await atualizarItemFila(item.id, { status: 'SINCRONIZANDO', tentativas: item.tentativas + 1 });
 
-      if (item.tipo === 'DELETE') {
+      if (TABELAS_CRITICAS.has(item.tabela)) {
+        await gravarCriticoCoordenado(item);
+      } else if (item.tipo === 'DELETE') {
         await removerRegistroDaPlanilhaOficial(item.tabela, item.payload);
       } else {
         await gravarRegistroNaPlanilhaOficial(item.tabela, item.payload);
@@ -433,10 +444,12 @@ async function processarFilaInterna(): Promise<{
       console.error(`Erro ao sincronizar item ${item.id} da fila:`, err);
       erros++;
       const is401 = err?.message?.includes('Sessão expirada') || err?.message?.includes('401');
+      const ehConflito = String(err?.message||'').includes('CONFLITO_VERSAO');
       await atualizarItemFila(item.id, {
-        status: 'ERRO',
+        status: ehConflito ? 'CONFLITO' : 'ERRO',
         erro: err?.message || 'Falha ao sincronizar com Google Sheets',
       });
+      if(ehConflito) conflitos++;
       break; // Preserve operation order and avoid cascading requests after any failure.
     }
   }
