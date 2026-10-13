@@ -1,3 +1,4 @@
+import { matriculaParticipaDaChamada } from '../services/aulaParticipants';
 import React, { useState, useMemo } from 'react';
 import {
   CalendarCheck,
@@ -87,10 +88,12 @@ export const FrequenciaView: React.FC<FrequenciaViewProps> = ({
   // Matrículas da turma filtrada por Docente Online se selecionado
   const matriculasTurma = useMemo(() => {
     return matriculas.filter(m => {
-      if (m.turma_id !== selectedTurmaId || m.status !== 'MATRICULADO') return false;
+      if (m.turma_id !== selectedTurmaId || !matriculaParticipaDaChamada(m.status)) return false;
       if (selectedOrigemId !== 'TODAS') {
-        const matOrigem = m.origem_id || (origensDaTurma[0]?.origem_id || '');
-        if (matOrigem !== selectedOrigemId) return false;
+        const identificada = m.origem_id ||
+          origensDaTurma.find(o => o.codigo_externo === m.codigo_origem)?.origem_id ||
+          (origensDaTurma.length === 1 ? origensDaTurma[0].origem_id : '');
+        if (identificada !== selectedOrigemId) return false;
       }
       return true;
     });
@@ -393,7 +396,8 @@ export const FrequenciaView: React.FC<FrequenciaViewProps> = ({
                     const al = alunos.find(a => a.aluno_id === item.aluno_id);
                     const matOrigem = item.origem_id
                       ? turmasOrigem.find(o => o.origem_id === item.origem_id)
-                      : origensDaTurma[0];
+                      : (origensDaTurma.find(o => o.codigo_externo === item.codigo_origem) ||
+                          (origensDaTurma.length === 1 ? origensDaTurma[0] : undefined));
 
                     const freqsDoAluno = frequenciasFiltradas.filter(
                       f => f.matricula_id === item.matricula_id
@@ -829,7 +833,8 @@ export const FrequenciaView: React.FC<FrequenciaViewProps> = ({
                 const al = alunos.find(a => a.aluno_id === matAtiva.aluno_id);
                 const matOrigem = matAtiva.origem_id
                   ? turmasOrigem.find(o => o.origem_id === matAtiva.origem_id)
-                  : origensDaTurma[0];
+                  : (origensDaTurma.find(o => o.codigo_externo === matAtiva.codigo_origem) ||
+                      (origensDaTurma.length === 1 ? origensDaTurma[0] : undefined));
 
                 const freqsAluno = frequencias
                   .filter(f => f.matricula_id === matAtiva.matricula_id)
