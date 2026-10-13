@@ -207,7 +207,65 @@ try {
   const duas = normalizarLinhasDaAba('horarios_turma', normalizarLinhasDaAba('horarios_turma', [{ dia_semana: 'QUINTA', ativo: true }]));
   assert.equal(duas[0].dia_semana, 4);
 
-  console.log('[PASS] 11 grupos de testes de leitura/gravação com o formato real da planilha.');
+  // 12. Formato atual da planilha (correção C1): dia em número + rótulo. O app grava NÚMERO, não texto,
+  //     e mantém o rótulo coerente; números (notas, totais) também seguem como número.
+  {
+    const p = base();
+    const h = p.linhas('horarios_turma');
+    h[0].push('dia_semana_rotulo');
+    h[1][2] = 2;
+    h[1].push('TERCA');
+    globalThis.fetch = p.fetchFalso;
+    const { tabelas } = await carregarDadosDaPlanilhaOficial();
+    assert.equal(tabelas.horarios_turma[0].dia_semana, 2);
+    await gravarLoteNaPlanilhaOficial('horarios_turma', [{ registro: { ...tabelas.horarios_turma[0], dia_semana: 4 }, campos: ['dia_semana'] }]);
+    const linha = p.linhas('horarios_turma')[1];
+    assert.strictEqual(linha[2], 4, 'dia_semana deve ser gravado como número');
+    assert.equal(linha[8], 'QUINTA', 'rótulo acompanha o número');
+    assert.equal(linha[3], '08:20', 'demais colunas intactas');
+  }
+
+  // 13. Importações do caderno: feedback usa a data do registro (não a da importação);
+  //     ocorrência com data em texto livre é ordenável e mantém o texto original.
+  {
+    const fbs = normalizarLinhasDaAba('feedbacks', [
+      { feedback_id: 'f1', data: '03/09/2026', criado_em: '2026-10-13' },
+      { feedback_id: 'f2', data: '2026-10-13', criado_em: '2026-10-13T09:15:00' },
+      { feedback_id: 'f3', data: 'Set/2026', criado_em: '2026-10-13' },
+      { feedback_id: 'f4', data: 'Início do semestre', criado_em: '2026-10-13' },
+      { feedback_id: 'f5', data: '17–19/09/2026', criado_em: '2026-10-13' },
+    ]);
+    assert.equal(fbs[0].data_hora, '2026-09-03');
+    assert.equal(fbs[1].data_hora, '2026-10-13T09:15:00');
+    assert.deepEqual([fbs[2].data_hora, fbs[2].data_texto], ['2026-09-01', 'Set/2026']);
+    assert.deepEqual([fbs[3].data_hora, fbs[3].data_texto], ['', 'Início do semestre'], 'sem data: não usa o dia da importação');
+    assert.deepEqual([fbs[4].data_hora, fbs[4].data_texto], ['2026-09-19', '17–19/09/2026']);
+    assert.deepEqual(normalizarLinhasDaAba('feedbacks', fbs), fbs, 'normalização idempotente');
+    const oc = normalizarLinhasDaAba('ocorrencias', [
+      { ocorrencia_id: 'o1', data_hora: '29/09 e 05/10/2026' },
+      { ocorrencia_id: 'o2', data_hora: '05/10/2026' },
+      { ocorrencia_id: 'o3', data_hora: '2026-10-13T12:00:00.000Z' },
+      { ocorrencia_id: 'o4', data_hora: 'sem data' },
+    ]);
+    assert.equal(oc[0].data_hora, '2026-10-05');
+    assert.equal(oc[0].data_texto, '29/09 e 05/10/2026');
+    assert.equal(oc[1].data_hora, '2026-10-05');
+    assert.equal(oc[1].data_texto, undefined);
+    assert.match(oc[2].data_hora, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/, 'carimbo vira hora local, sem Z');
+    assert.deepEqual([oc[3].data_hora, oc[3].data_texto], ['', 'sem data']);
+    assert.deepEqual(normalizarLinhasDaAba('ocorrencias', oc), oc, 'normalização idempotente');
+  }
+
+  // 14. Carimbo antigo em UTC passa a hora local (no Brasil, 01h30Z de 14/10 = 22h30 de 13/10).
+  {
+    const [o] = normalizarLinhasDaAba('orientacoes', [{ orientacao_id: 'o1', data_hora: '2026-10-14T01:30:00.000Z' }]);
+    const esperado = new Date('2026-10-14T01:30:00.000Z');
+    const p2 = (n: number) => String(n).padStart(2, '0');
+    assert.equal(o.data_hora, `${esperado.getFullYear()}-${p2(esperado.getMonth() + 1)}-${p2(esperado.getDate())}T${p2(esperado.getHours())}:30:00`);
+    assert.deepEqual(normalizarLinhasDaAba('orientacoes', [o]), [o]);
+  }
+
+  console.log('[PASS] 14 grupos de testes de leitura/gravação com o formato real da planilha.');
 } finally {
   globalThis.fetch = originalFetch;
   clearAccessToken();

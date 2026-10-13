@@ -28,6 +28,7 @@ import {
   normalizarLinhasDaAba,
   parseSheetRowsToObjects,
   serializarValor,
+  valorParaPlanilha,
 } from './normalizacaoPlanilha';
 
 export { normalizarLinhasDaAba, normalizarDataAcademica } from './normalizacaoPlanilha';
@@ -203,7 +204,7 @@ async function lerValores(token: string, titulo: string): Promise<unknown[][]> {
   return (await res.json()).values || [];
 }
 
-async function escreverCelulas(token: string, data: { range: string; values: string[][] }[]) {
+async function escreverCelulas(token: string, data: { range: string; values: (string | number)[][] }[]) {
   if (data.length === 0) return;
   const res = await fetchWithTimeout(`${API}/values:batchUpdate`, {
     method: 'POST',
@@ -415,8 +416,8 @@ export async function gravarLoteNaPlanilhaOficial(tabela: string, itens: ItemDeG
     if (id) porIdentidade.set(id, [...(porIdentidade.get(id) || []), linha]);
   }
 
-  const celulas: { range: string; values: string[][] }[] = [];
-  const novasLinhas: string[][] = [];
+  const celulas: { range: string; values: (string | number)[][] }[] = [];
+  const novasLinhas: (string | number)[][] = [];
   const valorDe = (obj: Record<string, any>, h: string) => (h in obj ? obj[h] : obj[h.toLowerCase()]);
 
   for (const p of preparados) {
@@ -431,7 +432,7 @@ export async function gravarLoteNaPlanilhaOficial(tabela: string, itens: ItemDeG
         const novo = valorDe(p.adaptado, h);
         if (novo === undefined) return;
         if (serializarValor(novo) === serializarValor(objeto[h])) return;
-        celulas.push({ range: formatarRangeSheet(aba!.title, `${letraColuna(col)}${numero}`), values: [[serializarValor(novo)]] });
+        celulas.push({ range: formatarRangeSheet(aba!.title, `${letraColuna(col)}${numero}`), values: [[valorParaPlanilha(novo)]] });
       });
       continue;
     }
@@ -441,7 +442,7 @@ export async function gravarLoteNaPlanilhaOficial(tabela: string, itens: ItemDeG
     if (!headers.some(h => h.toLowerCase() !== pk && valorDe(p.adaptado, h) !== undefined)) {
       throw new Error(`Registro incompatível com cabeçalhos da tabela ${tabela}; escrita bloqueada.`);
     }
-    novasLinhas.push(headers.map(h => (h ? serializarValor(valorDe(p.adaptado, h)) : '')));
+    novasLinhas.push(headers.map(h => (h ? valorParaPlanilha(valorDe(p.adaptado, h)) : '')));
     porIdentidade.set(p.identidade, [{ numero: -1, objeto: p.adaptado }]);
   }
 

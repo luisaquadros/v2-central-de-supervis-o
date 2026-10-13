@@ -164,19 +164,20 @@ const LinhaDoTempo: React.FC<{ matriculaId: string }> = ({ matriculaId }) => {
   const [filtro, setFiltro] = useState<FiltroTempo>('tudo');
 
   const eventos = useMemo(() => {
-    const lista: { id: string; data: string; tipo: Exclude<FiltroTempo, 'tudo'>; titulo: string; texto: string; acao?: React.ReactNode; excluir?: () => void }[] = [];
+    const lista: { id: string; data: string; dataTexto?: string; tipo: Exclude<FiltroTempo, 'tudo'>; titulo: string; texto: string; acao?: React.ReactNode; excluir?: () => void }[] = [];
     orientacoes.filter(o => o.matricula_id === matriculaId).forEach(o => lista.push({
       id: o.orientacao_id, data: String(o.data_hora), tipo: 'orientacoes', titulo: `Orientação · ${o.categoria}`, texto: o.texto,
       acao: <Botao tamanho="sm" variante="fantasma" onClick={() => void toggleOrientacaoStatus(o.orientacao_id)}>{o.status === 'ABERTA' ? 'Concluir' : 'Reabrir'}</Botao>,
       excluir: () => solicitarExclusao({ nome: 'Orientação', tabela: 'orientacoes', registro: o }),
     }));
     feedbacks.filter(f => f.matricula_id === matriculaId).forEach(f => lista.push({
-      id: f.feedback_id, data: String(f.data_hora), tipo: 'feedbacks', titulo: 'Feedback', texto: f.texto,
+      id: f.feedback_id, data: String(f.data_hora), dataTexto: f.data_texto, tipo: 'feedbacks', titulo: f.categoria ? `Feedback · ${f.categoria}` : 'Feedback', texto: f.texto || '',
       excluir: () => solicitarExclusao({ nome: 'Feedback', tabela: 'feedbacks', registro: f as any }),
     }));
     ocorrencias.filter(o => o.matricula_id === matriculaId).forEach(o => lista.push({
-      id: o.ocorrencia_id, data: String(o.data_hora), tipo: 'ocorrencias',
-      titulo: o.tipo === 'ATRASO' ? 'Atraso' : o.tipo === 'USO_INADEQUADO_DISPOSITIVO' ? 'Uso de celular' : 'Ocorrência', texto: o.observacao,
+      id: o.ocorrencia_id, data: String(o.data_hora), dataTexto: o.data_texto, tipo: 'ocorrencias',
+      titulo: o.tipo === 'ATRASO' ? 'Atraso' : o.tipo === 'USO_INADEQUADO_DISPOSITIVO' ? 'Uso de celular' : o.tipo === 'OUTRO' || !o.tipo ? 'Ocorrência' : String(o.tipo),
+      texto: o.observacao,
       excluir: () => solicitarExclusao({ nome: 'Ocorrência', tabela: 'ocorrencias', registro: o }),
     }));
     pontosAcompanhamento.filter(p => p.matricula_id === matriculaId).forEach(p => lista.push({
@@ -202,7 +203,7 @@ const LinhaDoTempo: React.FC<{ matriculaId: string }> = ({ matriculaId }) => {
           {visiveis.map(e => (
             <li key={`${e.tipo}-${e.id}`} className="py-3 flex items-start gap-3">
               <div className="flex-1 min-w-0">
-                <p className="text-sm text-slate-500">{formatarDataBr(e.data.slice(0, 10), true)} · {e.titulo}</p>
+                <p className="text-sm text-slate-500">{e.dataTexto || formatarDataBr(e.data.slice(0, 10), true)} · {e.titulo}</p>
                 <p className="text-slate-800 whitespace-pre-wrap">{e.texto}</p>
               </div>
               {e.acao}

@@ -39,6 +39,15 @@ export const DIAS_BUSCA_CHAMADA_PENDENTE = 14;
 export const LIMITE_FALTAS_RISCO = 3;
 
 /** Data de hoje (fuso local) em AAAA-MM-DD. Nunca usar toISOString() para datas do dia. */
+/**
+ * Data e hora LOCAIS no formato AAAA-MM-DDTHH:MM:SS (sem "Z"), igual ao que a planilha mostra.
+ * Em UTC, um registro feito às 22h de 13/10 viraria 14/10.
+ */
+export function agoraLocalIso(data: Date = new Date()): string {
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${getHojeDataIso(data)}T${p(data.getHours())}:${p(data.getMinutes())}:${p(data.getSeconds())}`;
+}
+
 export function getHojeDataIso(data: Date = new Date()): string {
   const ano = data.getFullYear();
   const mes = String(data.getMonth() + 1).padStart(2, '0');

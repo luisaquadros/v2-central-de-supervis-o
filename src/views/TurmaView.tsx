@@ -67,12 +67,15 @@ export const TurmaView: React.FC<{ turmaId: string; abaInicial?: AbaTurma }> = (
 // ---------------------------------------------------------------------------
 
 const AbaEstudantes: React.FC<{ turma: Turma }> = ({ turma }) => {
-  const { getAlunosDaTurma, getResumoAlunoSupervisao, getGrupoDoAluno, isTurmaClinicaAmpliada } = useSupervisao();
+  const { getAlunosDaTurma, getResumoAlunoSupervisao, getGrupoDoAluno, isTurmaClinicaAmpliada, feedbacks } = useSupervisao();
   const { abrirAluno } = useNavegacao();
   const [importar, setImportar] = useState(false);
   const [filtro, setFiltro] = useState('');
   const alunos = getAlunosDaTurma(turma.turma_id).filter(a => a.aluno.nome.toLowerCase().includes(filtro.toLowerCase()));
   const porGrupo = isTurmaClinicaAmpliada(turma.turma_id);
+  // Registros sobre a turma inteira (sem estudante), vindos do caderno de supervisão.
+  const daTurma = feedbacks.filter(f => f.turma_id === turma.turma_id && !f.matricula_id)
+    .sort((a, b) => String(b.data_hora).localeCompare(String(a.data_hora)));
 
   return (
     <Cartao className="p-4 space-y-3">
@@ -102,6 +105,19 @@ const AbaEstudantes: React.FC<{ turma: Turma }> = ({ turma }) => {
             );
           })}
         </ul>
+      )}
+      {daTurma.length > 0 && (
+        <details className="bg-slate-50 rounded-xl p-3">
+          <summary className="font-semibold text-slate-800 cursor-pointer">Registros sobre a turma ({daTurma.length})</summary>
+          <ul className="mt-2 divide-y divide-slate-200">
+            {daTurma.map(f => (
+              <li key={f.feedback_id} className="py-2">
+                <p className="text-sm text-slate-500">{f.data_texto || formatarDataBr(String(f.data_hora).slice(0, 10), true)}{f.categoria && ` · ${f.categoria}`}</p>
+                <p className="text-slate-800 whitespace-pre-wrap">{f.texto}</p>
+              </li>
+            ))}
+          </ul>
+        </details>
       )}
       {importar && <ImportarAlunosModal turmaId={turma.turma_id} aoFechar={() => setImportar(false)} />}
     </Cartao>

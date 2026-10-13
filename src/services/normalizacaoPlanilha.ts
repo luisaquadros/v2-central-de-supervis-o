@@ -130,9 +130,33 @@ function situacaoEntrega(status: unknown): 'ENTREGUE' | 'A_CONFERIR' | 'PENDENTE
  * Ajusta os cabeçalhos e valores reais de cada aba ao formato usado pelo app.
  * É idempotente: pode ser aplicada a linhas já normalizadas (ex.: cache antigo).
  */
+const MESES: Record<string, string> = {
+  JAN: '01', FEV: '02', MAR: '03', ABR: '04', MAI: '05', JUN: '06', JUL: '07', AGO: '08', SET: '09', OUT: '10', NOV: '11', DEZ: '12',
+};
+
+/** Data escrita à mão ("29/09 e 05/10/2026", "17–19/09/2026", "Set/2026") → última data reconhecível, ou ''. */
+function dataDeTextoLivre(texto: string): string {
+  const datas = [...texto.matchAll(/(\d{1,2})\/(\d{1,2})\/(\d{4})/g)];
+  const u = datas[datas.length - 1];
+  if (u) return `${u[3]}-${u[2].padStart(2, '0')}-${u[1].padStart(2, '0')}`;
+  const m = /([A-Za-z]{3})[A-Za-z]*\/(\d{4})/.exec(semAcentos(texto));
+  const mes = m && MESES[m[1].toUpperCase()];
+  return mes ? `${m![2]}-${mes}-01` : '';
+}
+
+/** "2026-10-14T01:30:00.000Z" (UTC, gravado por versões antigas) → "2026-10-13T22:30:00" (hora local). */
+function utcParaLocal(valor: unknown): unknown {
+  if (typeof valor !== 'string' || !/^\d{4}-\d{2}-\d{2}T.*(Z|[+-]\d{2}:\d{2})$/.test(valor)) return valor;
+  const d = new Date(valor);
+  if (Number.isNaN(d.getTime())) return valor;
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+}
+
 export function normalizarLinhasDaAba(tabela: string, rows: Record<string, any>[]): Record<string, any>[] {
   return rows.map(item => {
     const r: Record<string, any> = { ...item };
+    for (const k of Object.keys(r)) if (COLUNA_DATA_HORA.test(k)) r[k] = utcParaLocal(r[k]);
     switch (tabela) {
       case 'periodos':
       case 'turmas':
@@ -162,8 +186,31 @@ export function normalizarLinhasDaAba(tabela: string, rows: Record<string, any>[
         r.data_entrega = normalizarDataAcademica(r.data_entrega || r.data_envio || '');
         r.situacao = situacaoEntrega(r.status ?? r.status_entrega);
         break;
-      case 'feedbacks':
-        r.data_hora = r.data_hora || r.criado_em || r.data || '';
+      case 'feedbacks': {
+        // `data` é o dia do registro (importações trazem "03/09/2026"); `criado_em` pode ser o dia da importação.
+        const original = String(r.data ?? '').trim();
+        let data = normalizarDataAcademica(r.data);
+        if (data && !/^\d{4}-\d{2}-\d{2}$/.test(data)) {
+          r.data_texto = original;
+          data = dataDeTextoLivre(original);
+        }
+        const criado = String(r.criado_em ?? '');
+        r.data = data;
+        r.data_hora = r.data_hora || (r.data_texto || (data && !criado.startsWith(data)) ? data : criado || data) || '';
+        break;
+      }
+      case 'ocorrencias':
+        if (typeof r.data_hora === 'number') r.data_hora = serialParaDataHora(r.data_hora);
+        else if (r.data_hora && !/^\d{4}-\d{2}-\d{2}/.test(String(r.data_hora))) {
+          // Texto livre ("17-18/09/2026", "29/09 e 05/10/2026"): ordena pela última data e mostra o texto original.
+          const original = String(r.data_hora).trim();
+          const data = normalizarDataAcademica(original);
+          if (/^\d{4}-\d{2}-\d{2}$/.test(data)) r.data_hora = data;
+          else {
+            r.data_hora = dataDeTextoLivre(original);
+            r.data_texto = original;
+          }
+        }
         break;
       case 'grupo_integrantes':
         r.grupo_integrante_id = r.grupo_integrante_id || r.integrante_id || '';
@@ -232,6 +279,12 @@ export function serializarValor(valor: unknown): string {
   return String(valor);
 }
 
+/** Valor enviado à planilha: número segue como número (fórmulas e somas funcionam); o resto vai como texto. */
+export function valorParaPlanilha(valor: unknown): string | number {
+  if (typeof valor === 'number') return Number.isFinite(valor) ? valor : '';
+  return serializarValor(valor);
+}
+
 /** Objeto do app → nomes de colunas reais da aba. */
 export function adaptarParaPlanilha(tabela: string, registro: Record<string, any>): Record<string, any> {
   const a: Record<string, any> = { ...registro };
@@ -250,8 +303,8 @@ export function adaptarParaPlanilha(tabela: string, registro: Record<string, any
   } else if (tabela === 'tarefas_professora') {
     a.tarefa_id = registro.tarefa_id ?? registro.id;
   } else if (tabela === 'horarios_turma' && typeof registro.dia_semana === 'number') {
-    // Mantém o padrão da planilha ("TERCA", "QUINTA"…).
-    a.dia_semana = ['DOMINGO', 'SEGUNDA', 'TERCA', 'QUARTA', 'QUINTA', 'SEXTA', 'SABADO'][registro.dia_semana] ?? registro.dia_semana;
+    // A planilha guarda o dia como número (0 = domingo … 6 = sábado) e o nome em dia_semana_rotulo.
+    a.dia_semana_rotulo = ['DOMINGO', 'SEGUNDA', 'TERCA', 'QUARTA', 'QUINTA', 'SEXTA', 'SABADO'][registro.dia_semana] ?? '';
   }
   return a;
 }

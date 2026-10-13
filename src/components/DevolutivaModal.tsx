@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { Copy, ExternalLink, Send, Wand2 } from 'lucide-react';
 import { useSupervisao } from '../context/SupervisaoContext';
 import { normalizarNota, formatarNotaParaExibicao } from '../utils/gradeUtils';
+import { formatarDataBr } from '../services/supervisaoOperacionalService';
 import type { AvaliacaoCompleta } from '../types';
 import { Botao, CLASSE_INPUT, Campo, Janela, Selo } from './ui';
 
@@ -25,7 +26,7 @@ export const SeloDevolutiva: React.FC<{ status?: string }> = ({ status }) => {
  */
 export const DevolutivaModal: React.FC<{ matriculaId: string; aoFechar: () => void }> = ({ matriculaId, aoFechar }) => {
   const {
-    getResumoAlunoSupervisao, getCriteriosDaTurma, avaliacoes, avaliacoesCompletas, feedbacks, periodoAtual, currentUser,
+    getResumoAlunoSupervisao, getCriteriosDaTurma, avaliacoes, avaliacoesCompletas, feedbacks, periodoAtual, currentUser, hojeIso,
     salvarAvaliacaoCompleta, aprovarDevolutiva, registrarEnvioDevolutiva,
   } = useSupervisao();
   const r = getResumoAlunoSupervisao(matriculaId);
@@ -44,7 +45,12 @@ export const DevolutivaModal: React.FC<{ matriculaId: string; aoFechar: () => vo
   }), [criterios, avaliacoes, matriculaId]);
   const total = notas.reduce((s, n) => s + n.nota, 0);
   const maximo = notas.reduce((s, n) => s + n.nota_maxima, 0);
-  const feedbacksAluno = feedbacks.filter(f => f.matricula_id === matriculaId);
+  // Registros marcados como "não automático" na planilha ficam na ficha, fora da devolutiva.
+  const foraDaDevolutiva = (v: unknown) => ['NAO_AUTOMATICO', 'FALSE', 'NAO'].includes(String(v ?? '').toUpperCase());
+  const doAluno = feedbacks.filter(f => f.matricula_id === matriculaId);
+  const feedbacksAluno = doAluno.filter(f => !foraDaDevolutiva(f.incluir_na_devolutiva))
+    .sort((a, b) => String(a.data_hora).localeCompare(String(b.data_hora)));
+  const deFora = doAluno.length - feedbacksAluno.length;
 
   if (!r) return null;
   const primeiroNome = r.aluno.nome.split(' ')[0];
@@ -82,7 +88,7 @@ export const DevolutivaModal: React.FC<{ matriculaId: string; aoFechar: () => vo
         pontos_desenvolver: desenvolver,
         comentario_geral: comentario,
         feedback_gerado: texto,
-        data_avaliacao: existente?.data_avaliacao || new Date().toISOString().slice(0, 10),
+        data_avaliacao: existente?.data_avaliacao || hojeIso,
       });
     } finally {
       setSalvando(false);
@@ -113,7 +119,14 @@ export const DevolutivaModal: React.FC<{ matriculaId: string; aoFechar: () => vo
         {feedbacksAluno.length > 0 && (
           <details className="bg-slate-50 rounded-xl p-3">
             <summary className="font-semibold text-slate-800 cursor-pointer">Feedbacks registrados no semestre ({feedbacksAluno.length})</summary>
-            <ul className="mt-2 space-y-1 text-sm text-slate-700">{feedbacksAluno.map(f => <li key={f.feedback_id}>• {f.texto}</li>)}</ul>
+            <ul className="mt-2 space-y-1 text-sm text-slate-700">
+              {feedbacksAluno.map(f => (
+                <li key={f.feedback_id}>
+                  <span className="text-slate-500">{f.data_texto || formatarDataBr(String(f.data_hora).slice(0, 10))}{f.categoria && ` · ${f.categoria}`}:</span> {f.texto}
+                </li>
+              ))}
+            </ul>
+            {deFora > 0 && <p className="mt-2 text-sm text-slate-500">Mais {deFora} registro(s) marcados para não entrar na devolutiva estão na ficha.</p>}
           </details>
         )}
         <Campo rotulo="Pontos fortes"><textarea className={`${CLASSE_INPUT} h-20`} value={fortes} onChange={e => setFortes(e.target.value)} /></Campo>

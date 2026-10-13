@@ -65,7 +65,6 @@ export interface RegistroSemanal {
   observacao: string;
 }
 
-
 export interface Avaliacao {
   aluno_id?: string; // Compatibilidade de leitura com identificadores legados; prioridade sempre à matrícula.
   avaliacao_id: string;
@@ -78,9 +77,15 @@ export interface Avaliacao {
 export interface FeedbackAluno {
   aluno_id?: string; // Compatibilidade de leitura com identificadores legados; prioridade sempre à matrícula.
   feedback_id: string;
+  /** Vazio quando o registro é sobre a turma inteira. */
   matricula_id: string;
   data_hora: string;
   texto: string;
+  turma_id?: string;
+  categoria?: string;
+  incluir_na_devolutiva?: boolean | string;
+  /** Data como estava escrita na planilha, quando não era uma data simples. */
+  data_texto?: string;
 }
 
 export interface CriterioAvaliacao {
@@ -196,7 +201,6 @@ export interface LeituraResponsavel {
   [key: string]: any;
 }
 
-
 export interface GrupoPratica {
   grupo_id: string;
   turma_id?: string;
@@ -252,12 +256,6 @@ export interface Feedback {
   [key: string]: any;
 }
 
-
-
-
-
-
-
 export interface Ocorrencia {
   aluno_id?: string; // Compatibilidade de leitura com identificadores legados; prioridade sempre à matrícula.
   ocorrencia_id: string;
@@ -265,6 +263,8 @@ export interface Ocorrencia {
   data_hora: string;
   tipo: 'ATRASO' | 'USO_INADEQUADO_DISPOSITIVO' | 'OUTRO';
   observacao: string;
+  /** Data como estava escrita na planilha, quando não era uma data simples ("29/09 e 05/10/2026"). */
+  data_texto?: string;
 }
 
 export interface Configuracao {
@@ -381,7 +381,6 @@ export interface AlunoResumoSupervisao {
 // Central de Avaliação e Instrumentos
 export type TipoInstrumento = 'NOTA_SIMPLES' | 'ATIVIDADE_SIMPLES' | 'RUBRICA' | 'HIBRIDA';
 
-
 export type StatusDevolutiva =
   | 'NAO_INICIADA'
   | 'RASCUNHO'
@@ -423,9 +422,6 @@ export interface AvaliacaoCompleta {
   atualizado_em: string;
 }
 
-
-
-
 // -----------------------------------------------------------------------------
 // GESTÃO OPERACIONAL DE ENCONTROS, AULAS NÃO REALIZADAS E REAGENDAMENTOS
 // -----------------------------------------------------------------------------
@@ -459,7 +455,6 @@ export interface EncontroTurma {
   atualizado_em?: string;
 }
 
-
 export interface ItemPendenciaOperacional {
   id: string;
   tipo:
@@ -489,8 +484,6 @@ export interface ItemPendenciaOperacional {
   quantidade?: number;
 }
 
-
-
 // Navegação do aplicativo
 export type NavTab =
   | 'hoje'
@@ -500,7 +493,6 @@ export type NavTab =
   | 'avaliacao'
   | 'calendario'
   | 'ajustes';
-
 
 // -----------------------------------------------------------------------------
 // TAREFAS DA PROFESSORA E CASOS PARA DISCUTIR (persistidos na planilha)

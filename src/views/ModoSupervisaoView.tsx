@@ -5,7 +5,7 @@ import {
 } from 'lucide-react';
 import { MarcacaoChamada, useSupervisao } from '../context/SupervisaoContext';
 import { useNavegacao } from '../context/NavegacaoContext';
-import { formatarDiaCurto } from '../services/supervisaoOperacionalService';
+import { formatarDataBr, formatarDiaCurto } from '../services/supervisaoOperacionalService';
 import { ModalNovaOrientacao, ModalNovoFeedback, ModalNovoPontoAcompanhamento, ModalRegistrarOcorrencia } from '../components/Modals';
 import { EstudoDirigidoModal } from '../components/EstudoDirigidoModal';
 import { ReagendarModal } from './TurmaView';
@@ -279,7 +279,7 @@ export const ModoSupervisaoView: React.FC<{ turmaId: string; dataAula: string }>
                     {resumo.ultimasOrientacoes.map(o => (
                       <li key={o.orientacao_id} className="flex items-start gap-3">
                         <div className="flex-1">
-                          <p className="text-sm text-slate-500">{o.categoria} · {new Date(o.data_hora).toLocaleDateString('pt-BR')}</p>
+                          <p className="text-sm text-slate-500">{o.categoria} · {formatarDataBr(String(o.data_hora).slice(0, 10), true)}</p>
                           <p className="text-slate-800 whitespace-pre-wrap">{o.texto}</p>
                         </div>
                         <Botao tamanho="sm" variante={o.status === 'ABERTA' ? 'secundario' : 'fantasma'} onClick={() => void toggleOrientacaoStatus(o.orientacao_id)}>

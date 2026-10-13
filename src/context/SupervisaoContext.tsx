@@ -35,6 +35,7 @@ import {
   TurmaOrigem,
 } from '../types';
 import {
+  agoraLocalIso,
   aulasDoDia,
   AulaDoDia,
   gerarPendencias,
@@ -271,7 +272,7 @@ interface SupervisaoContextType {
 const SupervisaoContext = createContext<SupervisaoContextType | undefined>(undefined);
 
 const novoId = (prefixo: string) => gerarIdEstavel(prefixo);
-const agoraIso = () => new Date().toISOString();
+const agoraIso = () => agoraLocalIso();
 
 /** Lê uma lista antiga do localStorage (versões anteriores guardavam dados só no navegador). */
 function lerLocalAntigo<T>(chave: string): T[] {
@@ -680,8 +681,9 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   }, agora), [periodoAtual, dados, agora]);
 
   const feedbacks = useMemo<FeedbackAluno[]>(() => [
-    ...dados.feedbacks.filter(f => f.matricula_id).map(f => ({
-      feedback_id: f.feedback_id, matricula_id: f.matricula_id!, data_hora: f.data_hora || f.data || '', texto: f.texto || '',
+    ...dados.feedbacks.filter(f => f.matricula_id || f.turma_id).map(f => ({
+      feedback_id: f.feedback_id, matricula_id: f.matricula_id || '', data_hora: f.data_hora || f.data || '', texto: f.texto || '',
+      turma_id: f.turma_id, categoria: f.categoria, incluir_na_devolutiva: f.incluir_na_devolutiva, data_texto: f.data_texto,
     })),
     ...dados.feedbacksLegados,
   ], [dados.feedbacks, dados.feedbacksLegados]);
