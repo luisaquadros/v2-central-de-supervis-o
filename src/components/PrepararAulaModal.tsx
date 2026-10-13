@@ -2,6 +2,8 @@ import React from 'react';
 import { X, Play, BookOpen, AlertTriangle, Clock, Users, CheckCircle, FileText, Calendar } from 'lucide-react';
 import { useSupervisao } from '../context/SupervisaoContext';
 import { Turma } from '../types';
+import { AulaPreparacaoPainel } from './AulaPreparacaoPainel';
+import { obterLeiturasAgendadas, getHojeDataIso } from '../services/supervisaoOperacionalService';
 
 interface PrepararAulaModalProps {
   isOpen: boolean;
@@ -25,6 +27,7 @@ export const PrepararAulaModal: React.FC<PrepararAulaModalProps> = ({
     documentos,
     pontosAcompanhamento,
     gruposPratica,
+    encontrosTurma,
   } = useSupervisao();
 
   if (!isOpen) return null;
@@ -43,11 +46,12 @@ export const PrepararAulaModal: React.FC<PrepararAulaModalProps> = ({
   );
 
   // Próxima leitura
-  const hojeStr = new Date().toISOString().split('T')[0];
-  const proximasLeituras = leiturasResponsaveis.filter(
-    l => l.turma_id === turma.turma_id || !l.turma_id
+  const hojeStr = getHojeDataIso();
+  const proximasLeituras = obterLeiturasAgendadas(
+    leiturasResponsaveis.filter(l => l.turma_id === turma.turma_id),
+    encontrosTurma
   );
-  const leitura = proximasLeituras[0];
+  const leitura = proximasLeituras.find(l => l.data_apresentacao >= hojeStr) || proximasLeituras.at(-1);
 
   // Documentos pendentes
   const docsPendentes = documentos.filter(
@@ -82,7 +86,8 @@ export const PrepararAulaModal: React.FC<PrepararAulaModalProps> = ({
         </div>
 
         {/* Content */}
-        <div className="p-5 overflow-y-auto space-y-4 flex-1 text-xs">
+        <div className="p-4 sm:p-5 overflow-y-auto min-h-0 space-y-4 flex-1 text-xs mobile-scroll">
+          <AulaPreparacaoPainel turmaId={turma.turma_id} />
           {/* 1. Leitura do Encontro */}
           <div className="p-3.5 rounded-xl border border-slate-200 bg-white space-y-2">
             <div className="flex items-center gap-2 text-indigo-600 font-bold">
@@ -93,9 +98,9 @@ export const PrepararAulaModal: React.FC<PrepararAulaModalProps> = ({
               <div className="pl-6 space-y-1">
                 <div className="font-bold text-slate-900 text-xs">{leitura.tema || leitura.titulo || 'Sem título'}</div>
                 <div className="text-slate-500">
-                  Responsáveis: <strong className="text-slate-800">{leitura.responsavel_nome || leitura.responsavel_id || 'Turma em geral'}</strong>
+                  Responsáveis: <strong className="text-slate-800">{leitura.tipo === 'LEITURA_RECOMENDADA' ? 'Leitura coletiva (sem responsável)' : (leitura.responsavel_nome || leitura.responsavel_id || 'A confirmar')}</strong>
                 </div>
-                {leitura.data && <div className="text-[11px] text-slate-400">Data programada: {leitura.data}</div>}
+                {leitura.data && <div className="text-[11px] text-slate-400">Próxima apresentação: {leitura.data_apresentacao}{leitura.reprogramada && ` (transferida de ${leitura.data_original})`}</div>}
               </div>
             ) : (
               <div className="pl-6 text-slate-400">Nenhuma leitura programada especificamente.</div>
@@ -151,8 +156,10 @@ export const PrepararAulaModal: React.FC<PrepararAulaModalProps> = ({
             )}
           </div>
 
-          {/* 4. Documentos e Prazos */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {/* Detalhes secundários recolhidos para reduzir ruído visual. */}
+          <details className="rounded-xl border border-slate-200 p-3">
+            <summary className="font-semibold text-xs text-slate-700 cursor-pointer">Documentos e prazos · detalhes</summary>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
             <div className="p-3 rounded-xl border border-slate-200 bg-white space-y-1">
               <span className="text-slate-400 text-[10px] uppercase font-bold block">Documentação Pendente</span>
               <span className="text-sm font-bold text-slate-900">{docsPendentes.length} pendência(s)</span>
@@ -164,6 +171,7 @@ export const PrepararAulaModal: React.FC<PrepararAulaModalProps> = ({
               </span>
             </div>
           </div>
+          </details>
         </div>
 
         {/* Footer with action */}
