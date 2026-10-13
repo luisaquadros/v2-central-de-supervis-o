@@ -2414,21 +2414,10 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       return copy;
     });
 
-    // Se transferirEstudoDirigido: transfere leituras da data original para a nova data mantendo responsáveis
-    if (transferirEstudoDirigido) {
-      setLeiturasResponsaveis(prev =>
-        prev.map(l => {
-          if (l.turma_id === turmaId && l.data === dataOriginal) {
-            return {
-              ...l,
-              data: novaData,
-              observacao: `Transferido de ${dataOriginal} (Reagendamento)`,
-            };
-          }
-          return l;
-        })
-      );
-    }
+    // A transferência do estudo dirigido NÃO altera `leituras_responsaveis`: ela é derivada dos encontros
+    // cancelados/reagendados (gravados abaixo) em `leiturasDoEncontro`. Mudar a data só na memória faria
+    // as telas divergirem até recarregar e outros dispositivos nunca veriam a mudança.
+    void transferirEstudoDirigido;
 
     // Compartilha o cancelamento e o reagendamento com outros dispositivos.
     const itemOriginal = encontrosTurma.find(e => e.turma_id === turmaId && e.data === dataOriginal);

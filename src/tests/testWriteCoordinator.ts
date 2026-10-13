@@ -49,3 +49,18 @@ try{
   assert.equal(rows[1][1],8);
   console.log('Coordenador: serialização, CAS, retry idempotente e conflito concorrente validados.');
 }finally{globalThis.fetch=oldFetch}
+
+// Limite de corpo do Worker: vale para o corpo real, mesmo sem Content-Length (envio em partes).
+{
+  const { lerCorpoLimitado, LIMITE_CORPO } = await import('../server/worker');
+  const pequeno = new Request('https://x/api/critical-write', { method: 'POST', body: '{"ok":true}' });
+  assert.equal(await lerCorpoLimitado(pequeno, LIMITE_CORPO), '{"ok":true}', 'corpo pequeno passa');
+  const partes = new ReadableStream({
+    start(c) { const bloco = new TextEncoder().encode('x'.repeat(40000)); for (let i = 0; i < 4; i++) c.enqueue(bloco); c.close(); },
+  });
+  const grande = new Request('https://x/api/critical-write', { method: 'POST', body: partes, duplex: 'half' } as RequestInit);
+  assert.equal(grande.headers.get('Content-Length'), null, 'sem Content-Length declarado');
+  assert.equal(await lerCorpoLimitado(grande, LIMITE_CORPO), null, '160 KB em partes é recusado (limite 128 KB)');
+  assert.equal(await lerCorpoLimitado(new Request('https://x/', { method: 'POST' }), LIMITE_CORPO), '', 'sem corpo = vazio');
+  console.log('Worker: limite de corpo real validado (inclusive sem Content-Length).');
+}

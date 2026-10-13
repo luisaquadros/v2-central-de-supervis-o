@@ -6,6 +6,22 @@ interface DurableState {storage:DurableStorage}
 interface Namespace {idFromName(key:string):unknown;get(id:unknown):{fetch(request:Request):Promise<Response>}}
 interface Env {ASSETS:{fetch(request:Request):Promise<Response>};WRITE_COORDINATOR:Namespace}
 
+export const LIMITE_CORPO=131072;
+/** Lê o corpo em partes e aborta ao passar do limite. Devolve null se exceder. */
+export async function lerCorpoLimitado(request:Request,limite:number):Promise<string|null>{
+  if(!request.body)return '';
+  const leitor=request.body.getReader();
+  const decoder=new TextDecoder();
+  let total=0,texto='';
+  for(;;){
+    const {done,value}=await leitor.read();
+    if(done)break;
+    total+=value.byteLength;
+    if(total>limite){await leitor.cancel().catch(()=>{});return null}
+    texto+=decoder.decode(value,{stream:true});
+  }
+  return texto+decoder.decode();
+}
 const json=(data:unknown,status=200)=>new Response(JSON.stringify(data),{
   status,headers:{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'}
 });
@@ -113,13 +129,15 @@ export default {
     if(request.method!=='POST')return fail('Método não permitido.',405);
     const origin=request.headers.get('Origin');
     if(origin && origin!==url.origin)return fail('Origem não permitida.',403);
-    if(Number(request.headers.get('Content-Length')||0)>131072)return fail('Operação muito grande.',413);
+    // O limite vale para o corpo real: Content-Length pode faltar (envio em partes) ou mentir.
+    if(Number(request.headers.get('Content-Length')||0)>LIMITE_CORPO)return fail('Operação muito grande.',413);
+    const corpo=await lerCorpoLimitado(request,LIMITE_CORPO);
+    if(corpo===null)return fail('Operação muito grande.',413);
     const object=env.WRITE_COORDINATOR.get(env.WRITE_COORDINATOR.idFromName(SPREADSHEET_ID));
     return object.fetch(new Request('https://internal/write',{
       method:'POST',
       headers:{Authorization:request.headers.get('Authorization')||'', 'Content-Type':'application/json'},
-      body:request.body,
-      duplex:'half' as any,
-    } as RequestInit));
+      body:corpo,
+    }));
   }
 };

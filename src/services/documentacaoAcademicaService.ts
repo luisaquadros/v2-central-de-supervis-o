@@ -1,6 +1,42 @@
 import type { Entrega, Documento } from '../types';
 import { interpretarStatusEntrega } from './normalizacaoAcademica';
 
+const ROTULO_TIPO: Record<string, string> = {
+  TERMO_COMPROMISSO: 'Termo de Compromisso',
+  MANUAL_ESTAGIO: 'Manual do Estágio',
+  RELATORIO_PARCIAL: 'Relatório parcial',
+  RELATORIO_FINAL: 'Relatório final',
+  DOCUMENTACAO_EXTERNA: 'Documentação externa',
+};
+
+export interface EntregaDoEstudante {
+  id: string;
+  rotulo: string;
+  situacao: ReturnType<typeof interpretarStatusEntrega>;
+  statusOriginal: string;
+  prazo: string;
+  dataEnvio: string;
+}
+
+/** Entregas oficiais (aba `entregas`) de UMA matrícula, prontas para a ficha. Somente leitura. */
+export function entregasDoEstudante(entregas: Entrega[], matriculaId: string): EntregaDoEstudante[] {
+  return entregas
+    .filter(e => String(e.matricula_id ?? '').trim() === matriculaId)
+    .map(e => {
+      const tipo = String(e.tipo_documento ?? e.tipo_entrega ?? e.codigo_entrega ?? '').trim();
+      const statusOriginal = String(e.status_entrega ?? e.status ?? '').trim();
+      return {
+        id: String(e.entrega_id ?? `${matriculaId}:${tipo}`),
+        rotulo: ROTULO_TIPO[tipo.toUpperCase()] ?? (tipo ? tipo.replace(/_/g, ' ').toLowerCase().replace(/^./, c => c.toUpperCase()) : 'Documento'),
+        situacao: interpretarStatusEntrega(statusOriginal),
+        statusOriginal,
+        prazo: String(e.prazo ?? '').trim(),
+        dataEnvio: String(e.data_entrega ?? e.data_envio ?? '').trim(),
+      };
+    })
+    .sort((a, b) => a.rotulo.localeCompare(b.rotulo, 'pt-BR'));
+}
+
 export function resumirDocumentacaoOficial(
   entregas: Entrega[],
   legados: Documento[],

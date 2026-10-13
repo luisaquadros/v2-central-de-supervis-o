@@ -1,3 +1,4 @@
+import { entregasDoEstudante } from '../services/documentacaoAcademicaService';
 import { selecionarRssDoEstudante } from '../services/rssVinculos';
 import { LeituraRss } from '../components/LeituraRss';
 import React, { useState } from 'react';
@@ -48,6 +49,7 @@ export const AlunoFichaView: React.FC<AlunoFichaViewProps> = ({
     gruposPratica,
     grupoIntegrantes,
     documentos,
+    entregas,
     avaliacoes,
     feedbacks,
     criterios,
@@ -151,7 +153,11 @@ export const AlunoFichaView: React.FC<AlunoFichaViewProps> = ({
   });
 
   // Metrics
-  const docsPendentes = studentDocumentos.filter(d => d.status === 'PENDENTE').length;
+  const entregasOficiais = entregasDoEstudante(entregas, matriculaId);
+  // Com entregas oficiais, elas são a fonte; sem elas, vale a lista antiga.
+  const docsPendentes = entregasOficiais.length > 0
+    ? entregasOficiais.filter(e => e.situacao === 'PENDENTE').length
+    : studentDocumentos.filter(d => d.status === 'PENDENTE').length;
   const orientacoesAbertas = studentOrientacoes.filter(o => o.status === 'ABERTA').length;
   const totalAtrasos = studentOcorrencias.filter(o => o.tipo === 'ATRASO').length;
   const totalDispositivos = studentOcorrencias.filter(
@@ -260,7 +266,7 @@ export const AlunoFichaView: React.FC<AlunoFichaViewProps> = ({
     { id: 'pontos', label: 'Pontos de Acompanhamento' },
     { id: 'orientacoes', label: `Orientações (${studentOrientacoes.length})` },
     { id: 'registros', label: `Registros (${totalRegistrosEntregues} de ${totalRegistrosEsperados} esp.)` },
-    { id: 'documentos', label: `Documentos (${studentDocumentos.length})` },
+    { id: 'documentos', label: `Documentos (${entregasOficiais.length + studentDocumentos.length})` },
     { id: 'avaliacao', label: `Avaliação (${studentAvaliacoesValidas.length > 0 ? notaTotalNumero.toFixed(1) : '—'})` },
     { id: 'estudos', label: `Estudo Dirigido (${estudosTitular.length + estudosComoSubstituto.length})` },
     { id: 'frequencia', label: 'Frequência' },
@@ -758,10 +764,32 @@ export const AlunoFichaView: React.FC<AlunoFichaViewProps> = ({
             </button>
           </div>
 
+          {entregasOficiais.length > 0 && (
+            <div className="space-y-2">
+              <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Entregas oficiais (planilha)</p>
+              <div className="divide-y divide-slate-100 border border-slate-200 rounded-xl overflow-hidden">
+                {entregasOficiais.map(e => (
+                  <div key={e.id} className="p-3.5 flex items-center justify-between gap-3 text-xs bg-white">
+                    <div>
+                      <span className="font-bold text-slate-900">{e.rotulo}</span>
+                      {e.prazo && <p className="text-slate-400 text-[10px] mt-0.5">Prazo: {e.prazo}</p>}
+                      {e.dataEnvio && <p className="text-slate-400 text-[10px] mt-0.5 font-mono">Enviado em: {e.dataEnvio}</p>}
+                    </div>
+                    <span className={`text-[10px] font-semibold px-2 py-0.5 rounded ${
+                      e.situacao === 'ENTREGUE' || e.situacao === 'ENVIADO' ? 'bg-emerald-100 text-emerald-900'
+                        : e.situacao === 'PENDENTE' ? 'bg-amber-100 text-amber-900'
+                        : e.situacao === 'A_CONFERIR' ? 'bg-blue-100 text-blue-900' : 'bg-slate-100 text-slate-800'}`}>
+                      {e.statusOriginal || 'Sem status'}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
           <div className="divide-y divide-slate-100 border border-slate-200 rounded-xl overflow-hidden">
             {studentDocumentos.length === 0 ? (
               <div className="p-4 text-center text-xs text-slate-400">
-                Nenhum documento cadastrado.
+                {entregasOficiais.length > 0 ? 'Sem documentos avulsos adicionais.' : 'Nenhum documento cadastrado.'}
               </div>
             ) : (
               studentDocumentos.map(doc => {
