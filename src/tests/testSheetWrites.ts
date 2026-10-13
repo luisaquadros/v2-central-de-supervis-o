@@ -22,6 +22,8 @@ const SHEETS: Record<string, number> = {
   frequencias: 13,
   avaliacoes: 14,
   encontros_turma: 15,
+  leituras_responsaveis: 16,
+  grupo_integrantes: 17,
 };
 
 globalThis.fetch = (async (url: string | URL | Request, init?: RequestInit) => {
@@ -118,6 +120,44 @@ try {
   const encerramento = requiredWrite('POST');
   assert.equal(encerramento.body.values[0][4], 'REALIZADO');
   assert.equal(encerramento.body.values[0][5], 'TRUE');
+
+  // 4d. Atualizações de leituras utilizam a chave física leitura_agenda_id.
+  calls = [];
+  sheetRows = [
+    ['leitura_agenda_id','turma_id','titulo','status_realizacao','responsaveis_efetivos'],
+    ['LEIT-001','t1','Leitura original','PLANEJADO',''],
+  ];
+  await gravarRegistroNaPlanilhaOficial('leituras_responsaveis', {
+    leitura_id: 'LEIT-001', status_realizacao: 'REALIZADO',
+    responsaveis_efetivos: ['m1','m2'],
+  });
+  const leituraAtualizada = requiredWrite('PUT');
+  assert.equal(leituraAtualizada.body.values[0][0], 'LEIT-001');
+  assert.equal(leituraAtualizada.body.values[0][2], 'Leitura original');
+  assert.equal(leituraAtualizada.body.values[0][3], 'REALIZADO');
+  assert.equal(leituraAtualizada.body.values[0][4], '["m1","m2"]');
+  assert(!calls.some(c => c.init.method === 'POST'));
+
+  // 4e. Grupo usa grupo_integrante_id, mesmo se a UI enviar integrante_id.
+  calls = [];
+  sheetRows = [
+    ['grupo_integrante_id','grupo_id','matricula_id','status'],
+    ['gi1','g1','m1','ATIVO'],
+  ];
+  await gravarRegistroNaPlanilhaOficial('grupo_integrantes', {
+    integrante_id: 'gi1', status: 'INATIVO',
+  });
+  assert.equal(requiredWrite('PUT').body.values[0][3], 'INATIVO');
+  assert(!calls.some(c => c.init.method === 'POST'));
+
+  // 4f. Identidade da leitura também protege exclusões.
+  calls = [];
+  sheetRows = [
+    ['leitura_agenda_id', 'titulo'],
+    ['LEIT-001','Teste'],
+  ];
+  await removerRegistroDaPlanilhaOficial('leituras_responsaveis', {leitura_id:'LEIT-001'});
+  assert.equal(requiredWrite('POST').body.requests[0].deleteDimension.range.startIndex,1);
 
   // 5. DELETE deve excluir apenas uma linha identificada inequivocamente.
   calls = [];
