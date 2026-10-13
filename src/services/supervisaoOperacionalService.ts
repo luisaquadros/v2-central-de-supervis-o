@@ -394,6 +394,43 @@ export function obterDatasCalendarioAcademico(
   };
 }
 
+export type LeituraAgendada = LeituraResponsavel & { data_original: string; data_apresentacao: string; reprogramada: boolean };
+
+/**
+ * Transfere estudos dirigidos CANCELADOS para a aula imediatamente seguinte
+ * DA MESMA TURMA, inclusive quando existe outra leitura no novo encontro.
+ * O registro de origem não é alterado nem apagado da planilha.
+ * Leituras de apoio à Clínica Ampliada não criam responsável fictício.
+ */
+export function obterLeiturasAgendadas(
+  leituras: LeituraResponsavel[],
+  encontros: EncontroTurma[]
+): LeituraAgendada[] {
+  return leituras.map(leitura => {
+    const original = String(leitura.data || '');
+    let novaData = original;
+    if (leitura.tipo !== 'LEITURA_RECOMENDADA' && /^\d{4}-\d{2}-\d{2}$/.test(original)) {
+      const visitadas = new Set<string>();
+      for (let tentativas = 0; tentativas < 12; tentativas++) {
+        const enc = encontros.find(e => e.turma_id === leitura.turma_id && e.data === novaData);
+        if (!enc || (enc.status !== 'NAO_REALIZADO' && enc.status !== 'REAGENDADO')) break;
+        if (visitadas.has(novaData)) break;
+        visitadas.add(novaData);
+        if (enc.status === 'REAGENDADO' && enc.data_reagendada &&
+            /^\d{4}-\d{2}-\d{2}$/.test(enc.data_reagendada)) {
+          novaData = enc.data_reagendada;
+          continue;
+        }
+        const proxima = new Date(`${novaData}T12:00:00Z`);
+        proxima.setUTCDate(proxima.getUTCDate() + 7);
+        novaData = proxima.toISOString().slice(0, 10);
+      }
+    }
+    return { ...leitura, data_original: original, data_apresentacao: novaData, reprogramada: novaData !== original };
+  }).sort((a,b) => a.data_apresentacao.localeCompare(b.data_apresentacao) ||
+    a.data_original.localeCompare(b.data_original));
+}
+
 /**
  * Deriva notificações internas automáticas sem duplicidade de cadastro
  */
