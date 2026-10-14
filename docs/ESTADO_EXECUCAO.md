@@ -28,4 +28,4 @@ Participação/competências estruturadas, ciclo completo de reposição e retif
 Revisão da branch combinada; integração controlada somente quando autorizada. Integração real exige cópia e contas autorizadas, conforme decisões institucionais. Não declarar produção validada.
 
 ## Resultado do checkpoint
-PARCIALMENTE CONCLUÍDO: interface e integração de código testadas; fluxos sem suporte acadêmico estruturado e validação externa/manual permanecem pendentes. Sem declarar produção pronta. Commits serão registrados no fechamento desta branch.
+PARCIALMENTE CONCLUÍDO: interface e integração de código testadas; fluxos sem suporte acadêmico estruturado e validação externa/manual permanecem pendentes. Sem declarar produção pronta. Último commit de implementação e integração: `82ec8f9`. Este checkpoint documental registra a validação final.
