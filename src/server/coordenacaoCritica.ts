@@ -15,7 +15,7 @@ export const TABELAS_CRITICAS = new Set([
   'grupos_pratica',
   'grupo_integrantes',
   // Estrutura aditiva da avaliação: versão, idempotência e log como nas demais
-  'config_avaliacao','rubricas_avaliacao','avaliacao_rascunhos','evidencias_avaliacao',
+  'config_avaliacao','rubricas_avaliacao','avaliacao_rascunhos','evidencias_avaliacao','rss_ajustes',
 ]);
 
 export type OperacaoCritica = 'INSERT' | 'UPDATE' | 'DELETE';

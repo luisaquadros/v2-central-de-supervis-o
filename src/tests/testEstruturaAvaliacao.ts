@@ -8,7 +8,7 @@ import { indexedDB } from 'fake-indexeddb';
 Object.assign(globalThis, { window: { indexedDB } });
 import { TABELAS_CRITICAS } from '../server/coordenacaoCritica';
 import { ABAS_AVALIACAO, NOMES_ABAS_AVALIACAO, diagnosticarEstrutura, rubricaParaLinha, linhaParaRubrica, rascunhoParaLinha, linhaParaRascunho,
-  configParaLinha, linhaParaConfig, evidenciaParaLinha, linhaParaEvidencia, configVigente, configPorCriterioDoAluno, type ConfigAvaliacao } from '../services/estruturaAvaliacao';
+  configParaLinha, linhaParaConfig, ajusteParaLinha, linhaParaAjuste, evidenciaParaLinha, linhaParaEvidencia, configVigente, configPorCriterioDoAluno, type ConfigAvaliacao } from '../services/estruturaAvaliacao';
 import { criarRubricaDocumentacao, novoRascunho, selecionarNivel, ajustarPontuacao, aprovarRubrica, novaVersaoRubrica } from '../services/rubricasAvaliacao';
 import { criarEstruturaAvaliacao, lerCabecalhos } from '../server/estruturaAvaliacaoServidor';
 import { calcularAvaliacao } from '../services/avaliacaoEngine';
@@ -28,9 +28,13 @@ const config: ConfigAvaliacao = { config_id: 'CFG-t1-CRIT-DOC-p1-v1', periodo_id
 const evid = { evidencia_id: 'ev1', periodo_id: 'p1', turma_id: 't1', matricula_id: 'm1', data: '2026-10-10', origem: 'SUPERVISAO' as const, criterio_id: 'CRIT-DOC',
   polaridade: 'POSITIVO' as const, observacao: 'Discussão fundamentada do caso', responsavel: 'prof', referencia_tabela: 'registros_supervisao', referencia_id: 'r9', preliminar: false, criado_em: T0, atualizado_em: T0 };
 
+// RSS: ajuste ida e volta
+const aj1 = { ajuste_id: 'AJ-9', tipo: 'OBSERVACAO' as const, turma_id: 't1', unidade_tipo: 'GRUPO' as const, unidade_id: 'g1', semana: 3, observacao: 'Entregou por e-mail', status: 'ATIVO' as const, criado_em: T0, criado_por: 'prof' };
+assert.deepEqual(JSON.parse(JSON.stringify(linhaParaAjuste(ajusteParaLinha(aj1)))), JSON.parse(JSON.stringify({ ...aj1, registro_id: undefined, semana_original: null, unidade_original_tipo: null, unidade_original_id: null, atualizado_em: T0 })));
+assert.equal(linhaParaAjuste({ status: 'qualquer', tipo: 'x' }).status, 'ATIVO');
 // --- Todas as abas novas passam pelo coordenador
 for (const aba of NOMES_ABAS_AVALIACAO) assert(TABELAS_CRITICAS.has(aba), `${aba} deve ser crítica`);
-assert.equal(NOMES_ABAS_AVALIACAO.length, 4);
+assert.equal(NOMES_ABAS_AVALIACAO.length, 5, '4 da avaliação + rss_ajustes');
 
 const limpo = (x: unknown) => JSON.parse(JSON.stringify(x)); // ignora chaves indefinidas
 // --- Conversores: ida e volta sem perda; JSON inválido é detectado, nunca vira vazio silencioso
@@ -85,6 +89,7 @@ const casos: Array<{ aba: (typeof NOMES_ABAS_AVALIACAO)[number]; linha: Record<s
   { aba: 'rubricas_avaliacao', linha: rubricaParaLinha(rubrica), campo: 'status', novo: 'rascunho' },
   { aba: 'avaliacao_rascunhos', linha: rascunhoParaLinha(rasc, 't1', 'prof'), campo: 'status', novo: 'CONFIRMADA' },
   { aba: 'evidencias_avaliacao', linha: evidenciaParaLinha(evid), campo: 'polaridade', novo: 'DESENVOLVER' },
+  { aba: 'rss_ajustes', linha: ajusteParaLinha({ ajuste_id: 'AJ-1', tipo: 'ASSOCIAR', registro_id: 'r1', turma_id: 't1', semana: 4, semana_original: null, status: 'ATIVO', criado_em: T0, criado_por: 'prof' }), campo: 'status', novo: 'REVOGADO' },
 ];
 for (const c of casos) {
   const cab: string[] = [...ABAS_AVALIACAO[c.aba].colunas];
@@ -160,7 +165,7 @@ function planilhaFalsa(abas: Record<string, string[][]>) {
   // idempotente: segunda execução não cria nem altera nada
   const antes = JSON.stringify(p.abas); const n0 = p.chamadas.length;
   const rel2 = await criarEstruturaAvaliacao('https://sheets.test/v4/spreadsheets/ID', p.chamar);
-  assert.equal(rel2.criadas.length, 0); assert.equal(rel2.existentes.length, 4);
+  assert.equal(rel2.criadas.length, 0); assert.equal(rel2.existentes.length, 5);
   assert.equal(JSON.stringify(p.abas), antes);
   assert(p.chamadas.slice(n0).every(c => c.startsWith('GET')), 'segunda execução só lê');
   // aba existente com cabeçalho diferente: relatada, não modificada
@@ -168,7 +173,7 @@ function planilhaFalsa(abas: Record<string, string[][]>) {
   const rel3 = await criarEstruturaAvaliacao('https://sheets.test/v4/spreadsheets/ID', q.chamar);
   assert.equal(rel3.divergentes.length, 1); assert.equal(rel3.divergentes[0].aba, 'config_avaliacao');
   assert.deepEqual(q.abas.config_avaliacao, [['config_id', 'coluna_do_usuario'], ['x', 'y']], 'divergente não é alterada');
-  assert.equal(rel3.criadas.length, 3);
+  assert.equal(rel3.criadas.length, 4);
   assert.deepEqual(Object.keys(await lerCabecalhos('https://sheets.test/v4/spreadsheets/ID', q.chamar)).sort(), [...NOMES_ABAS_AVALIACAO].sort());
 }
 

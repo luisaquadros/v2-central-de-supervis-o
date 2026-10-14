@@ -82,6 +82,7 @@ export function turmaDoRegistro(registro: Record<string, unknown> | null, turmaD
 // confidenciais nunca estão nesta lista.
 // ---------------------------------------------------------------------------------------------
 interface RegraLeitura { operacao?: Operacao; porTurma?: 'turma_id' | 'matricula_id' | 'aluno_id' | 'grupo_id'; ocultar?: string[]; todas?: boolean;
+  /** LISTA BRANCA de colunas: só estas saem (use para tabelas com conteúdo clínico) */ somente?: string[];
   /** filtro adicional por linha (ex.: somente as próprias contribuições) */ linha?: (l: Record<string, string>, p: Perfil) => boolean }
 export const LEITURA_MONITORA: Record<string, RegraLeitura> = {
   periodos: { todas: true }, disciplinas: { todas: true },
@@ -92,6 +93,14 @@ export const LEITURA_MONITORA: Record<string, RegraLeitura> = {
   frequencias: { operacao: 'CHAMADA', porTurma: 'matricula_id', ocultar: ['justificativa', 'observacao'] },
   entregas: { operacao: 'ENTREGAS', porTurma: 'matricula_id', ocultar: ['observacao'] },
   monitoramento_documentos: { operacao: 'DOCUMENTOS_VER', porTurma: 'turma_id', ocultar: ['observacao', 'observacao_manual'] },
+  // RSS: a monitora vê só o STATUS ADMINISTRATIVO das entregas (unidade, turma, semana, data, status). Lista branca: nenhuma coluna
+  // com conteúdo clínico, nome de autor ou observação sai, mesmo que a planilha ganhe colunas novas.
+  registros_semanais: { operacao: 'ENTREGAS', porTurma: 'turma_id', somente: ['registro_id', 'matricula_id', 'grupo_id', 'turma_id', 'escopo', 'data_entrega', 'semana_rss', 'status', 'status_revisao'] },
+  status_rss_unidades: { operacao: 'ENTREGAS', porTurma: 'turma_id', somente: ['turma_id', 'unidade_id', 'unidade_tipo', 'rss_esperados_ate_hoje', 'rss_recebidos_validos', 'saldo_rss', 'status_rss'] },
+  calendario_rss: { operacao: 'ENTREGAS', porTurma: 'turma_id', somente: ['rss_previsto_id', 'turma_id', 'sequencia', 'semana_inicio', 'semana_fim', 'status_calendario'] },
+  regras_rss: { operacao: 'ENTREGAS', porTurma: 'turma_id', somente: ['regra_rss_id', 'turma_id', 'total_previsto', 'data_inicio', 'data_fim'] },
+  situacao_atual_turmas: { operacao: 'ENTREGAS', porTurma: 'turma_id', somente: ['turma_id', 'turma_nome', 'rss_esperados_ate_hoje', 'rss_total_previsto', 'unidades_em_dia', 'unidades_atrasadas'] },
+  rss_ajustes: { operacao: 'ENTREGAS', porTurma: 'turma_id', ocultar: ['observacao', 'criado_por'] },
   // A monitora vê a rubrica (critérios e descritores) para indicar adequação, nunca notas, rascunhos ou evidências da professora.
   rubricas_avaliacao: { operacao: 'CONTRIBUICAO_AVALIATIVA', porTurma: 'turma_id', ocultar: ['motivo_alteracao', 'criado_por', 'aprovado_por'] },
   evidencias_avaliacao: { operacao: 'CONTRIBUICAO_AVALIATIVA', porTurma: 'turma_id',
@@ -123,7 +132,8 @@ export function filtrarLeitura(tabela: string, valores: unknown[][], p: Perfil, 
   }
   if (regra.linha) linhas = linhas.filter(l => regra.linha!(Object.fromEntries(cab.map((c, i) => [c, String(l[i] ?? '')])), p));
   const ocultas = new Set((regra.ocultar ?? []).map(o => cab.indexOf(o)).filter(i => i >= 0));
-  const manter = (_: unknown, i: number) => !ocultas.has(i);
+  const permitidas = regra.somente ? new Set(regra.somente) : null;
+  const manter = (_: unknown, i: number) => !ocultas.has(i) && (!permitidas || permitidas.has(cab[i]));
   return [cab.filter(manter), ...linhas.map(l => cab.map((_, i) => l[i] ?? '').filter(manter))];
 }
 

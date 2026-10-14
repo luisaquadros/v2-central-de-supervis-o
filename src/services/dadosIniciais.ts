@@ -80,6 +80,7 @@ export interface DadosIniciais {
   rubricasAvaliacao?: Record<string, unknown>[];
   rascunhosAvaliacao?: Record<string, unknown>[];
   evidenciasAvaliacao?: Record<string, unknown>[];
+  rssAjustes?: Record<string, unknown>[];
   avaliacoesCompletas?: AvaliacaoCompleta[];
   sincronizacao?: Sincronizacao[];
   // Documentação e Contrato da Base Oficial

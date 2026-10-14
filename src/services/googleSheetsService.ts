@@ -63,6 +63,7 @@ export const TABELAS_NORMALIZADAS = [
   'rubricas_avaliacao',
   'avaliacao_rascunhos',
   'evidencias_avaliacao',
+  'rss_ajustes',
   'sincronizacao',
   // Documentação e Contrato da Base Oficial
   'dicionario_dados',
@@ -540,6 +541,7 @@ export function montarResultadoLeitura(tableDataMap: Record<string, any[]>, miss
     rubricasAvaliacao: tableDataMap['rubricas_avaliacao'] || [],
     rascunhosAvaliacao: tableDataMap['avaliacao_rascunhos'] || [],
     evidenciasAvaliacao: tableDataMap['evidencias_avaliacao'] || [],
+    rssAjustes: tableDataMap['rss_ajustes'] || [],
     sincronizacao: tableDataMap['sincronizacao'] || [],
     dicionarioDados: tableDataMap['dicionario_dados'] || [],
     contratoApp: tableDataMap['contrato_app'] || [],

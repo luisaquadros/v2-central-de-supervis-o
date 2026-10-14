@@ -420,6 +420,8 @@ export interface SituacaoRssEstudante {
   estaAtrasado: boolean;
   registrosEstudante: RegistroSemanal[];
   textoExibicao: string; // Ex: "3 de 5 esperados até hoje (12 no semestre)"
+  /** Controle administrativo simplificado: ENTREGUE / NÃO ENTREGUE por semana (ver services/rssEntregas.ts) */
+  entregas?: import('../services/rssEntregas').ResumoEntregasRss;
 }
 
 // Helpers / View models

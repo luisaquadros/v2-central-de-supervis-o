@@ -13,7 +13,7 @@ export const PRIMARY_KEYS: Record<string, string> = {
   avaliacoes_completas: 'avaliacao_id',
   // Estrutura aditiva da avaliação (ver estruturaAvaliacao.ts)
   config_avaliacao: 'config_id', rubricas_avaliacao: 'rubrica_chave',
-  avaliacao_rascunhos: 'rascunho_id', evidencias_avaliacao: 'evidencia_id',
+  avaliacao_rascunhos: 'rascunho_id', evidencias_avaliacao: 'evidencia_id', rss_ajustes: 'ajuste_id',
 };
 export function recordIdentity(table: string, row: Record<string, any>): string {
   if (table === 'frequencias' && row.matricula_id && row.data_aula)

@@ -98,12 +98,12 @@ const est = await get(idAdmin, '/api/documentos/estado'); resultado['estado'] = 
   p = await post(idAdmin, { confirmo: 'CRIAR_ESTRUTURA_AVALIACAO', backup_checksum: 'xyz' }); assert.equal(p.status, 400, 'checksum de backup obrigatório');
   assert.equal(estado().config_avaliacao, undefined, 'nada criado sem confirmação');
   p = await post(idAdmin, { confirmo: 'CRIAR_ESTRUTURA_AVALIACAO', backup_checksum: 'a'.repeat(64) });
-  assert.equal(p.status, 200, JSON.stringify(p.corpo)); assert.equal(p.corpo.criadas.length, 4);
-  for (const n of ['config_avaliacao', 'rubricas_avaliacao', 'avaliacao_rascunhos', 'evidencias_avaliacao']) assert(estado()[n][0].length > 8 && estado()[n].length === 1, n + ' criada só com cabeçalho');
+  assert.equal(p.status, 200, JSON.stringify(p.corpo)); assert.equal(p.corpo.criadas.length, 5);
+  for (const n of ['config_avaliacao', 'rubricas_avaliacao', 'avaliacao_rascunhos', 'evidencias_avaliacao', 'rss_ajustes']) assert(estado()[n][0].length > 8 && estado()[n].length === 1, n + ' criada só com cabeçalho');
   assert.equal(JSON.stringify({ orientacoes: estado().orientacoes, frequencias: estado().frequencias }), existentesAntes, 'abas existentes intactas');
-  p = await post(idAdmin, { confirmo: 'CRIAR_ESTRUTURA_AVALIACAO', backup_checksum: 'a'.repeat(64) }); assert.equal(p.corpo.criadas.length, 0); assert.equal(p.corpo.existentes.length, 4);
+  p = await post(idAdmin, { confirmo: 'CRIAR_ESTRUTURA_AVALIACAO', backup_checksum: 'a'.repeat(64) }); assert.equal(p.corpo.criadas.length, 0); assert.equal(p.corpo.existentes.length, 5);
   const d1 = await get(idAdmin, '/api/estrutura/avaliacao'); assert(d1.corpo.abas.every((a: any) => a.situacao === 'ok'));
-  resultado['estrutura da avaliação'] = { antes: 'ausente', criadas: 4, segunda_execucao: 'idempotente', abas_existentes: 'intactas' };
+  resultado['estrutura da avaliação'] = { antes: 'ausente', criadas: 5, segunda_execucao: 'idempotente', abas_existentes: 'intactas' };
 }
 
 const ac = await get(idAdmin, '/api/acesso'); resultado['/api/acesso (administradora)'] = `${ac.status} ${ac.corpo.papel}`;

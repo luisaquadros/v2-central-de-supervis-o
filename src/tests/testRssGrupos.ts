@@ -23,17 +23,19 @@ const docs = [
 const status = {turma_id:'t-grupo',unidade_id:'g-1',unidade_tipo:'GRUPO',rss_esperados_ate_hoje:2,rss_recebidos_validos:1,saldo_rss:-1,status_rss:'ATRASADO'};
 
 assert.equal(obterSemanaRssValidada(docs[0]),5);
-assert.equal(obterSemanaRssValidada(docs[2]),null,'registro aguardando revisão não pode virar entrega válida');
+assert.equal(obterSemanaRssValidada(docs[2]),6,'sem etapa de validação: registro RECEBIDO com semana é entrega');
 assert.equal(obterSemanaRssValidada(docs[3]),null,'número do encontro clínico não é a semana do RSS');
 
 for(const m of [matA,matB,matC]){
   const sit=obterSituacaoRssEstudante(m.matricula_id,'t-grupo',docs as any,status as any,undefined,undefined,undefined,'g-1');
-  assert.equal(sit.registrosRealizados,1,'todos integrantes herdam apenas uma semana validada');
+  assert.equal(sit.registrosRealizados,3,'semanas 5 e 6 + uma entrega sem semana identificada (contada no total)');
+  assert.deepEqual(sit.entregas!.semanasEntregues,[5,6]);
   assert.equal(sit.registrosEstudante.length,4,'todos integrantes veem os RSS do grupo');
-  assert.equal(sit.saldoRss,-1,'pendência é coletiva do grupo, não do autor');
+  assert.equal(sit.saldoRss,1,'saldo é coletivo do grupo, não do autor');
 }
 function pendencias(esperados:number, revisao = false){
-  const dados = revisao ? docs : docs.filter(r => r.registro_id !== 'g-week-6-review');
+  // revisao=true: todos os registros do grupo; senão só a semana 5 (semana 6 e registro sem semana ausentes)
+  const dados = revisao ? docs : docs.filter(r => r.registro_id.startsWith('g-week-5'));
   const cal = [
     {turma_id:'t-grupo', sequencia:5, semana_inicio:'2026-09-28', semana_fim:'2026-10-04'},
     {turma_id:'t-grupo', sequencia:6, semana_inicio:'2026-10-05', semana_fim:'2026-10-11'},
@@ -50,7 +52,7 @@ assert.equal(missing[0].id,'pend-rss-grupo-g-1');
 assert(missing[0].titulo.includes('Grupo teste'));
 assert(!missing[0].titulo.includes('Aluna'));
 assert.equal(pendencias(1).length,0,'grupo em dia não pode gerar qualquer pendência para os integrantes');
-assert.equal(pendencias(2,true).length,0,'semana em revisão não é falta confirmada nem alerta punitivo');
+assert.equal(pendencias(2,true).length,0,'com as entregas do grupo (inclusive a que antes ficava "em revisão") não há pendência');
 
 assert.equal(normalizarDataAcademica('12/10/2026'),'2026-10-12');
 assert.equal(normalizarDataAcademica('46307,64637'),'2026-10-12');

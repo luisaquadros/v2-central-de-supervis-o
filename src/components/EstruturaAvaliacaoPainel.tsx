@@ -5,7 +5,7 @@ import type { DiagnosticoAba } from '../services/estruturaAvaliacao';
 
 const ROTULO: Record<string, string> = {
   config_avaliacao: 'Configuração por turma e período', rubricas_avaliacao: 'Rubricas (versões)',
-  avaliacao_rascunhos: 'Rascunhos de avaliação', evidencias_avaliacao: 'Evidências',
+  avaliacao_rascunhos: 'Rascunhos de avaliação', evidencias_avaliacao: 'Evidências', rss_ajustes: 'Correções e observações de RSS',
 };
 const SITUACAO: Record<DiagnosticoAba['situacao'], string> = { ausente: 'Ainda não criada', ok: 'Pronta', colunas_faltando: 'Cabeçalho divergente (nada será alterado)' };
 
@@ -50,8 +50,8 @@ export const EstruturaAvaliacaoPainel: React.FC = () => {
 
   return (
     <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs space-y-3" data-testid="estrutura-avaliacao">
-      <h3 className="text-sm font-bold text-slate-900">Estrutura da avaliação (rubricas, evidências e rascunhos)</h3>
-      <p className="text-slate-600">Quatro abas novas, aditivas e versionadas. As abas atuais de critérios, notas e devolutivas <b>não são alteradas</b>. Faça primeiro em uma cópia da planilha.</p>
+      <h3 className="text-sm font-bold text-slate-900">Estrutura da avaliação e correções de RSS</h3>
+      <p className="text-slate-600">Cinco abas novas, aditivas e versionadas (rubricas, evidências, rascunhos, configuração e correções de RSS). As abas atuais de critérios, notas, RSS e devolutivas <b>não são alteradas</b>. Faça primeiro em uma cópia da planilha.</p>
       <button onClick={verificar} disabled={ocupado} className="min-h-[44px]! px-4 rounded-lg border border-slate-300 font-semibold">Verificar situação</button>
       {abas && (
         <ul className="divide-y divide-slate-100 rounded-lg border border-slate-200">

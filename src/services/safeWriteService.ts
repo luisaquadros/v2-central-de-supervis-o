@@ -41,6 +41,7 @@ export const TABELAS_AUTORIZADAS_ESCRITA = [
   'rubricas_avaliacao',
   'avaliacao_rascunhos',
   'evidencias_avaliacao',
+  'rss_ajustes',
 ] as const;
 
 export type TabelaAutorizada = typeof TABELAS_AUTORIZADAS_ESCRITA[number];

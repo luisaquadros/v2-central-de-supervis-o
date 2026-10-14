@@ -1,4 +1,5 @@
-import { ABAS_AVALIACAO, type NomeAbaAvaliacao } from '../services/estruturaAvaliacao';
+import { aplicarAjustesRss, observacoesPorSemana } from '../services/rssEntregas';
+import { ABAS_AVALIACAO, linhaParaAjuste, type NomeAbaAvaliacao } from '../services/estruturaAvaliacao';
 import { chaveItemOperacional, prepararRegistroOperacional, combinarOperacionais, contarLegadosLocais, type TipoOperacional } from '../services/operacionaisSheetsService';
 import { resumirDocumentacaoOficial, documentosPendentesOficiais } from '../services/documentacaoAcademicaService';
 import { interpretarStatusEntrega } from '../services/normalizacaoAcademica';
@@ -6,7 +7,7 @@ import { filtrarPendenciasResolvidas } from '../services/pendenciaResolutionServ
 import { selecionarRssDoEstudante } from '../services/rssVinculos';
 import { listarAlunosChamada } from '../services/aulaParticipants';
 import { useDurableLocalState } from '../hooks/useDurableLocalState';
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import {
   Periodo,
   Disciplina,
@@ -328,6 +329,8 @@ interface SupervisaoContextType {
   rubricasAvaliacao: Record<string, unknown>[];
   rascunhosAvaliacao: Record<string, unknown>[];
   evidenciasAvaliacao: Record<string, unknown>[];
+  /** Correções de associação de RSS e observações pontuais (rss_ajustes) */
+  rssAjustes: Record<string, unknown>[];
   /** Insere ou atualiza (por chave) uma linha das abas aditivas da avaliação, com versão, fila e log. */
   salvarLinhaAvaliacao: (tabela: NomeAbaAvaliacao, linha: Record<string, unknown>) => Promise<void>;
   adicionarPreparacaoAula: (dados: Pick<PreparacaoAula, 'turma_id' | 'data_aula' | 'tipo' | 'texto'>) => Promise<void>;
@@ -588,6 +591,7 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const [rubricasAvaliacao, setRubricasAvaliacao] = useState<Record<string, unknown>[]>([]);
   const [rascunhosAvaliacao, setRascunhosAvaliacao] = useState<Record<string, unknown>[]>([]);
   const [evidenciasAvaliacao, setEvidenciasAvaliacao] = useState<Record<string, unknown>[]>([]);
+  const [rssAjustes, setRssAjustes] = useState<Record<string, unknown>[]>([]);
   const [encontrosTurma, setEncontrosTurma] = useState<EncontroTurma[]>(() => {
     try {
       if (typeof window !== 'undefined') {
@@ -662,6 +666,7 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     if (Array.isArray(data.rubricasAvaliacao)) setRubricasAvaliacao(data.rubricasAvaliacao);
     if (Array.isArray(data.rascunhosAvaliacao)) setRascunhosAvaliacao(data.rascunhosAvaliacao);
     if (Array.isArray(data.evidenciasAvaliacao)) setEvidenciasAvaliacao(data.evidenciasAvaliacao);
+    if (Array.isArray(data.rssAjustes)) setRssAjustes(data.rssAjustes);
     if (Array.isArray(data.monitoramentoDocumentos)) setMonitoramentoDocumentos(data.monitoramentoDocumentos);
     if (Array.isArray(data.avaliacoesCompletas)) setAvaliacoesCompletas(data.avaliacoesCompletas);
     if (Array.isArray(data.sincronizacao)) setSincronizacao(data.sincronizacao);
@@ -978,13 +983,14 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     if (!id) throw new Error('Registro sem identificador.');
     const atuais: Record<string, unknown>[] = tabela === 'config_avaliacao' ? configAvaliacao
       : tabela === 'rubricas_avaliacao' ? rubricasAvaliacao
-      : tabela === 'avaliacao_rascunhos' ? rascunhosAvaliacao : evidenciasAvaliacao;
+      : tabela === 'avaliacao_rascunhos' ? rascunhosAvaliacao : tabela === 'rss_ajustes' ? rssAjustes : evidenciasAvaliacao;
     const existe = atuais.some(r => String(r[chave] ?? '').trim() === id);
     const lista = existe ? atuais.map(r => String(r[chave] ?? '').trim() === id ? linha : r) : [...atuais, linha];
     await persistirMudancaWeb(tabela, existe ? 'UPDATE' : 'INSERT', linha, lista);
     if (tabela === 'config_avaliacao') setConfigAvaliacao(lista);
     else if (tabela === 'rubricas_avaliacao') setRubricasAvaliacao(lista);
     else if (tabela === 'avaliacao_rascunhos') setRascunhosAvaliacao(lista);
+    else if (tabela === 'rss_ajustes') setRssAjustes(lista);
     else setEvidenciasAvaliacao(lista);
   };
 
@@ -2019,6 +2025,13 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   };
 
 
+  // RSS: correções auditáveis de associação são aplicadas sobre cópias; `registros_semanais` (fonte) nunca é alterada.
+  const ajustesRss = useMemo(() => rssAjustes.map(linhaParaAjuste), [rssAjustes]);
+  const registrosCorrigidos = useMemo(() => aplicarAjustesRss(registrosSemanais as never[], ajustesRss) as unknown as RegistroSemanal[], [registrosSemanais, ajustesRss]);
+  // Falha de leitura/sincronização da fonte de RSS nunca vira "NÃO ENTREGUE".
+  const fonteRssDisponivel = !(syncStatusState.status === 'ERRO' ||
+    syncStatusState.erros.some(e => /registros_semanais|calendario_rss|status_rss_unidades/.test(e)));
+
   const getSituacaoRssEstudante = useCallback((matriculaId: string): SituacaoRssEstudante | null => {
     const matricula = matriculas.find(m => m.matricula_id === matriculaId);
     if (!matricula) return null;
@@ -2026,7 +2039,7 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     if (!turma) return null;
 
     const vinculo = selecionarRssDoEstudante({
-      matriculaId, turmaId: turma.turma_id, registros: registrosSemanais,
+      matriculaId, turmaId: turma.turma_id, registros: registrosCorrigidos,
       matriculas, alunos, grupos: gruposPratica, integrantes: grupoIntegrantes,
     });
     const grupoId = vinculo.grupoId;
@@ -2047,9 +2060,13 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       regraTurma,
       situacaoTurma,
       calTurma,
-      grupoId
+      grupoId,
+      {
+        fonteDisponivel: fonteRssDisponivel,
+        observacoes: observacoesPorSemana(ajustesRss, turma.turma_id, grupoId ? 'GRUPO' : 'MATRICULA', grupoId ?? matriculaId),
+      }
     );
-  }, [matriculas, alunos, turmas, getStatusRssUnidade, regrasRss, situacaoAtualTurmas, calendarioRss, registrosSemanais, grupoIntegrantes, gruposPratica]);
+  }, [matriculas, alunos, turmas, getStatusRssUnidade, regrasRss, situacaoAtualTurmas, calendarioRss, registrosCorrigidos, grupoIntegrantes, gruposPratica, fonteRssDisponivel, ajustesRss]);
 
   const getResumoAlunoSupervisao = (matriculaId: string): AlunoResumoSupervisao | null => {
     const matricula = matriculas.find(m => m.matricula_id === matriculaId);
@@ -2775,6 +2792,7 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         rubricas_avaliacao: rubricasAvaliacao,
         avaliacao_rascunhos: rascunhosAvaliacao,
         evidencias_avaliacao: evidenciasAvaliacao,
+        rss_ajustes: rssAjustes,
         sincronizacao,
         dicionario_dados: dicionarioDados,
         contrato_app: contratoApp,
@@ -2927,6 +2945,7 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         rubricasAvaliacao,
         rascunhosAvaliacao,
         evidenciasAvaliacao,
+        rssAjustes,
         salvarLinhaAvaliacao,
         adicionarPreparacaoAula,
         alterarPreparacaoAula,

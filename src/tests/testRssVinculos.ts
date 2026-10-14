@@ -41,7 +41,10 @@ assert.equal(obter('m4','tg',[...integrantes,{grupo_id:'g2',matricula_id:'m4',st
 assert.equal(obterSemanaRssValidada(registros[0]),1);
 assert.equal(obterSemanaRssValidada(registros[5]),null,'número clínico não é semana RSS');
 const sit=obterSituacaoRssEstudante('m5','tg',obter('m5','tg').registros,undefined,undefined,undefined,undefined,'g1');
-assert.equal(sit.registrosRealizados,1,'registro em revisão não se torna válido');
+// Sem etapa de validação: r6 (sem semana, só número do encontro) é uma entrega contada no total, mas NÃO vira semana.
+assert.equal(sit.registrosRealizados,2,'entrega sem semana identificada conta no total');
+assert.deepEqual(sit.entregas!.semanasEntregues,[4],'só a semana comprovada entra na lista de semanas');
+assert.deepEqual(sit.entregas!.semSemanaIdentificada,['r6']);
 const normalizados=normalizarLinhasDaAba('registros_semanais',[{semana_rss:'',encontro_numero:'8',limitacoes:'Falta de sala',objetivos:'Avaliar'}]);
 assert.equal(normalizados[0].semana,'');
 assert.equal(normalizados[0].observacao,'');

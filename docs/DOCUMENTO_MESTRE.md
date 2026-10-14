@@ -59,7 +59,8 @@ Google Sheets (planilha 1DwhmASMStNtT_L2YinG-jkP9vYVv5ETdc-azYqSSIc4) · Drive A
 | **Metadados de documentos do Drive** | `monitoramento_documentos` | **somente o Worker** (4 colunas) + cadastro manual das linhas | app | `titular_tipo` MATRICULA ou GRUPO + `titular_id` (IDs estáveis) |
 | Resultado da sincronização | `sincronizacao` (linhas `DRIVE_METADADOS`) + histórico no Durable Object | Worker | painel | |
 | Trilha de auditoria | `log_alteracoes` (criada na 1ª gravação) | Worker | administradora | identidade verificada; **sem texto livre** |
-| RSS | `registros_semanais` (fórmula, somente leitura) | formulário/planilha | app | original imutável ainda não preservado (E4) |
+| RSS (entregas) | `registros_semanais` (fórmula, somente leitura) | formulário/planilha | app | fonte da entrega; **nunca alterada pelo app** |
+| RSS: correção de associação e observação pontual | `rss_ajustes` (aditiva) | administradora (coordenador, com versão e log) | administradora; monitora sem observação/autoria | §4.6 |
 | Avaliações oficiais | `avaliacoes`, `avaliacoes_completas`, `criterios_avaliacao` | app (coordenador) | só administradora | **fonte oficial de critérios e notas** (§4.1) |
 | Rubricas, configuração, rascunhos, evidências | `config_avaliacao`, `rubricas_avaliacao`, `avaliacao_rascunhos`, `evidencias_avaliacao` | app (coordenador); monitora só `evidencias_avaliacao` (preliminar, própria) | administradora; monitora: rubrica + as próprias contribuições | aditivas e versionadas (§4.4); abas ainda **não criadas** na planilha |
 | Ainda no caminho direto (4) | `configuracoes`, `marcos_academicos`, `criterios_avaliacao`, `registros_semanais` | navegador da administradora | todos | `registros_semanais` e `marcos_academicos` parecem derivados por fórmula/origem (escrever pode sobrescrever fórmulas); `criterios_avaliacao` aguarda D3; `configuracoes` mistura itens operacionais. Migrar só após conferir |
@@ -121,6 +122,18 @@ Colunas escritas pela sincronização: `data_modificacao_drive`, `consultado_em`
 
 Rascunho **determinístico**, sem IA, nunca enviado sozinho: notas oficiais lançadas, pontos fortes/em desenvolvimento/aprimoramento a partir do nível+descritor da rubrica, evidências (monitora só se aproveitada), atraso de registros semanais (fato mensurável, impacto "conforme os critérios da disciplina"), documentos pendentes (A conferir ≠ pendente), participação ("não constam registros" ≠ conduta). Cada item tem fonte; falta de dado vira "informação insuficiente" + lista de complementação. A revisão/aprovação/envio usa o `FeedbackModal` existente.
 
+### 4.6 Controle de RSS (simplificado e automático)
+
+Decisão: **sem etapa de validação individual**. `rssEntregas.ts` + `EntregasRssPainel` (ficha, aba Registros; resumo compacto para a monitora).
+- **Dois status por semana:** ENTREGUE / NÃO ENTREGUE (semana ainda não exigível não tem status). Conta como entrega o registro `RECEBIDO`/`ENTREGUE`; `status_revisao` **não bloqueia** (o antigo "Em revisão" deixou de existir).
+- **Associação automática** (fonte `registros_semanais`): unidade (matrícula; grupo na Clínica Ampliada) + turma + `semana_rss`. Semana vazia: usa a **data de entrega** dentro de uma semana do cronograma da turma (sem ocupar semana já entregue); **nunca** o número do encontro.
+- **Esperado:** semanas encerradas no cronograma (`calendario_rss`) da turma; total previsto = regra/situação da turma (padrão 12).
+- **Mostra:** realizadas, previstas no semestre, semanas entregues, semanas pendentes e atraso **discreto** (só com data confiável posterior ao fim da semana; informativo, não altera status nem nota).
+- **Dado ausente ≠ não entregue:** sincronização incompleta → nenhuma semana é marcada como não entregue. Entrega sem semana identificada conta no total, mas nenhuma semana específica é acusada até ser associada (a contagem de entregas faltantes continua exata).
+- **Correção auditável:** `rss_ajustes` (aditiva, coordenador com versão e log): associar um registro a outra semana/unidade (guarda semana/unidade originais), desfazer (status REVOGADO; nada é apagado) e **observações pontuais** por semana. A fonte nunca é alterada.
+- **Sem desconto:** nenhuma nota, rubrica, pontuação por RSS nem desconto automático. RSS não é critério da avaliação. RSS atrasado continua fora das pendências e notificações.
+- **Verificação com a planilha anonimizada (86 matrículas):** 0 entregas perdidas em relação à contagem anterior; 48 matrículas passam a contar entregas antes bloqueadas por "revisão" ou sem semana.
+
 ## 5. Permissões e segurança
 
 **Perfis** (decididos no servidor; configuração no Worker, não na planilha, para que quem edita a planilha não conceda acesso a si mesmo):
@@ -137,12 +150,12 @@ Entradas inválidas (sem turma, sem operação, `"*"`, e-mail ruim) são **ignor
 | Operação delegável | Grava | Lê (filtrado à turma) |
 |---|---|---|
 | `CHAMADA` | `frequencias`, `encontros_turma` | `encontros_turma`, `frequencias` (sem `justificativa`/`observacao`) |
-| `ENTREGAS` | `entregas` | `entregas` |
+| `ENTREGAS` | `entregas` | `entregas` e o **status administrativo de RSS** por lista branca de colunas: `registros_semanais` (registro, matrícula/grupo, turma, escopo, data, semana, status), `status_rss_unidades`, `calendario_rss`, `regras_rss`, `situacao_atual_turmas` (só totais) e `rss_ajustes` (sem observação/autoria). **Nunca** objetivos, técnicas, manejo, dúvidas, limitações, autora nem qualquer coluna nova |
 | `DOCUMENTOS_VER` | — | `monitoramento_documentos` (sem observações manuais) e estado da sincronização |
 | `CONTRIBUICAO_AVALIATIVA` | `evidencias_avaliacao`, **somente** contribuição **preliminar** e **própria** (origem `CONTRIBUICAO_MONITORA`, autoria = a conta, até 600 caracteres; sem alterar autoria/turma/origem; sem exclusão; sem editar o que a professora já aproveitou) | `rubricas_avaliacao` (sem motivos/autoria) e as **próprias** contribuições. **Nunca** notas, rascunhos, configuração nem evidências da professora |
 | (sempre) | — | períodos, disciplinas, turmas, horários, matrículas, alunos (sem e-mail), grupos |
 
-**Nunca para monitora:** avaliações, ocorrências, devolutivas/feedbacks, registros de supervisão, orientações, pontos de acompanhamento, RSS, critérios, configurações, log, backup, cadastro; exclusões; sincronização manual. Turma indeterminada = negado; o servidor confere a turma do registro novo **e** a do registro existente.
+**Nunca para monitora:** avaliações, ocorrências, devolutivas/feedbacks, registros de supervisão, orientações, pontos de acompanhamento, **conteúdo de RSS**, critérios, configurações, log, backup, cadastro; exclusões; sincronização manual. Turma indeterminada = negado; o servidor confere a turma do registro novo **e** a do registro existente.
 
 **Medidas**
 - Identidade: token de ID do Firebase verificado no Worker (assinatura, emissor, público, validade, e-mail verificado; rotação de chaves tratada). O e-mail enviado no corpo é ignorado.

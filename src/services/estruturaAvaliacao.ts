@@ -11,6 +11,7 @@
  */
 import type { ConfigCalculo, Subcriterio, TipoCriterio } from './avaliacaoEngine';
 import type { ConfiguracaoCriterio } from './avaliacaoAdaptador';
+import type { AjusteRss } from './rssEntregas';
 import { subcriteriosParaEngine, type DefinicaoSubcriterio, type RascunhoAvaliacao, type RubricaVersao, type StatusRubrica, type TipoEstagio, type SelecaoNivel, type EventoHistorico } from './rubricasAvaliacao';
 
 export const ABAS_AVALIACAO = {
@@ -25,6 +26,11 @@ export const ABAS_AVALIACAO = {
   avaliacao_rascunhos: {
     pk: 'rascunho_id',
     colunas: ['rascunho_id', 'matricula_id', 'grupo_id', 'turma_id', 'escopo', 'criterio_id', 'rubrica_id', 'rubrica_versao', 'pesos_json', 'selecoes_json', 'status', 'historico_json', 'atualizado_em', 'atualizado_por'],
+  },
+  /** Correções auditáveis de associação de RSS (semana/unidade) e observações pontuais. A fonte `registros_semanais` nunca é alterada. */
+  rss_ajustes: {
+    pk: 'ajuste_id',
+    colunas: ['ajuste_id', 'tipo', 'registro_id', 'turma_id', 'unidade_tipo', 'unidade_id', 'semana', 'semana_original', 'unidade_original_tipo', 'unidade_original_id', 'observacao', 'status', 'criado_em', 'criado_por', 'atualizado_em'],
   },
   evidencias_avaliacao: {
     pk: 'evidencia_id',
@@ -235,4 +241,27 @@ export function diagnosticarEstrutura(cabecalhosReais: Partial<Record<string, st
     const faltando = esperado.filter(c => !limpo.includes(c));
     return { aba, situacao: faltando.length ? 'colunas_faltando' as const : 'ok' as const, faltando, extras: limpo.filter(h => h && !esperado.includes(h)) };
   });
+}
+
+// ---------------------------------------------------------------------------------------------
+// RSS: correções de associação e observações (aba `rss_ajustes`)
+// ---------------------------------------------------------------------------------------------
+export function ajusteParaLinha(a: AjusteRss): Record<string, unknown> {
+  return {
+    ajuste_id: a.ajuste_id, tipo: a.tipo, registro_id: a.registro_id ?? '', turma_id: a.turma_id, unidade_tipo: a.unidade_tipo ?? '', unidade_id: a.unidade_id ?? '',
+    semana: a.semana ?? '', semana_original: a.semana_original ?? '', unidade_original_tipo: a.unidade_original_tipo ?? '', unidade_original_id: a.unidade_original_id ?? '',
+    observacao: a.observacao ?? '', status: a.status, criado_em: a.criado_em, criado_por: a.criado_por, atualizado_em: a.atualizado_em ?? a.criado_em,
+  };
+}
+const semanaOuNulo = (v: unknown): number | null => { const n = Number(texto(v)); return Number.isInteger(n) && n >= 1 ? n : null; };
+const tipoUnidade = (v: unknown): 'MATRICULA' | 'GRUPO' | undefined => { const t = texto(v).toUpperCase(); return t === 'MATRICULA' || t === 'GRUPO' ? t : undefined; };
+export function linhaParaAjuste(l: Record<string, unknown>): AjusteRss {
+  return {
+    ajuste_id: texto(l.ajuste_id), tipo: texto(l.tipo).toUpperCase() === 'OBSERVACAO' ? 'OBSERVACAO' : 'ASSOCIAR',
+    registro_id: texto(l.registro_id) || undefined, turma_id: texto(l.turma_id), unidade_tipo: tipoUnidade(l.unidade_tipo), unidade_id: texto(l.unidade_id) || undefined,
+    semana: semanaOuNulo(l.semana), semana_original: semanaOuNulo(l.semana_original), unidade_original_tipo: tipoUnidade(l.unidade_original_tipo) ?? null,
+    unidade_original_id: texto(l.unidade_original_id) || null, observacao: texto(l.observacao) || undefined,
+    status: texto(l.status).toUpperCase() === 'REVOGADO' ? 'REVOGADO' : 'ATIVO',
+    criado_em: texto(l.criado_em), criado_por: texto(l.criado_por), atualizado_em: texto(l.atualizado_em) || undefined,
+  };
 }

@@ -317,7 +317,7 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
     const grupo = vinculo ? gruposPratica.find(g => g.grupo_id === vinculo.grupo_id) : undefined;
     const chave = grupo ? grupo.grupo_id : item.matricula.matricula_id;
     const lacunas = rssPorAluno.get(item.matricula.matricula_id);
-    if (lacunas && (lacunas.faltantes.length || lacunas.emRevisao.length) && !pendenciasRssTurma.has(chave)) {
+    if (lacunas && lacunas.faltantes.length && !pendenciasRssTurma.has(chave)) {
       pendenciasRssTurma.set(chave, {
         nome: grupo ? (grupo.nome_grupo || 'Grupo de prática') : item.aluno.nome,
         faltantes: lacunas.faltantes, revisao: lacunas.emRevisao,
@@ -747,13 +747,12 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
           {pendenciasRssTurma.size > 0 && (
             <details className="px-3 py-2 border-b border-slate-200 bg-amber-50/90 text-xs">
               <summary className="cursor-pointer text-amber-800 font-semibold">
-                RSS a conferir nesta turma ({pendenciasRssTurma.size} {pendenciasRssTurma.size === 1 ? 'unidade' : 'unidades'})
+                RSS não entregues nesta turma ({pendenciasRssTurma.size} {pendenciasRssTurma.size === 1 ? 'unidade' : 'unidades'})
               </summary>
               <div className="mt-2 max-h-36 overflow-y-auto space-y-1.5">
                 {[...pendenciasRssTurma.entries()].map(([id,info]) => <div key={id} className="text-slate-800">
                   <span className="font-semibold">{info.nome}:</span>
-                  {info.faltantes.length > 0 && ` sem registro validado nas semanas ${info.faltantes.join(', ')}.`}
-                  {info.revisao.length > 0 && ` Em revisão: ${info.revisao.join(', ')}.`}
+                  {info.faltantes.length > 0 && ` RSS não entregue nas semanas ${info.faltantes.join(', ')}.`}
                 </div>)}
               </div>
             </details>
@@ -832,10 +831,9 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
                           </span>
                         )}
                       </div>
-                      {rss && (rss.faltantes.length > 0 || rss.emRevisao.length > 0) && (
+                      {rss && rss.faltantes.length > 0 && (
                         <div className="text-[10px] text-amber-700 font-semibold mt-0.5">
-                          {rss.faltantes.length > 0 && `RSS sem validação: ${rss.faltantes.join(', ')}`}
-                          {rss.emRevisao.length > 0 && ` · Em revisão: ${rss.emRevisao.join(', ')}`}
+                          {rss.faltantes.length > 0 && `RSS não entregue (semanas): ${rss.faltantes.join(', ')}`}
                         </div>
                       )}
                       <div className="text-[10px] text-slate-400 font-mono truncate">

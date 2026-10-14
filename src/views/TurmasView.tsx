@@ -699,13 +699,11 @@ export const TurmaDetalheView: React.FC<{
     dia: classificacoesRss.filter(x => x.classificacao.categoria === 'EM_DIA').length,
     recente: classificacoesRss.filter(x => x.classificacao.categoria === 'RECENTE_PENDENTE').length,
     historico: classificacoesRss.filter(x => x.classificacao.categoria === 'HISTORICO_INCOMPLETO').length,
-    revisao: classificacoesRss.filter(x => x.classificacao.categoria === 'EM_REVISAO').length,
   };
   const statusRotulo: Record<string,string> = {
     EM_DIA: 'Todas as semanas entregues',
     RECENTE_PENDENTE: 'Última semana pendente',
     HISTORICO_INCOMPLETO: 'Em dia agora · histórico incompleto',
-    EM_REVISAO: 'Última semana em revisão',
     AGUARDANDO_CALENDARIO: 'Aguardando calendário',
   };
 
@@ -1001,11 +999,10 @@ export const TurmaDetalheView: React.FC<{
               Semana corrente não gera atraso. Lacunas antigas permanecem aqui, sem criar novas notificações.
               {gruposDestaTurma.length > 0 && ' Na Clínica Ampliada, uma entrega vale para todos os integrantes do grupo.'}
             </p>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-3 text-xs">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-3 text-xs">
               <span className="bg-emerald-50 text-emerald-800 rounded-lg p-2">{resumoRss.dia} sem lacunas</span>
               <span className="bg-amber-50 text-amber-800 rounded-lg p-2">{resumoRss.recente} pendência recente</span>
               <span className="bg-slate-100 text-slate-700 rounded-lg p-2">{resumoRss.historico} histórico incompleto</span>
-              <span className="bg-indigo-50 text-indigo-800 rounded-lg p-2">{resumoRss.revisao} em revisão</span>
             </div>
           </div>
           <div className="bg-white rounded-xl border border-slate-200 divide-y divide-slate-100">
@@ -1024,7 +1021,7 @@ export const TurmaDetalheView: React.FC<{
                     {statusRotulo[c.categoria]}
                   </span>
                   <span className="text-slate-500">{item.situacao?.registrosRealizados ?? 0}/{item.situacao?.registrosEsperadosAteHoje ?? 0} validados</span>
-                  {c.faltamHistoricas > 0 && <span className="text-slate-500">{c.faltamHistoricas} semana(s) sem validação</span>}
+                  {c.faltamHistoricas > 0 && <span className="text-slate-500">{c.faltamHistoricas} semana(s) não entregue(s)</span>}
                   <button onClick={() => onOpenAluno(item.matricula.matricula_id)} className="text-indigo-700 underline">Ficha</button>
                 </div>
               </div>;

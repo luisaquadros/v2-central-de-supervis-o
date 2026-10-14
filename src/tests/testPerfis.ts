@@ -84,8 +84,10 @@ const ctx = (d = dados) => ({
   // sem coluna de vínculo não há como provar a turma: nada é liberado
   assert.deepEqual(filtrarLeitura('turmas', tab(['nome'], ['2B'], ['3B']), m2b, ctx()), [['nome']]);
   // Exceções AUDITADAS (testContribuicaoMonitora): definição da rubrica (sem notas) e as PRÓPRIAS contribuições preliminares da monitora.
-  const EXCECOES_AUDITADAS = new Set(['rubricas_avaliacao', 'evidencias_avaliacao']);
+  const EXCECOES_AUDITADAS = new Set(['rubricas_avaliacao', 'evidencias_avaliacao', 'registros_semanais', 'rss_ajustes']);
   for (const t of Object.keys(LEITURA_MONITORA)) assert(EXCECOES_AUDITADAS.has(t) || !/aval|ocorr|feedback|supervisao|semanais|orienta/.test(t), `${t} não pode estar na lista de leitura`);
+  // RSS: só por LISTA BRANCA de colunas administrativas (testRssMonitora)
+  assert(LEITURA_MONITORA.registros_semanais.somente && !LEITURA_MONITORA.registros_semanais.somente.some(c => /objetiv|tecnic|manejo|compreens|proximo|prioridade|duvida|limita|responsavel_nome|observ/.test(c)));
   assert.deepEqual(LEITURA_MONITORA.rubricas_avaliacao.operacao, 'CONTRIBUICAO_AVALIATIVA');
   assert.deepEqual(LEITURA_MONITORA.evidencias_avaliacao.operacao, 'CONTRIBUICAO_AVALIATIVA');
   const adm = { papel: 'PROFESSORA_ADMIN' as const, email: 'a@x.com', turmas: ['*'], operacoes: [] };

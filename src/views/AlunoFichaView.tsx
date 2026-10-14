@@ -1,3 +1,4 @@
+import EntregasRssPainel from '../components/EntregasRssPainel';
 import AvaliacaoAlunoPainel from '../components/avaliacao/AvaliacaoAlunoPainel';
 import ContribuicaoMonitora from '../components/avaliacao/ContribuicaoMonitora';
 import { resumirNotasMatricula, selecionarCriteriosAplicaveis } from '../services/avaliacaoResumo';
@@ -79,6 +80,7 @@ export const AlunoFichaView: React.FC<AlunoFichaViewProps> = ({
     addDocumento,
     updateFrequenciaStatus,
     saveAvaliacao,
+    currentUser,
     perfilServidor,
   } = useSupervisao();
 
@@ -352,6 +354,12 @@ export const AlunoFichaView: React.FC<AlunoFichaViewProps> = ({
       {/* 1. RESUMO */}
       {activeTab === 'resumo' && (
         <div className="space-y-4">
+          {ehMonitora && perfilServidor?.operacoes.includes('ENTREGAS') && (
+            <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs">
+              <EntregasRssPainel situacao={situacaoRss} turmaId={turma.turma_id} compacto
+                unidade={grupoId ? { tipo: 'GRUPO', id: grupoId, nome: grupo?.nome_grupo } : { tipo: 'MATRICULA', id: matriculaId }} />
+            </div>
+          )}
           {ehMonitora && perfilServidor?.operacoes.includes('CONTRIBUICAO_AVALIATIVA') && (
             <ContribuicaoMonitora matriculaId={matriculaId} turmaId={turma.turma_id} periodoId={matricula.periodo_id} email={perfilServidor.email} />
           )}
@@ -659,103 +667,17 @@ export const AlunoFichaView: React.FC<AlunoFichaViewProps> = ({
       {/* 4. REGISTROS SEMANAIS TAB (Visual 1 a 12) */}
       {activeTab === 'registros' && (
         <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs space-y-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h3 className="text-sm font-bold text-slate-900">Registros Semanais de Estágio (RSS)</h3>
-              {grupoId && (
-                <p className="text-xs font-semibold text-indigo-700">
-                  Entrega coletiva — {grupo?.nome_grupo || 'Grupo de prática'}. Envio de qualquer integrante vale para todos.
-                </p>
-              )}
-              {rssVinculo.modo === 'GRUPO_AMBIGUO' && (
-                <p className="text-xs font-semibold text-amber-700">
-                  Vínculo com grupo pendente de conferência. Não é possível atribuir falta individual de RSS.
-                </p>
-              )}
-              <p className="text-xs text-slate-500">
-                Acompanhamento das entregas semanais: {totalRegistrosEntregues} realizadas de {totalRegistrosEsperados} esperadas até hoje ({totalPrevistoNoPeriodo} no total do período).
-              </p>
-            </div>
-            <div className="text-xs font-bold font-mono text-slate-800 bg-slate-100 px-3 py-1.5 rounded-lg">
-              {totalRegistrosEntregues} de {totalRegistrosEsperados} esp. ({totalPrevistoNoPeriodo} previstos)
-            </div>
-          </div>
-
-          {situacaoRss && totalRegistrosEntregues > new Set(studentRegistros.map(obterSemanaRssValidada).filter((n): n is number => n !== null)).size && (
-            <div role="status" className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">
-              <strong>Diferença entre consolidado e formulários:</strong> a base indica {totalRegistrosEntregues} entrega(s) contabilizada(s), mas apenas {new Set(studentRegistros.map(obterSemanaRssValidada).filter((n): n is number => n !== null)).size} semana(s) têm RSS detalhado e validado nesta ficha. Os registros sem formulário precisam ser conferidos na origem; não atribua automaticamente falta ou conteúdo a uma semana.
-            </div>
+          <h3 className="text-sm font-bold text-slate-900">Registros Semanais de Estágio (RSS)</h3>
+          {rssVinculo.modo === 'GRUPO_AMBIGUO' && (
+            <p className="text-xs font-semibold text-amber-700">Vínculo com grupo pendente de conferência. Não é possível atribuir entrega individual de RSS.</p>
           )}
-          {studentRegistros.some(r => !String((r as any).semana_rss ?? r.semana ?? '').trim()) && (
-            <p className="text-xs text-amber-900">Existem RSS sem semana acadêmica definida. Eles permanecem disponíveis na leitura, mas não comprovam uma semana específica.</p>
-          )}
-
+          <EntregasRssPainel situacao={situacaoRss} turmaId={turma.turma_id}
+            unidade={grupoId ? { tipo: 'GRUPO', id: grupoId, nome: grupo?.nome_grupo } : { tipo: 'MATRICULA', id: matriculaId }}
+            email={perfilServidor?.email ?? currentUser?.email ?? ''} />
           <section className="rounded-xl border border-slate-200 bg-slate-50/60 p-3 sm:p-4 space-y-3">
             <h4 className="text-sm font-bold text-slate-900">Ler registros e observações</h4>
             <LeituraRss registros={studentRegistros} />
           </section>
-
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2.5">
-            {Array.from({ length: 12 }, (_, i) => i + 1).map(semana => {
-              const reg = studentRegistros.find(r => obterSemanaRssValidada(r) === semana);
-              const emRevisao = !reg && studentRegistros.some(r =>
-                Number((r as any).semana_rss ?? r.semana) === semana &&
-                String((r as any).status_revisao || '').toUpperCase() === 'PENDENTE_REVISAO'
-              );
-              const isEntregue = !!reg;
-              const existeDiferencaConsolidado = totalRegistrosEntregues > new Set(studentRegistros.map(obterSemanaRssValidada).filter((n): n is number => n !== null)).size;
-              const isFaltante = !isEntregue && !emRevisao && !existeDiferencaConsolidado && semana <= totalRegistrosEsperados && !isGrupoRss;
-
-              return (
-                <div
-                  key={semana}
-                  className={`p-3 rounded-xl border text-xs flex flex-col justify-between h-28 transition-colors ${
-                    isEntregue
-                      ? 'border-emerald-200 bg-emerald-50/40 text-emerald-950'
-                      : isFaltante
-                      ? 'border-red-200 bg-red-50/40 text-red-950'
-                      : 'border-slate-200 bg-slate-50 text-slate-700'
-                  }`}
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="font-bold">Semana {semana}</span>
-                    {isEntregue ? (
-                      <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                    ) : isFaltante ? (
-                      <AlertTriangle className="w-4 h-4 text-red-500" />
-                    ) : (
-                      <Clock className="w-4 h-4 text-slate-400" />
-                    )}
-                  </div>
-
-                  <div className="text-[11px] my-1">
-                    {isEntregue ? (
-                      <span className="text-emerald-700 font-semibold">Entregue</span>
-                    ) : emRevisao ? (
-                      <span className="text-amber-700 font-semibold">Em revisão</span>
-                    ) : isFaltante ? (
-                      <span className="text-red-700 font-semibold">Faltante</span>
-                    ) : (
-                      <span className="text-slate-400">
-                        {existeDiferencaConsolidado && !isEntregue ? 'Conferir consolidado' : isGrupoRss && semana <= totalRegistrosEsperados ? 'Pendente do grupo' : 'Ainda não exigível'}
-                      </span>
-                    )}
-                    {reg?.data_entrega && (
-                      <div className="text-[10px] text-slate-500 font-mono mt-0.5">
-                        {reg.data_entrega}
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="flex gap-1 border-t border-slate-200/60 pt-1.5">
-                    <span className="text-[10px] text-slate-600">
-                      {grupoId ? 'Registro coletivo consultado na base' : 'Somente leitura: use Orientações para registrar a devolutiva'}
-                    </span>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
         </div>
       )}
 
