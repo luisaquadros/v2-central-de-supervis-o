@@ -1,4 +1,5 @@
 import QuadroAvaliacaoPrazo from '../components/QuadroAvaliacaoPrazo';
+import { resumirNotasMatricula, selecionarCriteriosAplicaveis } from '../services/avaliacaoResumo';
 import { entregasDoEstudante } from '../services/documentacaoAcademicaService';
 import { selecionarRssDoEstudante } from '../services/rssVinculos';
 import { LeituraRss } from '../components/LeituraRss';
@@ -179,18 +180,14 @@ export const AlunoFichaView: React.FC<AlunoFichaViewProps> = ({
     .slice()
     .sort((a, b) => new Date(b.data_hora).getTime() - new Date(a.data_hora).getTime())[0];
 
-  // Criteria for discipline & calculated grade
-  const disciplinaCriterios = criterios.filter(
-    c => c.disciplina_id === turma.disciplina_id && c.ativo
-  );
-  const studentAvaliacoesValidas = studentAvaliacoes.filter(a => a.nota !== null && a.nota !== undefined && String(a.nota).trim() !== '');
-  const notaTotal = studentAvaliacoesValidas.reduce((acc, av) => {
-    const isDeCriterioAtivo = disciplinaCriterios.some(c => c.criterio_id === av.criterio_id);
-    if (!isDeCriterioAtivo) return acc;
-    const n = Number(String(av.nota).replace(',', '.'));
-    return acc + (isNaN(n) ? 0 : n);
-  }, 0);
-  const notaTotalNumero = typeof notaTotal === 'number' && !isNaN(notaTotal) ? notaTotal : 0;
+  // Resumo oficial compartilhado com a tela de Avaliação (mesmo filtro de critérios, nota inválida sinalizada, ausente = null)
+  const resumoNotas = resumirNotasMatricula({
+    criterios, avaliacoes: studentAvaliacoes, matriculaId: null,
+    turmaId: turma.turma_id, disciplinaId: turma.disciplina_id,
+  });
+  const disciplinaCriterios = selecionarCriteriosAplicaveis(criterios, { turmaId: turma.turma_id, disciplinaId: turma.disciplina_id });
+  const notaTotalNumero = resumoNotas.totalOficial;
+  const temNotasLancadas = resumoNotas.lancados > 0;
 
   // Build unified chronological history/timeline
   const timelineEvents: {
@@ -276,7 +273,7 @@ export const AlunoFichaView: React.FC<AlunoFichaViewProps> = ({
     { id: 'orientacoes', label: `Orientações (${studentOrientacoes.length})` },
     { id: 'registros', label: `Registros (${totalRegistrosEntregues} de ${totalRegistrosEsperados} esp.)` },
     { id: 'documentos', label: `Documentos (${entregasOficiais.length + studentDocumentos.length})` },
-    { id: 'avaliacao', label: `Avaliação (${studentAvaliacoesValidas.length > 0 ? notaTotalNumero.toFixed(1) : '—'})` },
+    { id: 'avaliacao', label: `Avaliação (${temNotasLancadas ? notaTotalNumero.toFixed(1) : '—'})` },
     { id: 'estudos', label: `Estudo Dirigido (${estudosTitular.length + estudosComoSubstituto.length})` },
     { id: 'frequencia', label: 'Frequência' },
     { id: 'ocorrencias', label: `Ocorrências (${studentOcorrencias.length})` },
@@ -864,7 +861,7 @@ export const AlunoFichaView: React.FC<AlunoFichaViewProps> = ({
 
       {/* 6. AVALIAÇÃO TAB (Critérios configuráveis) */}
       {activeTab === 'avaliacao' && (
-        <QuadroAvaliacaoPrazo criterios={disciplinaCriterios} avaliacoes={studentAvaliacoes} ocorrencias={studentOcorrencias} matriculaId={matriculaId} turmaId={turma.turma_id} />
+        <QuadroAvaliacaoPrazo criterios={criterios} avaliacoes={studentAvaliacoes} ocorrencias={studentOcorrencias} matriculaId={matriculaId} turmaId={turma.turma_id} disciplinaId={turma.disciplina_id} />
       )}
       {activeTab === 'avaliacao' && (
         <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs space-y-4">
@@ -880,7 +877,7 @@ export const AlunoFichaView: React.FC<AlunoFichaViewProps> = ({
             <div className="text-right">
               <span className="text-xs text-slate-500 block">Nota Total</span>
               <span className="text-lg font-bold font-mono text-slate-900">
-                {studentAvaliacoesValidas.length > 0 ? `${notaTotalNumero.toFixed(1)} / 10.0` : '—'}
+                {temNotasLancadas ? `${notaTotalNumero.toFixed(1)} / ${resumoNotas.totalMaximo.toFixed(1)}` : '—'}
               </span>
             </div>
           </div>

@@ -12,9 +12,12 @@ const criterios: any[] = [
 ];
 const avaliacoes: any[] = [{ avaliacao_id: '1', matricula_id: 'm', criterio_id: 'P', nota: 1.8, observacao: 'Boa leitura' }];
 const html = renderToStaticMarkup(createElement(QuadroAvaliacaoPrazo, { criterios, avaliacoes, ocorrencias: [
-  { ocorrencia_id: 'o', matricula_id: 'm', data_hora: '', tipo: 'ATRASO', observacao: '' }] as any, matriculaId: 'm', turmaId: 't' }));
-assert(html.includes('Avaliação até o prazo') && html.includes('Acumulado até o prazo'));
-assert(html.includes('3,30'), 'acumulado = 1,80 + 1,50');
+  { ocorrencia_id: 'o', matricula_id: 'm', data_hora: '', tipo: 'ATRASO', observacao: '' }] as any, matriculaId: 'm', turmaId: 't', disciplinaId: undefined }));
+assert(html.includes('Avaliação até o prazo') && html.includes('Acumulado oficial até o prazo'));
+assert(html.includes('1,80'), 'oficial preservada');
+assert(html.includes('prévia 1,50') || html.includes('Prévia calculada: 1,50'), 'prévia rotulada');
+assert(html.includes('Acumulado oficial'), 'total é só o oficial');
+assert(html.includes('Com prévias') && html.includes('3,30'), 'prévia fora do total oficial');
 assert(html.includes('Ver critérios avaliados') && html.includes('Postura') && html.includes('Técnica'), 'subcritérios sob demanda');
 assert(html.includes('Boa leitura'), 'observação preservada');
 assert(html.includes('aguardando decisão') && html.includes('nenhum desconto'), 'ocorrência sem regra não desconta');

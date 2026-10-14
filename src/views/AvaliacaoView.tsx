@@ -1,3 +1,5 @@
+import { lerNumero } from '../services/avaliacaoEngine';
+import { somarNotasValidas, selecionarCriteriosAplicaveis } from '../services/avaliacaoResumo';
 import React, { useState } from 'react';
 import {
   Award,
@@ -96,6 +98,7 @@ export const AvaliacaoView: React.FC = () => {
   // Estados da Tela de Correção Ampla
   const [notaSimplesInput, setNotaSimplesInput] = useState<number>(0);
   const [notasCriteriosMap, setNotasCriteriosMap] = useState<Record<string, number>>({});
+  const [criteriosComNotaInvalida, setCriteriosComNotaInvalida] = useState<string[]>([]);
   const [comentariosCriteriosMap, setComentariosCriteriosMap] = useState<Record<string, string>>({});
   const [pontosFortes, setPontosFortes] = useState('');
   const [pontosDesenvolver, setPontosDesenvolver] = useState('');
@@ -122,14 +125,8 @@ export const AvaliacaoView: React.FC = () => {
   // Critérios oficiais filtrados por turma, disciplina e instrumento da base (sem critérios hardcoded)
   const criteriosAplicaveis = React.useMemo(() => {
     if (!selectedInstrumentoNome) return [];
-    return criterios.filter(c => {
-      if (c.ativo === false) return false;
-      const matchTurma = !c.turma_id || c.turma_id === selectedTurmaId;
-      const matchDisc = !c.disciplina_id || (turmaAtual && c.disciplina_id === turmaAtual.disciplina_id);
-      const inst = c.instrumento_avaliacao || c.instrumento;
-      const matchInst = selectedInstrumentoNome === 'Avaliação do estágio' ?
-        !String(inst || '').trim() : (inst ? inst.trim() === selectedInstrumentoNome.trim() : true);
-      return matchTurma && matchDisc && matchInst;
+    return selecionarCriteriosAplicaveis(criterios, {
+      turmaId: selectedTurmaId, disciplinaId: turmaAtual?.disciplina_id, instrumento: selectedInstrumentoNome,
     });
   }, [criterios, selectedTurmaId, turmaAtual, selectedInstrumentoNome]);
 
@@ -191,16 +188,21 @@ export const AvaliacaoView: React.FC = () => {
       setPontosDesenvolver(avaliacaoExistente.pontos_desenvolver || '');
 
       const nMap: Record<string, number> = {};
+      const notasInvalidas: string[] = [];
       const cMap: Record<string, string> = {};
       (avaliacaoExistente.notas_criterios || []).forEach((item: any) => {
         if (item?.criterio_id) {
-          nMap[item.criterio_id] = Number(item.nota) || 0;
+          const lida = lerNumero(item.nota);
+          if (lida.valor !== null) nMap[item.criterio_id] = lida.valor; // ausente/inválido não vira 0 lançado
+          else if (lida.invalido) notasInvalidas.push(item.criterio_id);
           if (item.comentario) cMap[item.criterio_id] = String(item.comentario);
         }
       });
       setNotasCriteriosMap(nMap);
       setComentariosCriteriosMap(cMap);
+      setCriteriosComNotaInvalida(notasInvalidas);
     } else {
+      setCriteriosComNotaInvalida([]);
       setNotaSimplesInput(0);
       setComentarioGeral('');
       setPontosFortes('');
@@ -211,7 +213,7 @@ export const AvaliacaoView: React.FC = () => {
   }, [matriculaAtualId, selectedInstrumentoNome, avaliacaoExistente]);
 
   // Soma automática das notas dos critérios
-  const somaNotasCriterios = Object.values(notasCriteriosMap).reduce((acc, val) => acc + (Number(val) || 0), 0);
+  const somaNotasCriterios = somarNotasValidas(Object.values(notasCriteriosMap)).total;
   const notaFinalCalculada =
     selectedInstrumentoTipo === 'RUBRICA' || selectedInstrumentoTipo === 'HIBRIDA'
       ? somaNotasCriterios
