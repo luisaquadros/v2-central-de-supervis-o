@@ -1,3 +1,8 @@
+## Correção do aviso de cronograma — 14/10/2026
+
+Branch `fix/alerta-cronograma-rss`, commit de implementação `13b646c`, sobre `bad5435`. Aviso da tela inicial do PR #46 rastreado até `calcularMetricasCronogramaRss`: comparava número da aula presencial com semana de prática. São contagens independentes. Comparação removida; sem calendário, não se infere semana nem se reduz RSS esperado pelo número da aula. Cronograma sem datas e contagens RSS inválidas/superiores ao total continuam sinalizados. Nenhum dado real lido ou modificado nesta correção; não foi confirmada a condição de uma turma real específica.
+Validação: teste direcionado (68 verificações), 48 programas da suíte completa, TypeScript e build aprovados. Regressões incluem ciclos distintos, fim de prática com todas as semanas encerradas, fallback sem calendário e alertas genuínos. Não tocou Worker. Código corrigido; versão publicada ainda não alterada. Próxima ação: revisar/integrar a correção na referência publicada somente com autorização; não houve merge ou deploy.
+
 # Checkpoint — semestres, confiabilidade e homologação
 
 Atualizado: 14/10/2026. Branch própria `feat/semestres-confiabilidade-homologacao`, base integrada de desenvolvimento `be3e1d3`. Últimos commits de implementação: `c47fa24` e `43794f7`. Referências remotas conferidas nesta execução: main `d707105`; PR #46 `a3d6cba`, preservados. Nenhum merge em main, deploy, ativação de cron ou escrita em serviços oficiais.
