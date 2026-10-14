@@ -231,6 +231,7 @@ for (const view of [
       (p) => p.tabela === "avaliacoes",
     )?.esperado?.nota;
     result.remoteGradePreserved = remoteGrade;
+    result.cacheGradeAfterConflict=await page.evaluate(async()=>{const db=await import('/src/services/indexedDbService.ts');const cache=await db.carregarTodasTabelasDoIndexedDb();return cache.avaliacoes.find(a=>a.avaliacao_id==='av-test')?.nota;});
     result.conflictVisible =
       (await page
         .getByText(/CONFLITO_VERSAO|[Cc]onflito de versão|mais recente/)
@@ -367,6 +368,7 @@ for (const f of findings) {
     assert.equal(f.afterUnrelatedRender, "7");
     assert.equal(Number(f.originalGradeBase), 5);
     assert.equal(f.remoteGradePreserved, 8);
+    assert.equal(f.cacheGradeAfterConflict,8);
     assert.equal(f.conflictVisible, true);
   }
   if (f.view === "modal") assert.equal(f.closedBeforeSave, false);

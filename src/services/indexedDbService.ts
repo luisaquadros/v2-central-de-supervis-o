@@ -43,6 +43,7 @@ export interface SyncQueueItem {
   erro?: string | null;
   versao_conflito?: Record<string, any>;
   versao_base?: Record<string, any> | null;
+  cache_anterior?:Record<string,any>|null;
 }
 
 const DB_NAME = 'CentralSupervisao_DB_v1';
@@ -408,6 +409,7 @@ export async function salvarAlteracaoAtomica(
         try { return recordIdentity(tabela, r) === identity; } catch { return false; }
       };
       const old = rows.find(matches);
+      item.cache_anterior=old?JSON.parse(JSON.stringify(old)):null;
       // Snapshot anterior ao primeiro ajuste; necessário para detectar edição obsoleta
       // quando outro dispositivo já alterou a versão na base oficial.
       item.versao_base = versaoOriginal!==undefined ? (versaoOriginal===null?null:JSON.parse(JSON.stringify(versaoOriginal))) : old ? JSON.parse(JSON.stringify(old)) : null;
@@ -432,6 +434,7 @@ export async function salvarAlteracaoAtomica(
             }
             // Múltiplas edições locais preservam a versão mais antiga ainda não enviada.
             item.versao_base = prior.versao_base ?? null;
+            item.cache_anterior=prior.cache_anterior===undefined?prior.versao_base:prior.cache_anterior;
             if (prior.tipo === 'INSERT' && tipo !== 'DELETE') item.tipo = 'INSERT';
             if (tipo !== 'DELETE' && prior.tipo !== 'DELETE') item.payload = { ...prior.payload, ...item.payload };
             queue.delete(prior.id);
@@ -475,4 +478,27 @@ export async function carregarRecuperacoesDoUsuario(uid: string): Promise<unknow
     req.onsuccess=()=>resolve(req.result.filter(v=>v?.usuario_uid===uid && v.item));
     tx.oncomplete=()=>db.close();tx.onerror=()=>{db.close();reject(tx.error);};
   });
+}
+
+
+/** Proposta recusada permanece na fila; não vira dado confirmado ao recarregar a tela. */
+export async function restaurarCacheAposConflito(item:SyncQueueItem):Promise<void>{
+ const db=await openDatabase();
+ await new Promise<void>((resolve,reject)=>{
+  const tx=db.transaction([STORE_TABELAS,STORE_QUEUE],'readwrite'),t=tx.objectStore(STORE_TABELAS),q=tx.objectStore(STORE_QUEUE);
+  const qr=q.get(item.id);
+  qr.onsuccess=()=>{
+   if(qr.result?.status!=='CONFLITO')return;
+   const req=t.get(item.tabela);
+   req.onsuccess=()=>{
+    const rows=req.result||[],identity=recordIdentity(item.tabela,item.payload);
+    const atual=rows.find((r:Record<string,unknown>)=>recordIdentity(item.tabela,r)===identity);
+    if(atual&&!Object.entries(item.payload).every(([k,v])=>JSON.stringify(atual[k])===JSON.stringify(v)))return;
+    const anteriores=item.cache_anterior===undefined?item.versao_base:item.cache_anterior;
+    const restante=rows.filter((r:Record<string,unknown>)=>recordIdentity(item.tabela,r)!==identity);
+    t.put(anteriores?[...restante,anteriores]:restante,item.tabela);
+   };
+  };
+  tx.oncomplete=()=>resolve();tx.onerror=tx.onabort=()=>reject(tx.error);
+ });db.close();
 }

@@ -28,6 +28,7 @@ import {
   enfileirarAlteracaoLocal,
   carregarFilaSincronizacao,
   atualizarItemFila,
+  restaurarCacheAposConflito,
   removerItemFilaConfirmado,
   SyncMeta,
   SyncQueueItem,
@@ -211,6 +212,10 @@ async function sincronizarDaBaseOficialInterna(): Promise<{
 
     const perfilAutorizado = await obterPerfilServidor(true);
     if (!perfilAutorizado) throw new Error('Acesso não autorizado ou indisponível. Nenhum dado remoto foi carregado.');
+    // Mesmo após falha anterior/expiração do perfil, só reabrir monitoras com leitura filtrada nova.
+    if (perfilAutorizado.papel === 'MONITORA' && typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
+      window.dispatchEvent(new Event('cs:access-scope-changed'));
+    }
     await conferirProprietario();
 
     // Alterações locais precisam ser confirmadas antes de aceitar o snapshot remoto.
@@ -250,6 +255,13 @@ async function sincronizarDaBaseOficialInterna(): Promise<{
     const mapParaSalvar: Record<string, any[]> = { ...cacheAnterior };
 
     TABELAS_NORMALIZADAS.forEach(tab => {
+      if (perfilServidor.papel === 'MONITORA') {
+        // A fila conserva propostas locais para recuperação; nunca amplia a leitura delegada.
+        const rows = rawMap[tab];
+        mapParaSalvar[tab] = !restritas.includes(tab) && Array.isArray(rows) ? rows : [];
+        tabelasStatus[tab] = { ok: true, count: mapParaSalvar[tab].length };
+        return;
+      }
       if (restritas.includes(tab)) {
         // Não delegada a este perfil: nunca fica no aparelho (apaga cópia deixada por outra conta neste navegador).
         mapParaSalvar[tab] = [];
@@ -472,6 +484,7 @@ async function processarFilaInterna(): Promise<{
         status: ehConflito ? 'CONFLITO' : 'ERRO',
         erro: err?.message || 'Falha ao sincronizar com Google Sheets',
       });
+      if(ehConflito)await restaurarCacheAposConflito(item);
       if(ehConflito) conflitos++;
       break; // Preserve operation order and avoid cascading requests after any failure.
     }

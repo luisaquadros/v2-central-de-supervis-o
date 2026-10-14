@@ -702,7 +702,8 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     const revoke=()=>{setAcessoGoogleValidado(false);setPerfilServidor(null);};
     window.addEventListener('cs:account-changed', reset);
     window.addEventListener('cs:access-revoked', revoke);
-    return () => {window.removeEventListener('cs:account-changed', reset);window.removeEventListener('cs:access-revoked', revoke);};
+    window.addEventListener('cs:access-scope-changed', revoke);
+    return () => {window.removeEventListener('cs:account-changed', reset);window.removeEventListener('cs:access-revoked', revoke);window.removeEventListener('cs:access-scope-changed', revoke);};
   }, []);
 
   // 1. ABERTURA DO APP: Carrega imediatamente o cache do IndexedDB

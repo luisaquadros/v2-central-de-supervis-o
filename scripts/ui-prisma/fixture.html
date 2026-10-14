@@ -32,7 +32,7 @@ function Probe(){
 const c=useSupervisao();window.auditContext=c;
 const view=new URL(location.href).searchParams.get('view');
 c.perfilServidor={papel:view==='monitora'?'MONITORA':'PROFESSORA_ADMIN',email:'professora@exemplo.com',turmas:['*'],operacoes:['CHAMADA','ENTREGAS','DOCUMENTOS_VER']};
-c.currentUser={uid:'uid-sintetico',email:'professora@exemplo.com'};c.acessoGoogleValidado=true;c.hasLocalCache=true;
+c.currentUser={uid:'uid-sintetico',email:'professora@exemplo.com'};if(!window.auditDisableAuthOverride)c.acessoGoogleValidado=true;c.hasLocalCache=true;
 if(view==='shell'||view==='monitora')return React.createElement(MainContent);
 if(view==='turma')return React.createElement(TurmaDetalheView,{turmaId:'t-test',onVoltar:()=>{},onIniciarSupervisao:()=>{},onOpenAluno:()=>{}});
 if(view==='ficha')return React.createElement(AlunoFichaView,{matriculaId:'m-test',onVoltar:()=>{}});

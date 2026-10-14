@@ -10,7 +10,7 @@ import {
 import { useSupervisao } from "../context/SupervisaoContext";
 
 export function ConflitosPainel() {
-  const { sincronizarAgora } = useSupervisao();
+  const { sincronizarAgora, perfilServidor } = useSupervisao();
   const [itens, setItens] = useState<SyncQueueItem[]>([]),
     [erro, setErro] = useState(""),
     [ocupado, setOcupado] = useState(false);
@@ -18,6 +18,7 @@ export function ConflitosPainel() {
     ReturnType<typeof consultarConflito>
   > | null>(null);
   useEffect(() => {
+    if (perfilServidor?.papel !== "PROFESSORA_ADMIN") { setItens([]); setRevisao(null); return; }
     let ativo = true;
     void carregarFilaSincronizacao()
       .then((q) => {
@@ -27,7 +28,7 @@ export function ConflitosPainel() {
     return () => {
       ativo = false;
     };
-  }, []);
+  }, [perfilServidor?.papel]);
   const baixar = (item: SyncQueueItem) => {
     const url = URL.createObjectURL(
       new Blob([JSON.stringify(item, null, 2)], { type: "application/json" }),
@@ -63,6 +64,7 @@ export function ConflitosPainel() {
       setOcupado(false);
     }
   };
+  if (perfilServidor?.papel !== "PROFESSORA_ADMIN") return null;
   return (
     <section
       aria-label="Conflitos de sincronização"

@@ -40,6 +40,7 @@ export type EstadoAcesso =
 
 let acessoCache: { identidade: string; em: number; estado: EstadoAcesso } | null = null;
 export const limparCachePerfil = () => { acessoCache = null; };
+export const assinaturaPerfil = (p: PerfilServidor): string => JSON.stringify([p.email.toLowerCase(), p.papel, [...p.turmas].sort(), [...p.operacoes].sort()]);
 
 /** Pergunta ao servidor quem é esta conta e o que ela pode. A decisão é do servidor; a tela só mostra o resultado. */
 export async function verificarAcessoEscrita(forcar = false): Promise<EstadoAcesso> {
@@ -47,7 +48,13 @@ export async function verificarAcessoEscrita(forcar = false): Promise<EstadoAces
   if (!identidade) { limparCachePerfil(); return {estado: 'SESSAO_INVALIDA', mensagem: 'Entre novamente com a conta Google.'}; }
   if (!forcar && acessoCache?.identidade === identidade && Date.now() - acessoCache.em < 10 * 60_000 && acessoCache.estado.estado === 'AUTORIZADO') return acessoCache.estado;
   const estado = await consultarAcesso();
-  if (estado.estado === 'AUTORIZADO') acessoCache = { identidade, em: Date.now(), estado };
+  if (estado.estado === 'AUTORIZADO') {
+    const anterior = acessoCache?.estado;
+    if (anterior?.estado === 'AUTORIZADO' && assinaturaPerfil(anterior.perfil) !== assinaturaPerfil(estado.perfil) && typeof window !== 'undefined') {
+      window.dispatchEvent(new Event('cs:access-scope-changed'));
+    }
+    acessoCache = { identidade, em: Date.now(), estado };
+  }
   else limparCachePerfil();
   return estado;
 }

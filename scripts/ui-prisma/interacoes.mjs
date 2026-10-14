@@ -18,6 +18,7 @@ for (const scenario of [
   "monitora",
   "lista-longa",
   "gestao",
+  "mudanca-escopo",
 ]) {
   const view =
     scenario === "chamada"
@@ -31,6 +32,7 @@ for (const scenario of [
     timezoneId: "America/Sao_Paulo",
   });
   const criticalPayloads = [];
+  let papelServidor = "PROFESSORA_ADMIN";
   await context.route("**/*", async (route) => {
     const u = new URL(route.request().url());
     if (u.pathname === "/api/acesso")
@@ -39,7 +41,7 @@ for (const scenario of [
         contentType: "application/json",
         body: JSON.stringify({
           ok: true,
-          papel: "PROFESSORA_ADMIN",
+          papel: papelServidor,
           email: "professora@exemplo.com",
           turmas: ["*"],
           operacoes: ["CHAMADA", "ENTREGAS", "DOCUMENTOS_VER"],
@@ -259,6 +261,23 @@ for (const scenario of [
       );
     }
   }
+  if (scenario === "mudanca-escopo") {
+    await page.evaluate(async () => {
+      const s = await import("/src/services/googleSheetsService.ts");
+      s.setMockToken("sintetico");
+      await window.auditContext.sincronizarAgora();
+    });
+    await page.waitForTimeout(200);
+    papelServidor = "MONITORA";
+    await page.evaluate(async () => {
+      window.auditDisableAuthOverride = true;
+      const e = await import("/src/services/escritaCoordenadaService.ts");
+      await e.obterPerfilServidor(true);
+    });
+    await page.waitForFunction(() => window.auditContext.acessoGoogleValidado === false);
+    result.acessoBloqueado = await page.evaluate(() => !window.auditContext.acessoGoogleValidado);
+    result.navegacaoAnteriorAusente = await page.getByRole("navigation", { name: "Navegação rápida" }).count() === 0;
+  }
   if (scenario === "gestao") {
     await page.evaluate(async () => {
       const s = await import("/src/services/googleSheetsService.ts");
@@ -433,6 +452,10 @@ for (const f of findings) {
   if (f.scenario === "monitora") {
     assert.equal(f.gradeDestinationAbsent, true);
     assert.equal(f.attendanceDisabled, true);
+  }
+  if (f.scenario === "mudanca-escopo") {
+    assert.equal(f.acessoBloqueado, true);
+    assert.equal(f.navegacaoAnteriorAusente, true);
   }
   if (f.scenario === "gestao") {
     assert.equal(f.semestreCriado, true);
