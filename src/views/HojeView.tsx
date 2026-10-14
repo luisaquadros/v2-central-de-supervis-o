@@ -30,6 +30,7 @@ export function HojeView({
     getSupervisaoAtual,
     getPendenciasOperacionais,
     perfilServidor,
+    evidenciasAvaliacao, matriculas, alunos,
   } = useSupervisao();
   const [agora, setAgora] = React.useState(() => new Date());
   React.useEffect(() => {
@@ -56,6 +57,11 @@ export function HojeView({
       ativas.some((t) => t.turma_id === p.turma_id) &&
       (!p.prazo || p.prazo.slice(0, 10) <= getHojeDataIso(agora)) &&
       (!monitora || p.tipo === "DOCUMENTO"),
+  );
+  const pareceres = evidenciasAvaliacao.filter(e =>
+    !monitora && e.origem === 'CONTRIBUICAO_MONITORA' &&
+    ativas.some(t => t.turma_id === e.turma_id) &&
+    matriculas.some(m => m.matricula_id === e.matricula_id && m.turma_id === e.turma_id),
   );
   const [limite, setLimite] = React.useState(8);
   function abrir(p: (typeof pendencias)[number]) {
@@ -219,13 +225,20 @@ export function HojeView({
           </button>
         )}
       </section>
-      <details className="prisma-section">
-        <summary>Pareceres de monitoras</summary>
-        <p className="prisma-meta">
-          O fluxo estruturado de pareceres ainda não está disponível. Consulte
-          somente os registros administrativos autorizados na turma.
-        </p>
-      </details>
+      {!monitora && <details className="prisma-section">
+        <summary>Pareceres de monitoras ({pareceres.length})</summary>
+        <p className="prisma-meta">Contribuições qualitativas para revisão docente. Não equivalem a notas oficiais.</p>
+        {!pareceres.length && <p className="prisma-meta mt-2">Nenhum parecer disponível neste período.</p>}
+        <ul className="mt-2 divide-y" aria-label="Pareceres disponíveis">
+          {pareceres.map(e => {
+            const m = matriculas.find(m => m.matricula_id === e.matricula_id);
+            const nome = alunos.find(a => a.aluno_id === m?.aluno_id)?.nome || 'Estudante';
+            return <li key={String(e.evidencia_id)}><button className="w-full text-left p-3" onClick={() => onOpenAluno?.(String(e.matricula_id), 'pareceres')}>
+              <span className="font-semibold">{nome}</span><span className="block prisma-meta">{String(e.observacao || 'Consultar contribuição')}</span>
+            </button></li>;
+          })}
+        </ul>
+      </details>}
       <section className="space-y-3">
         <h2 className="prisma-title text-xl">Turmas neste período</h2>
         <ul className="grid gap-3 sm:grid-cols-2">

@@ -34,6 +34,7 @@ try {
   if (!ready) throw new Error("Vite não respondeu no prazo.");
   await import("./interacoes.mjs");
   await import("./telas.mjs");
+  await import("./avaliacao-rss.mjs");
 } finally {
   vite.kill("SIGTERM");
   await unlink(fixture).catch(() => {});

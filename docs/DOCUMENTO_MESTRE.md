@@ -59,8 +59,10 @@ Google Sheets (planilha 1DwhmASMStNtT_L2YinG-jkP9vYVv5ETdc-azYqSSIc4) · Drive A
 | **Metadados de documentos do Drive** | `monitoramento_documentos` | **somente o Worker** (4 colunas) + cadastro manual das linhas | app | `titular_tipo` MATRICULA ou GRUPO + `titular_id` (IDs estáveis) |
 | Resultado da sincronização | `sincronizacao` (linhas `DRIVE_METADADOS`) + histórico no Durable Object | Worker | painel | |
 | Trilha de auditoria | `log_alteracoes` (criada na 1ª gravação) | Worker | administradora | identidade verificada; **sem texto livre** |
-| RSS | `registros_semanais` (fórmula, somente leitura) | formulário/planilha | app | original imutável ainda não preservado (E4) |
-| Avaliações e rubricas | `avaliacoes`, `avaliacoes_completas`, `criterios_avaliacao` | app (coordenador) | só administradora | rubrica versionada: ❌ (E5) |
+| RSS (entregas) | `registros_semanais` (fórmula, somente leitura) | formulário/planilha | app | fonte da entrega; **nunca alterada pelo app** |
+| RSS: correção de associação e observação pontual | `rss_ajustes` (aditiva) | administradora (coordenador, com versão e log) | administradora; monitora sem observação/autoria | §4.6 |
+| Avaliações oficiais | `avaliacoes`, `avaliacoes_completas`, `criterios_avaliacao` | app (coordenador) | só administradora | **fonte oficial de critérios e notas** (§4.1) |
+| Rubricas, configuração, rascunhos, evidências | `config_avaliacao`, `rubricas_avaliacao`, `avaliacao_rascunhos`, `evidencias_avaliacao` | app (coordenador); monitora só `evidencias_avaliacao` (preliminar, própria) | administradora; monitora: rubrica + as próprias contribuições | aditivas e versionadas (§4.4); abas ainda **não criadas** na planilha |
 | Ainda no caminho direto (4) | `configuracoes`, `marcos_academicos`, `criterios_avaliacao`, `registros_semanais` | navegador da administradora | todos | `registros_semanais` e `marcos_academicos` parecem derivados por fórmula/origem (escrever pode sobrescrever fórmulas); `criterios_avaliacao` aguarda D3; `configuracoes` mistura itens operacionais. Migrar só após conferir |
 
 Colunas escritas pela sincronização: `data_modificacao_drive`, `consultado_em`, `status`, `erro_codigo`. **Nunca** `validacao_manual`, observações, `origem_metadado` ou qualquer outra. Não cria nem remove linhas.
@@ -86,6 +88,52 @@ Colunas escritas pela sincronização: `data_modificacao_drive`, `consultado_em`
 
 ---
 
+### 4.1 Avaliação: estrutura real encontrada (auditoria na cópia anonimizada da planilha de desenvolvimento)
+
+- **6 turmas × 8 critérios = 10,0** em todas: Prova 2,0 · Parte 1 do relatório 1,0 · Relatório final 2,0 · Documentação 2,5 · Seminário/Atividade avaliativa 0,5 · Participação nas supervisões 0,8 · Desempenho técnico e profissional 1,0 · Assiduidade e pontualidade 0,2. Pesos iguais; **nomes variam por turma**; `codigo_criterio` é estável (ex.: `DOCUMENTACAO_CLINICA` × `DOCUMENTACAO_PRATICA`). `peso` = 1 em todas as linhas (não é peso de cálculo).
+- `avaliacoes`: uma nota **em pontos** por matrícula×critério, com `valor_original` (nota bruta da fonte, ex. prova "5,0" → 1,0), `origem`, `status_revisao`. `avaliacoes_completas`: comentários e pontos por critério (JSON).
+- **Não existem subcritérios, descritores nem rubricas internas implementados.** A rubrica de Documentação é nova e aditiva.
+- ⚠️ **Divergência ficha × planilha (decisão sua):** a ficha de feedback parcial lista "Registros semanais 0,5" onde a planilha tem "Seminário/Atividade avaliativa 0,5". Nenhum critério de registros semanais foi criado; a associação acadêmica está **pendente**.
+- ⚠️ **Valores "provisórios" da ficha** (Documentação 1,25, Participação 0,40, Desempenho 0,50, Assiduidade 0,10 = 50% do peso): o app **não** os trata como nota; só a nota lançada em `avaliacoes` é oficial.
+- **Cálculo duplicado corrigido:** `AvaliacaoView` e `AlunoFichaView` somavam por conta própria (filtros de critério diferentes; nota inválida virava 0). Agora usam `avaliacaoResumo.ts`. Soma idêntica à legada em dados válidos (teste); nota inválida passa a ser **sinalizada e excluída**, nunca zero silencioso. `FeedbackModal` também não mostra 0,0 para nota ausente/inválida.
+
+### 4.2 Engine de cálculo (`avaliacaoEngine.ts`, `avaliacaoAdaptador.ts`, `avaliacaoResumo.ts`)
+
+- **Quatro coisas separadas:** **oficial** (nota lançada; a engine nunca a altera) · **prévia** (proporção/rubrica; diagnóstico, nunca gravada sozinha) · **prazo** (cumprimento de entrega; não gera nota nem desconto sem regra expressa) · **divergência** (oficial × prévia, só sinalizada).
+- **Sem configuração, todo critério é `manual`.** Nenhuma fórmula é inferida pelo nome. Classificação inicial **sugerida** (D3) por `codigo_criterio`: prova=proportional; relatórios/seminário=rubric; documentação/desempenho/assiduidade=hybrid; participação=continuous.
+- Prova proporcional: bruto ÷ 10 × valor (`valor_original`); RSS **não** é critério. Participação/desempenho **não** vêm do tempo decorrido (`progressRatio` removido). Rubrica/híbrido só calculam prévia com fórmula declarada e versão **aprovada**.
+- Invariantes: ausente = `null`; inválido/fora do limite → `a_conferir`, fora da soma; sem média parcial, nota convertida para 10 ou projeção; ocorrência sem regra cadastrada nunca desconta (ética relevante gera sinalização separada); o mesmo fato não penaliza dois critérios.
+
+### 4.3 Rubrica de Documentação, níveis e rascunhos (`rubricasAvaliacao.ts`)
+
+- 6 subcritérios (0,65 · 0,50 · 0,45 · 0,40 · 0,30 · 0,20 = 2,5), com foco e **descritores específicos por nível** e por tipo de estágio (Clínica Adulto, Clínica Ampliada; Consultoria Organizacional preparada, sem descritores clínicos e em rascunho).
+- Níveis: Excelente 100% · Adequado 75% · Parcial 50% · Insuficiente 25% · Não atendido 0% · **Não avaliado = null**. Ajuste manual exige justificativa e entra no histórico.
+- Versões imutáveis: editar pesos cria nova versão (rascunho até aprovar); rascunhos guardam a versão e os pesos usados. Documento **coletivo** só gera sugestão; a professora adota item a item na avaliação individual.
+- A nota só vira oficial por **confirmação explícita** (diálogo com valor proposto × oficial atual e diferença), pelo caminho de gravação existente (`saveAvaliacao`: fila, coordenador, log).
+
+### 4.4 Estrutura aditiva e versionada (5 abas novas; nenhuma existente alterada)
+
+`config_avaliacao` (configuração por turma+período+critério) · `rubricas_avaliacao` (uma linha por versão) · `avaliacao_rascunhos` (níveis, ajustes, histórico) · `evidencias_avaliacao` (por referência a registros existentes; origem, polaridade, preliminar) · `rss_ajustes` (correção auditável de associação e observações de RSS, §4.6). Todas passam pelo coordenador (versão, idempotência, log sem texto livre/JSON). Abas únicas (não se cria aba por semestre).
+
+- **Criação:** Configurações → "Estrutura da avaliação" → `GET/POST /api/estrutura/avaliacao`. POST só adiciona abas ausentes + cabeçalho, é idempotente, **desligada por padrão** (`ESTRUTURA_AVALIACAO=ligada`), exige confirmação e checksum de backup (o backup é gerado pelo app; o servidor só confere o formato). Aba existente com cabeçalho diferente é apenas relatada.
+- Leitura do servidor tolera abas ainda inexistentes (leem vazias).
+
+### 4.5 Devolutiva (`devolutivaAvaliacao.ts`, aba Devolutiva da ficha)
+
+Rascunho **determinístico**, sem IA, nunca enviado sozinho: notas oficiais lançadas, pontos fortes/em desenvolvimento/aprimoramento a partir do nível+descritor da rubrica, evidências (monitora só se aproveitada), atraso de registros semanais (fato mensurável, impacto "conforme os critérios da disciplina"), documentos pendentes (A conferir ≠ pendente), participação ("não constam registros" ≠ conduta). Cada item tem fonte; falta de dado vira "informação insuficiente" + lista de complementação. A revisão/aprovação/envio usa o `FeedbackModal` existente.
+
+### 4.6 Controle de RSS (simplificado e automático)
+
+Decisão: **sem etapa de validação individual**. `rssEntregas.ts` + `EntregasRssPainel` (ficha, aba Registros; resumo compacto para a monitora).
+- **Dois status por semana:** ENTREGUE / NÃO ENTREGUE (semana ainda não exigível não tem status). Conta como entrega o registro `RECEBIDO`/`ENTREGUE`; `status_revisao` **não bloqueia** (o antigo "Em revisão" deixou de existir).
+- **Associação automática** (fonte `registros_semanais`): unidade (matrícula; grupo na Clínica Ampliada) + turma + `semana_rss`. Semana vazia: usa a **data de entrega** dentro de uma semana do cronograma da turma (sem ocupar semana já entregue); **nunca** o número do encontro.
+- **Esperado:** semanas encerradas no cronograma (`calendario_rss`) da turma; total previsto = regra/situação da turma (padrão 12).
+- **Mostra:** realizadas, previstas no semestre, semanas entregues, semanas pendentes e atraso **discreto** (só com data confiável posterior ao fim da semana; informativo, não altera status nem nota).
+- **Dado ausente ≠ não entregue:** sincronização incompleta → nenhuma semana é marcada como não entregue. Entrega sem semana identificada conta no total, mas nenhuma semana específica é acusada até ser associada (a contagem de entregas faltantes continua exata).
+- **Correção auditável:** `rss_ajustes` (aditiva, coordenador com versão e log): associar um registro a outra semana/unidade (guarda semana/unidade originais), desfazer (status REVOGADO; nada é apagado) e **observações pontuais** por semana. A fonte nunca é alterada.
+- **Sem desconto:** nenhuma nota, rubrica, pontuação por RSS nem desconto automático. RSS não é critério da avaliação. RSS atrasado continua fora das pendências e notificações.
+- **Verificação com a planilha anonimizada (86 matrículas):** 0 entregas perdidas em relação à contagem anterior; 48 matrículas passam a contar entregas antes bloqueadas por "revisão" ou sem semana.
+
 ## 5. Permissões e segurança
 
 **Perfis** (decididos no servidor; configuração no Worker, não na planilha, para que quem edita a planilha não conceda acesso a si mesmo):
@@ -102,11 +150,12 @@ Entradas inválidas (sem turma, sem operação, `"*"`, e-mail ruim) são **ignor
 | Operação delegável | Grava | Lê (filtrado à turma) |
 |---|---|---|
 | `CHAMADA` | `frequencias`, `encontros_turma` | `encontros_turma`, `frequencias` (sem `justificativa`/`observacao`) |
-| `ENTREGAS` | `entregas` | `entregas` |
+| `ENTREGAS` | `entregas` | `entregas` e o **status administrativo de RSS** por lista branca de colunas: `registros_semanais` (registro, matrícula/grupo, turma, escopo, data, semana, status), `status_rss_unidades`, `calendario_rss`, `regras_rss`, `situacao_atual_turmas` (só totais) e `rss_ajustes` (sem observação/autoria). **Nunca** objetivos, técnicas, manejo, dúvidas, limitações, autora nem qualquer coluna nova |
 | `DOCUMENTOS_VER` | — | `monitoramento_documentos` (sem observações manuais) e estado da sincronização |
+| `CONTRIBUICAO_AVALIATIVA` | `evidencias_avaliacao`, **somente** contribuição **preliminar** e **própria** (origem `CONTRIBUICAO_MONITORA`, autoria = a conta, até 600 caracteres; sem alterar autoria/turma/origem; sem exclusão; sem editar o que a professora já aproveitou) | `rubricas_avaliacao` (sem motivos/autoria) e as **próprias** contribuições. **Nunca** notas, rascunhos, configuração nem evidências da professora |
 | (sempre) | — | períodos, disciplinas, turmas, horários, matrículas, alunos (sem e-mail), grupos |
 
-**Nunca para monitora:** avaliações, ocorrências, devolutivas/feedbacks, registros de supervisão, orientações, pontos de acompanhamento, RSS, critérios, configurações, log, backup, cadastro; exclusões; sincronização manual. Turma indeterminada = negado; o servidor confere a turma do registro novo **e** a do registro existente.
+**Nunca para monitora:** avaliações, ocorrências, devolutivas/feedbacks, registros de supervisão, orientações, pontos de acompanhamento, **conteúdo de RSS**, critérios, configurações, log, backup, cadastro; exclusões; sincronização manual. Turma indeterminada = negado; o servidor confere a turma do registro novo **e** a do registro existente.
 
 **Medidas**
 - Identidade: token de ID do Firebase verificado no Worker (assinatura, emissor, público, validade, e-mail verificado; rotação de chaves tratada). O e-mail enviado no corpo é ignorado.
@@ -135,13 +184,19 @@ Entradas inválidas (sem turma, sem operação, `"*"`, e-mail ruim) são **ignor
 | Cadastros restantes (4 tabelas) | ❌ | ver §3: risco de sobrescrever fórmulas / dependem de D3 |
 | Backup v2.0 (checksum) · conferência · restauração por registro | ✅ | restauração testada só em planilha simulada |
 | `monitoramento_documentos` na turma e na ficha (aluno e grupo) | ✅ | existência, data de modificação, data de verificação, status, erros e "a conferir" |
-| Condição `SUPERVISAO_HORARIO_ALTERNATIVO` (estudante com supervisão alternativa: matrículas 2B e 3B) | ✅ regra e interface · ⏸ dados reais | selo na turma, ficha e chamada; sem presença/falta automática |
+| Condição `SUPERVISAO_HORARIO_ALTERNATIVO` (estudante fictício: matrículas 2B e 3B) | ✅ regra e interface · ⏸ dados reais | selo na turma, ficha e chamada; sem presença/falta automática |
 | Conferência dos vínculos da aba real (Configurações) | ✅ | roda no navegador da administradora |
 | Sincronização Drive→planilha ("Sincronizar agora", lock, histórico, falhas) | ✅ simulado · ⏸ real | só administradora |
 | Cron 08:00 e 18:00 (Brasília) | ⏸ | lógica e horários testados; **não declarados** em `wrangler.jsonc` |
 | Chamada: `NAO_REGISTRADO` até encerrar, prévia e confirmação explícita (D1) | ✅ local/simulado | modal "Encerrar chamada"; nada é gravado antes de confirmar; clique duplo não duplica. Retificação com justificativa de chamada já encerrada: ❌ |
 | Cache local limpo na troca de usuária | ✅ | preserva e sinaliza pendências de outra conta |
-| Participação, diário, marcos, rubricas, competências, devolutiva com evidência | ❌ | E3–E5 |
+| Engine de avaliação: oficial × prévia × prazo × divergência; nota inválida sinalizada; cálculo unificado entre telas | ✅ simulado | §4.1–4.2 |
+| Rubrica de Documentação (6 subcritérios, níveis, descritores por estágio, versões, ajuste justificado, confirmação explícita) | ✅ simulado | §4.3; Consultoria Organizacional preparada, descritores a definir |
+| Estrutura aditiva (4 abas) e painel "Estrutura da avaliação" | ✅ simulado e workerd · ⏸ **abas não criadas na planilha** | §4.4; criação desligada por padrão |
+| Evidências (linha do tempo) e contribuição preliminar da monitora | ✅ simulado | §5 |
+| Avaliação parcial e final (resumo/conferência) | ✅ simulado | sem nota final, média parcial nem projeção |
+| Devolutiva: rascunho determinístico com fonte por frase | ✅ simulado | §4.5; aprovação/envio no modal existente |
+| Participação (registro estruturado), diário, marcos, competências | ❌ | E3–E5 restante |
 | RSS original imutável e conferência de vínculos | ❌ | E4 |
 | Resumos por turma (RSS 7 dias, documentos) e quadro "Marcar entregas" | ✅ | consulta, sem notificação |
 
@@ -149,7 +204,7 @@ Entradas inválidas (sem turma, sem operação, `"*"`, e-mail ruim) são **ignor
 
 ## 7. Testes e evidências
 
-Comandos: `npm run lint` · `npm test` (32 arquivos) · `npm run build` · `npm run test:worker-real` (também no CI).
+Comandos: `npm run lint` · `npm test` (43 arquivos) · `npm run build` · `npm run test:worker-real` (também no CI).
 
 | Prova | Cobertura | Resultado |
 |---|---|---|
@@ -157,9 +212,10 @@ Comandos: `npm run lint` · `npm test` (32 arquivos) · `npm run build` · `npm 
 | `testPerfis` | configuração, matriz de escrita, leitura filtrada, conta de serviço (assinatura JWT conferida), monitora × administradora ponta a ponta | ✅ |
 | `testMigracaoCadastro` | por tabela (`alunos`, `matriculas`, `turmas`, `horarios_turma`): edição, preservação de colunas, conflito, exclusão com versão | ✅ |
 | `testAuditoriaLog`, `testE1Integracao`, `testBackup` | log sem texto livre, idempotência, conflito, restauração | ✅ |
-| `testMonitoramentoDocumentos` | recência por data, estudante com supervisão alternativa (duas matrículas, documentos separados), grupo coletivo uma vez, condição de horário alternativo | ✅ |
+| `testMonitoramentoDocumentos` | recência por data, estudante fictício (duas matrículas, documentos separados), grupo coletivo uma vez, condição de horário alternativo | ✅ |
 | `testSincronizacaoDocumentos` | só metadados, 4 colunas, sem duplicar, uma por vez, 08:00/18:00, falhas, histórico; mutação deliberada foi detectada | ✅ |
-| **`test:worker-real`** (workerd + planilha, Drive e Google simulados em loopback, conta de serviço falsa) | sem identidade 401; conta sem papel 403; administradora 200 + log; reenvio idempotente; versão antiga 409; simultâneas 200+409; **monitora**: chamada bloqueada inclusive na própria turma, outra turma 403 `FORA_DA_TURMA`, nota 403, leitura de avaliações 403, leitura filtrada (sem e-mail/justificativa/observação); **sincronização** manual (403 monitora), duas simultâneas 200+409, **cron `0 11 * * *` e `0 21 * * *` executam, outro cron é ignorado**, histórico `AGENDADO`; corpo > 128 KB 413 | ✅ |
+| **`test:worker-real`** (workerd + planilha, Drive e Google simulados em loopback, conta de serviço falsa) | sem identidade 401; conta sem papel 403; administradora 200 + log; reenvio idempotente; versão antiga 409; simultâneas 200+409; **monitora**: grava só com a conta de serviço, outra turma 403 `FORA_DA_TURMA`, nota 403, leitura de avaliações 403, leitura filtrada (sem e-mail/justificativa/observação); **sincronização** manual (403 monitora), duas simultâneas 200+409, **cron `0 11 * * *` e `0 21 * * *` executam, outro cron é ignorado**, histórico `AGENDADO`; corpo > 128 KB 413 | ✅ |
+| `testAvaliacaoEngine`, `testAvaliacaoUnificacao`, `testAvaliacaoEstruturaReal`, `testRubricasAvaliacao`, `testEstruturaAvaliacao`, `testContribuicaoMonitora`, `testDevolutivaAvaliacao`, `testQuadroAvaliacaoPrazo`, `testRssEntregas`, `testRssMonitora` | oficial×prévia×prazo; ficha 4,29 preservada; unificação (soma idêntica à legada, inválido sinalizado); estrutura real 6×8=10,0; rubrica/níveis/versões/grupo; persistência pelo coordenador e criação idempotente de abas; permissões da monitora no handler do Worker; devolutiva | ✅ |
 | Navegador (planilha simulada, dados anonimizados) | painel de documentos na turma e na ficha (grupo uma vez; individual por matrícula); selo de horário alternativo; chamada enviou 13 de 14 matrículas (a alternativa ficou de fora); backup baixar/conferir/restaurar; botão "Sincronizar agora" | ✅ |
 
 **Defeito encontrado pelo runtime real:** `worker.ts` exportava auxiliares e o Cloudflare não inicia Worker assim; o CI anterior (`build` + `--dry-run`) não detectava. Corrigido e coberto por teste.
@@ -167,7 +223,7 @@ Comandos: `npm run lint` · `npm test` (32 arquivos) · `npm run build` · `npm 
 ### Não validado com a planilha oficial e o Worker real ❗
 - Nenhuma execução contra a planilha oficial, o Google, o Drive ou o Firebase **reais**. Os testes usam simulações fiéis à API.
 - **Aba `monitoramento_documentos` real:** só foi possível confirmar pelo Drive que existe com **17 colunas × 3 linhas** (cabeçalho + 2 linhas). Os valores das células e os nomes exatos das colunas **não foram lidos**; a leitura é por nome de coluna e tolera extras, mas os cabeçalhos reais precisam conferir. Use *Configurações → Conferência de documentos e horário alternativo* (roda no seu navegador, sem enviar nada).
-- **Vínculos do estudante com supervisão alternativa:** não verificados na planilha real (a matrícula 3B/2B e o valor em `papel_na_turma`). A mesma conferência lista as matrículas marcadas.
+- **Vínculos do estudante fictício:** não verificados na planilha real (a matrícula 3B/2B e o valor em `papel_na_turma`). A mesma conferência lista as matrículas marcadas.
 - Conta de serviço, `ACESSOS_JSON` e Cron Triggers reais.
 
 ---
@@ -185,6 +241,10 @@ O teste `testSincronizacaoDocumentos` recusa qualquer outro valor. **Desligar:**
 
 ---
 
+### 8.1 Criar a estrutura da avaliação (somente numa CÓPIA primeiro)
+
+1. Configurações → Backup → baixar e conferir o backup. 2. No Worker: `ESTRUTURA_AVALIACAO=ligada`. 3. Configurações → "Estrutura da avaliação" → Verificar → baixar backup verificado → confirmar → criar. 4. Conferir na planilha: 4 abas só com cabeçalho; nenhuma aba existente alterada. 5. Só então configurar a rubrica por turma. **Reversão:** apagar as 4 abas novas (nenhum dado existente depende delas) e desligar a variável.
+
 ## 9. Plano de reversão
 
 | Mudança | Como reverter |
@@ -200,61 +260,22 @@ O teste `testSincronizacaoDocumentos` recusa qualquer outro valor. **Desligar:**
 
 ## 10. Próximas etapas priorizadas
 
-1. **Validação real (bloqueia o resto):** itens de §1 e §8 numa cópia da planilha; conferir cabeçalhos e vínculos do estudante com supervisão alternativa.
+1. **Validação real (bloqueia o resto):** itens de §1 e §8 numa cópia da planilha; conferir cabeçalhos e vínculos do estudante fictício.
 2. **E2 restante:** conferir e migrar as 4 tabelas restantes; decidir D5.
 3. **E3 restante:** retificação de chamada encerrada; falta/atraso/justificativa/dispensa separados (D2, depende do regulamento); diário e participação.
 4. **E4:** RSS original imutável, tela de conferência de vínculos, janela operacional de 7 dias sem cortar histórico.
-5. **E5:** rubricas versionadas, competências, devolutiva com evidência (D3).
+5. **E5 restante:** descritores da Consultoria Organizacional; competências; rubricas de Participação e Desempenho (pesos internos aguardam sua aprovação — hoje seguem manuais); registro estruturado de participação; decidir a associação de "Registros semanais" × "Seminário/Atividade avaliativa".
 6. **E6:** menu (Agenda/Acervo), pendências tipadas, fechamento semestral.
 
-## 8. Checkpoint Codex — 14/10/2026
+## PRISMA — integração de interface (14/10/2026)
+Branch de desenvolvimento `feat/prisma-integracao-avaliacoes-rss` combina as referências preservadas `a3d6cba` (PR #46) e `c318913` (Codex), reaproveitando a correção administrativa `fede73d`. A especificação do documento mestre do Drive foi relida; nome provisório, infraestrutura e regras acadêmicas preservados.
 
-### Referências e arquitetura efetiva
-PR #46 permanece **aberto, não integrado**, head `3cf4bc2`; main `d707105`. Trabalho isolado em branches próprias: estabilização `bf6bb05`, PRISMA `3c2b4b6`, gestão/homologação sobre essa base. Nenhum merge, deploy, alteração de credencial, migração D1 ou escrita nos recursos externos.
+Design: tokens de fundo/superfície/texto/borda/ação/seleção/sucesso/alerta/erro/informação/sincronização; floresta/sálvia/marfim/areia/terracota; Inter para interface, Fraunces em títulos e Lucide. Navegação principal Hoje/Agenda/Turmas/Avaliações/Acervo; quatro áreas de turma; ficha por matrícula e período; Modo Aula contextual com confirmação explícita, sem presença automática. Rotas antigas permanecem acessíveis quando apropriado.
 
-React → serviços/contexto → autenticação Firebase verificada no Worker → coordenador serial por planilha → Google Sheets. Cada escrita crítica usa identidade verificada, ID de operação, base de comparação, recibo durável e log. Resposta perdida é reconciliada antes de repetir; a fila conserva o mesmo ID/corpo depois do primeiro envio. IndexedDB é cache/fila, não prova de gravação remota. Conflitos exigem revisão; adotar a versão oficial arquiva a proposta local, sem sobrescrevê-la automaticamente. Conta/titular da fila e do token OAuth são conferidos.
+A avaliação recente do PR #46 foi preservada: resumo parcial/final, evidências, contribuições qualitativas, rubricas versionadas e devolutiva utilizam os serviços existentes. Não foi criada fórmula ou cálculo acadêmico novo. Pareceres em Hoje abrem diretamente a matrícula; na ficha aparecem na linha do tempo e na seção Pareceres. Notas oficiais ficam em seção expansível separada das contribuições. Os seis subcritérios/pesos/descritores do modelo existente são exibidos, sem alterar seus valores. RSS usa o painel único ENTREGUE/NÃO ENTREGUE e mantém dados originais; ausência de leitura não gera falta de entrega. Documento recente permanece metadado, não avaliação de qualidade.
 
-### Gestão contínua, sem novas abas por semestre
-- `semestreService`: valida identificação/datas, remapeia IDs de turmas e critérios, reutiliza o catálogo de disciplinas, cria nova vigência de horários e marco de início das aulas quando fornecido. Não copia matrículas, notas, frequências, RSS, documentos, pareceres ou cancelamentos/reagendamentos antigos. Competências/modelos/regras administrativas sem modelo canônico confirmado não são copiados automaticamente.
-- Rubrica herdada: `A_CONFERIR`; professora confere explicitamente. Pontos máximos/pesos e descrições vêm dos critérios existentes. Critério usado em avaliação não é editado em lugar; versionamento formal permanece pendente. Validação das avaliações detalhadas verifica critérios, escopo, limites e consistência com a soma já utilizada pela interface; não muda pesos ou notas armazenadas.
-- CSV de cronograma: prévia, datas explícitas, origem/status/escopo, bloqueio de repetidos, somente inserção. Datas ausentes não são estimadas. Edição de marco existente ainda depende de interface específica; importação não substitui registros.
-- Inscrição: Google Forms institucional existente + QR local; importação das respostas por CSV pela professora. Usa `alunos` e `matriculas`, com `PENDENTE` antes da aprovação; rejeição mantém matrícula cancelada. RA identifica cadastro existente; conferência humana precede recebimento, sem atualizar dados pessoais antigos silenciosamente. Abrir/fechar respostas e coleta automática continuam no Forms; integração automática não foi provisionada.
-- Grupos: criação/vínculos datados apenas no contexto coletivo reconhecido pelas regras existentes; IDs próprios, membros por matrícula, vínculos ativos não duplicados e controle de turma no servidor. Documentação coletiva continua uma referência única.
-- Encerramento: conferência de pendências conhecidas/fila/avaliações + declaração explícita de revisão docente. Servidor também recusa inscrições/rubricas/avaliações pendentes; período arquivado bloqueia edições comuns inclusive por chamadas diretas. Arquivo não significa homologação de notas, nem validação automática de reposições/pareceres ainda sem módulo. Retificação formal não está habilitada.
+Monitoras usam a delegação já disponível no servidor; nenhuma variável/permissão real alterada. Frequências, chamadas e notas não são habilitadas para elas. Envios pendentes de contribuição ficam identificados, conservam o texto e bloqueiam reenvio acidental. Troca de conta limpa também as abas aditivas do contexto. Código combinado mantém proteções anteriores de versão, idempotência, matrícula/período e histórico.
 
-### Confiabilidade e segurança
-- Monitoras não escrevem frequências/encontros, mesmo com delegação legada `CHAMADA`; leitura legada permanece filtrada e sem justificativas/observações. Negação acontece antes de solicitar credencial Google. Notas, critérios e ocorrências continuam restritos no servidor.
-- Validação de período da matrícula, RA/matrícula duplicados, critério de outra turma, grupo/integrante incompatíveis, identidade imutável da matrícula, chamada encerrada e relações antes de exclusão. Frequências e avaliações não têm exclusão comum.
-- `avaliacoes_completas`: validação dos critérios dentro do JSON, evitando limite inválido, critério repetido/alheio ou total inconsistente. Rascunho permanece distinto de conclusão.
-- Logs ocultam textos pessoais/livres e JSON estruturado (incluindo comentários dentro da rubrica). Mantêm autor verificado, horário, operação, campos e valores escalares necessários.
-- `/api/diagnostico`: autenticado, somente professora, mostra observação real do Worker/bindings. Configuração não equivale a acesso Google. Interface usa datas reais de leitura/escrita e fila; documentos e backup conservam seus painéis de conferência.
-- Drive: somente metadados, execução serial, estados de acesso/arquivo/conferência separados. `0 11 * * *` e `0 21 * * *` correspondem a 08h/18h em Brasília, conforme configuração/testes locais. **Agendamentos não ativados.**
-- Backup v2: checksum/contagens/referências, dados operacionais, fila/titular e arquivos de recuperação. Restauração por registro via mesma persistência, sem exclusão do trabalho posterior. Retenção institucional não definida; nenhuma limpeza automática. Cache/backup local exigem política para dispositivos compartilhados e proteção institucional.
+Validação reproduzível: `npm run lint`, `npm test`, `npm run build`, `npm run test:worker-real`, `npm run test:ui`, `npm run test:painel-configuracoes`. Navegador usa dados fictícios e bloqueia rede externa. Runtime workerd é local, com Google/JWKS/Sheets/Drive simulados. Backup da fixture administrativa é simulado para testar a interface; integridade/restauração são exercitadas separadamente na suíte. Evidências em `artifacts/ui-prisma` e `artifacts/painel-configuracoes` (fora do Git). Teste complementar cobre abas novas, seis subcritérios, teclado, claro/escuro, ausência de rolagem horizontal e monitora com envio recusado, a 320/390/768/1280 px. Leitor de tela/dispositivo físico e integrações reais ainda não homologados. Nenhum dado oficial ou banco alterado; não houve merge em main, migração ou deploy.
 
-### Evidências e cobertura
-Fontes externas consultadas **somente em leitura**: especificação v1.2/anexo, metadados/cabeçalhos da planilha de desenvolvimento, amostra dos oito critérios e ACLs da planilha/pasta fornecidas. Não apareceu permissão pública nesses dois recursos; não equivale a auditoria completa do Drive ou a teste da conta de serviço. Não foi lido conteúdo clínico.
-
-37 programas de teste, TypeScript, build, auditoria de dependências, Worker real local (`workerd`) e navegador. O cenário 2027.1 usa 3 turmas, 54 matrículas/51 alunos, vínculos em duas turmas, matrícula alternativa, 3 grupos/18 integrantes, 6 semanas, 318 frequências e 18 encontros. Cobre inscrições pendentes/aprovação, rubrica/copiar/confirmar, zero versus ausência, replay, nota de outro contexto, bloqueio de alteração após fechamento, arquivo e histórico. QR decodificado opticamente; backup conferido e restauração efetiva exercitada pelo teste de backup em planilha simulada.
-
-UI: nove telas claro/escuro, cinco cenários de interação, 320–1440 px/lista de 60 pessoas, foco/escape de modal e menu, contraste/axe WCAG 2/2.1/2.2 AA, prévia sem gravação, confirmação explícita, erro preservando formulário, nota digitada mantida na sincronização, ausência de dados sem falso “regular”. Artefatos locais em `artifacts/ui-prisma/`; reprodução: `npm run test:ui` (Chromium instalado ou `CHROMIUM_PATH`). CI inclui testes UI, sem autorização de produção.
-
-**Distinções:** navegador usa API simulada; handler/coordenador usam Sheets/Drive/JWKS simulados; `workerd` é runtime real local com APIs simuladas. Leituras externas de metadados são reais. Não houve teste de escrita/restauração/Google/Firebase reais ou produção, nem leitor de tela/dispositivo físico.
-
-### Diagnóstico e pendências
-**PARCIALMENTE CONCLUÍDO · NÃO APTO para homologação do semestre completo.**
-
-| Prioridade | Situação |
-|---|---|
-| P0 | Falhas reproduzidas de permissão de chamada, vínculo cruzado, exposição de JSON em log e estados falsos corrigidas/mitigadas no escopo testado. Infraestrutura/autorização reais não homologadas. |
-| P1 | Participação/diário/competências estruturados, ciclo de reposição conforme D2, pareceres de monitoras/revisão docente, homologação/versionamento oficial e retificação formal ainda incompletos. Não simulados como sucesso. |
-| P2 | Criação/clonagem/importação é sequencial, não transação entre tabelas: interrupção preserva progresso/fila, exige conferência antes de repetir. Coleta automática/abertura-fechamento do Forms, correção de inscrição já recebida, edição de marcos, política de retenção/cache/backup e teste de escala de vários anos pendentes. |
-| P3 | Componentes legados ainda usam utilidades antigas; migração gradual de tokens e avaliação manual assistiva/dispositivos físicos. |
-
-Próxima intervenção humana: confirmar as definições institucionais e a base canônica; disponibilizar ambiente/cópia e contas de teste autorizadas para validar identidade, conta de serviço, gravação, Drive e recuperação reais. Conferir implantações/gatilhos GAS antes de qualquer merge: ausência de referência ativa no código não comprova ausência de implantação externa. Nenhuma autorização de produção é inferida deste checkpoint.
-
-
-**Correções finais do checkpoint:** base de versão da avaliação acompanha o formulário desde o início da edição, mesmo após sincronização do cache; teste mantém proposta 7, servidor 8 e base original 5, recusando sobrescrita. Avaliação de semestre vazio não reutiliza turma/notas do período anterior. Datas de chamada são conferidas contra a vigência conhecida do período. Calendário/documentação ausentes exibem “não verificado”, sem falso “em dia”. Auditoria automatizada inclui painel desktop além dos temas mobile.
-
-**Proteção adicional de cache:** proposta recusada por conflito permanece na fila, enquanto o cache restaura o snapshot anterior à proposta (teste: base 5, proposta 7, servidor/cache 8). Mudança observada de papel/turmas/operações invalida a interface antes de uma nova leitura. Monitoras só recebem o snapshot filtrado pelo servidor, inclusive com fila pendente; não recebem propostas privadas antigas no painel de conflitos. Isso não substitui uma política institucional de dispositivos e armazenamento local.
-
-**Referência revalidada na entrega:** main `d707105` permanece; PR #46 avançou de `3cf4bc2` para `a3d6cba` enquanto esta branch era desenvolvida, acrescentando avaliação formativa/RSS. Sem sobrescrita, merge ou deploy. A cobertura e as lacunas de §8 descrevem esta branch isolada, não a combinação ainda não testada com esses commits novos. Reconciliar antes de qualquer integração.
+Checkpoint de validação: 47 programas e Worker local aprovados; nove telas e seis fluxos gerais de navegador; 48 verificações adicionais de avaliação/monitoras nos quatro tamanhos, sem violação automatizada de acessibilidade nem rolagem horizontal; painel administrativo aprovado. Auditoria de dependências zero, bindings atualizados e empacotamento dry-run aprovado. Regressão adicional preserva rascunhos coletivos existentes com `GRUPO:<grupo_id>`, validando o grupo canônico/turma/critério e recusando vínculo cruzado. Apenas dados fictícios; nenhum efeito em planilha real.

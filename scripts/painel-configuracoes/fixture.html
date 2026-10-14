@@ -1,0 +1,13 @@
+<!doctype html><html lang="pt-BR"><head><title>Configurações — teste isolado</title><meta name="viewport" content="width=device-width,initial-scale=1"></head><body><div id="root"></div><script type="module">
+import React from 'react';
+import {createRoot} from 'react-dom/client';
+import {SupervisaoProvider,useSupervisao} from '/src/context/SupervisaoContext.tsx';
+import {ConfiguracoesView} from '/src/views/ConfiguracoesView.tsx';
+import {definirProvedorIdToken} from '/src/services/escritaCoordenadaService.ts';
+import {setMockToken} from '/src/services/googleSheetsService.ts';
+window.preparePanel=()=>setMockToken('oauth-totalmente-ficticio');
+import '/src/index.css';
+definirProvedorIdToken(async()=> 'token-totalmente-ficticio');
+function Probe(){const c=useSupervisao();c.perfilServidor={papel:'PROFESSORA_ADMIN',email:'teste@example.invalid',turmas:[],operacoes:[],avisos:[]};c.exportDatabaseAsJson=async()=>JSON.stringify({checksum:'a'.repeat(64),dados:{periodos:[]}});return React.createElement(ConfiguracoesView);}
+createRoot(document.getElementById('root')).render(React.createElement(SupervisaoProvider,null,React.createElement(Probe)));
+</script></body></html>

@@ -85,6 +85,27 @@ assert(modos.includes('AGENDADO|0 11 * * *') && modos.includes('AGENDADO|0 21 * 
 resultado['histórico'] = modos;
 const est = await get(idAdmin, '/api/documentos/estado'); resultado['estado'] = { ligada: est.corpo.ligada, agendamentos: est.corpo.agendamentos.map((a: any) => a.horario_brasilia), execucoes: est.corpo.historico.length };
 
+// ---------- estrutura aditiva da avaliação: diagnóstico e criação somente-aditiva ----------
+{
+  const post = (id: string | null, corpo: unknown) => fetch(base + '/api/estrutura/avaliacao', { method: 'POST', headers: hdr(id), body: JSON.stringify(corpo) }).then(async x => ({ status: x.status, corpo: await x.json() as any }));
+  const existentesAntes = JSON.stringify({ orientacoes: estado().orientacoes, frequencias: estado().frequencias });
+  assert.equal((await get(null, '/api/estrutura/avaliacao')).status, 401);
+  assert.equal((await get(idMon, '/api/estrutura/avaliacao')).status, 403, 'monitora não vê nem cria a estrutura');
+  const d0 = await get(idAdmin, '/api/estrutura/avaliacao'); assert.equal(d0.status, 200);
+  assert(d0.corpo.abas.every((a: any) => a.situacao === 'ausente'), 'antes: nenhuma aba existe');
+  assert.equal((await post(idMon, { confirmo: 'CRIAR_ESTRUTURA_AVALIACAO', backup_checksum: 'a'.repeat(64) })).status, 403);
+  let p = await post(idAdmin, {}); assert.equal(p.status, 400); assert.equal(p.corpo.code, 'CONFIRMACAO_AUSENTE');
+  p = await post(idAdmin, { confirmo: 'CRIAR_ESTRUTURA_AVALIACAO', backup_checksum: 'xyz' }); assert.equal(p.status, 400, 'checksum de backup obrigatório');
+  assert.equal(estado().config_avaliacao, undefined, 'nada criado sem confirmação');
+  p = await post(idAdmin, { confirmo: 'CRIAR_ESTRUTURA_AVALIACAO', backup_checksum: 'a'.repeat(64) });
+  assert.equal(p.status, 200, JSON.stringify(p.corpo)); assert.equal(p.corpo.criadas.length, 5);
+  for (const n of ['config_avaliacao', 'rubricas_avaliacao', 'avaliacao_rascunhos', 'evidencias_avaliacao', 'rss_ajustes']) assert(estado()[n][0].length > 8 && estado()[n].length === 1, n + ' criada só com cabeçalho');
+  assert.equal(JSON.stringify({ orientacoes: estado().orientacoes, frequencias: estado().frequencias }), existentesAntes, 'abas existentes intactas');
+  p = await post(idAdmin, { confirmo: 'CRIAR_ESTRUTURA_AVALIACAO', backup_checksum: 'a'.repeat(64) }); assert.equal(p.corpo.criadas.length, 0); assert.equal(p.corpo.existentes.length, 5);
+  const d1 = await get(idAdmin, '/api/estrutura/avaliacao'); assert(d1.corpo.abas.every((a: any) => a.situacao === 'ok'));
+  resultado['estrutura da avaliação'] = { antes: 'ausente', criadas: 5, segunda_execucao: 'idempotente', abas_existentes: 'intactas' };
+}
+
 const ac = await get(idAdmin, '/api/acesso'); resultado['/api/acesso (administradora)'] = `${ac.status} ${ac.corpo.papel}`;
 const am = await get(idMon, '/api/acesso'); resultado['/api/acesso (monitora)'] = `${am.status} ${am.corpo.papel} turmas=${am.corpo.turmas}`;
 const big = await fetch(base + '/api/critical-write', { method: 'POST', headers: { 'X-Firebase-Id-Token': idAdmin }, body: 'x'.repeat(200000) }); resultado['corpo > 128 KB'] = big.status; assert.equal(big.status, 413);

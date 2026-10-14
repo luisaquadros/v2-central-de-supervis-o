@@ -7,9 +7,11 @@ import { validarRegistro, valorCelula } from './validacaoRegistro';
 import { valorComparavelCampo } from './coordenacaoCritica';
 import { LIMITE_CORPO, lerCorpoLimitado, baseSheets } from './utilitariosWorker';
 import { autenticarPerfil, type AmbienteAutorizacao } from './autorizacao';
-import { podeEscreverTabela, turmaPermitida, turmaDoRegistro, filtrarLeitura, tabelaLegivelPor, LEITURA_MONITORA, type Perfil } from './acessos';
+import { podeEscreverTabela, validarContribuicaoMonitora, turmaPermitida, turmaDoRegistro, filtrarLeitura, tabelaLegivelPor, LEITURA_MONITORA, type Perfil } from './acessos';
 import { tokenContaServico, ContaServicoIndisponivel, ESCOPO_SHEETS, ESCOPO_DRIVE_METADADOS, type AmbienteContaServico } from './contaServico';
 import { sincronizarDocumentos, CRONS_SINCRONIZACAO, HORARIOS_BRASILIA, JANELA_PADRAO_DIAS, ABA_MONITORAMENTO } from './sincronizacaoDocumentos';
+import { criarEstruturaAvaliacao, lerCabecalhos } from './estruturaAvaliacaoServidor';
+import { diagnosticarEstrutura } from '../services/estruturaAvaliacao';
 import { compararVersaoDeCampos, adaptarRegistroCritico, idCritico, TABELAS_CRITICAS, resumirAlteracaoParaLog, linhaDeLog, COLUNAS_LOG_ALTERACOES, type EscritaCritica } from './coordenacaoCritica';
 
 const ASSET_BINDING:keyof Cloudflare.Env='ASSETS';
@@ -21,6 +23,7 @@ interface Namespace {idFromName(key:string):unknown;get(id:unknown):{fetch(reque
 interface Env extends AmbienteAutorizacao, AmbienteContaServico {ASSETS:{fetch(request:Request):Promise<Response>};WRITE_COORDINATOR:Namespace;
   /** 'ligada' habilita a sincronização de metadados do Drive (manual e agendada). Qualquer outro valor = desligada. */SINCRONIZACAO_DOCUMENTOS?:string;
   JANELA_DOCUMENTOS_DIAS?:string;
+  /** 'ligada' permite criar (somente adicionar) as abas da avaliação. Qualquer outro valor = desligada. */ESTRUTURA_AVALIACAO?:string;
   /** Somente testes locais: precisam ser loopback. */SHEETS_API_BASE?:string;DRIVE_API_BASE?:string}
 const DRIVE_PADRAO='https://www.googleapis.com/drive/v3';
 const driveBase=(env:{DRIVE_API_BASE?:string}):string=>{const o=env.DRIVE_API_BASE;return o&&/^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?\//.test(o)?o.replace(/\/+$/,''):DRIVE_PADRAO};
@@ -200,9 +203,16 @@ export class WriteCoordinator {
         // A turma do registro novo E a do registro existente precisam ser da monitora (não dá para "mover" um registro alheio).
         for(const alvo of [payload.registro,remote as Record<string,unknown>|null]){
           if(!alvo)continue;
-          const d=turmaPermitida(perfil,turmaDoRegistro(alvo,busca));
+          const turmaAlvo=turmaDoRegistro(alvo,busca);
+          // Atualização parcial sem turma/matrícula não muda o vínculo: vale a turma do registro JÁ existente (verificada no passo seguinte).
+          if(alvo===payload.registro&&payload.tipo==='UPDATE'&&remote&&turmaAlvo===undefined&&!String(alvo.turma_id??'').trim()&&!String(alvo.matricula_id??'').trim())continue;
+          const d=turmaPermitida(perfil,turmaAlvo);
           if(!d.ok)return fail(d.message,403,d.code);
         }
+      }
+      if(perfil.papel==='MONITORA'&&table==='evidencias_avaliacao'){
+        const d=validarContribuicaoMonitora(perfil,payload.registro,remote);
+        if(!d.ok)return fail(d.message,403,d.code);
       }
       // Referências novas ou alteradas devem existir na base oficial. Não revalida
       // vínculos legados intactos durante uma edição de outro campo.
@@ -210,6 +220,8 @@ export class WriteCoordinator {
         const refs:Record<string,string>={matricula_id:'matriculas',aluno_id:'alunos',turma_id:'turmas',periodo_id:'periodos',disciplina_id:'disciplinas',criterio_id:'criterios_avaliacao',grupo_id:'grupos_pratica'};
         for(const [campo,aba] of Object.entries(refs)){
           const valor=payload.registro[campo];
+          const coletivo = table === 'avaliacao_rascunhos' && campo === 'matricula_id' && String(payload.registro.escopo ?? remote?.escopo) === 'COLETIVA' && String(valor) === `GRUPO:${payload.registro.grupo_id ?? remote?.grupo_id}`;
+          if(coletivo)continue; // O grupo canônico é conferido na referência grupo_id e no vínculo abaixo.
           if(campo===PRIMARY_KEYS[table] || valor==null || String(valor).trim()==='' || remote && String(remote[campo])===String(valor))continue;
           const ref=await googleFetch(this.base+SPREADSHEET_ID+'/values/'+encodeURIComponent(quoted(aba)+'!A1:ZZ'),token);
           const rr=(ref.values||[]) as unknown[][], ci=(rr[0]||[]).indexOf(PRIMARY_KEYS[aba]);
@@ -303,7 +315,7 @@ export class WriteCoordinator {
   }
 }
 
-const ROTAS_API=new Set(['/api/diagnostico','/api/critical-write','/api/acesso','/api/leitura','/api/documentos/sincronizar','/api/documentos/estado']);
+const ROTAS_API=new Set(['/api/estrutura/avaliacao','/api/diagnostico','/api/critical-write','/api/acesso','/api/leitura','/api/documentos/sincronizar','/api/documentos/estado']);
 const coordenador=(env:Env)=>env[WRITE_BINDING].get(env[WRITE_BINDING].idFromName(SPREADSHEET_ID));
 const perfilPublico=(p:Perfil)=>({papel:p.papel,email:p.email,turmas:p.turmas,operacoes:p.operacoes});
 
@@ -355,13 +367,43 @@ export default {
       const todas=[...new Set([...pedidas,...contexto])];
       const lido:Record<string,unknown[][]>={};
       try{
-        const r=await googleFetch(base+'/values:batchGet?'+todas.map(t=>'ranges='+encodeURIComponent(quoted(t)+'!A1:ZZ')).join('&'),token);
-        todas.forEach((t,i)=>{lido[t]=(r.valueRanges?.[i]?.values||[]) as unknown[][]});
+        // Abas que ainda não existem (ex.: estrutura da avaliação antes de ser criada) leem como vazias, sem derrubar a leitura.
+        const meta=await googleFetch(base+'?fields='+encodeURIComponent('sheets(properties(title))'),token);
+        const existentes=new Set<string>((meta.sheets||[]).map((x:any)=>x.properties.title));
+        const presentes=todas.filter(t=>existentes.has(t));
+        todas.forEach(t=>{lido[t]=[]});
+        if(presentes.length){
+          const r=await googleFetch(base+'/values:batchGet?'+presentes.map(t=>'ranges='+encodeURIComponent(quoted(t)+'!A1:ZZ')).join('&'),token);
+          presentes.forEach((t,i)=>{lido[t]=(r.valueRanges?.[i]?.values||[]) as unknown[][]});
+        }
       }catch(e:any){return fail(e?.message||'Falha na leitura.',e?.http===403?403:502,'LEITURA_FALHOU')}
       const objs=(t:string)=>{const v=lido[t]||[];const h=(v[0]||[]).map(x=>String(x).trim());return v.slice(1).map(l=>Object.fromEntries(h.map((c,i)=>[c,l[i]??''])))};
       const tabelas:Record<string,{values:unknown[][]}>={};
       for(const t of pedidas)tabelas[t]={values:filtrarLeitura(t,lido[t]||[],perfil,{matriculas:objs('matriculas'),grupos:objs('grupos_pratica')})||[]};
       return json({ok:true,papel:perfil.papel,tabelas});
+    }
+
+    if(url.pathname==='/api/estrutura/avaliacao'){
+      if(perfil.papel!=='PROFESSORA_ADMIN')return fail('Somente a professora administradora.',403,'NAO_AUTORIZADO');
+      const bearer=request.headers.get('Authorization')||'';
+      if(!/^Bearer \S+$/.test(bearer))return fail('Autenticação Google necessária.',401);
+      const token=bearer.slice(7);
+      const urlPlanilha=baseSheets(env)+SPREADSHEET_ID;
+      const chamar=(u:string,init:RequestInit={})=>googleFetch(u,token,init);
+      if(request.method==='GET'){
+        try{return json({ok:true,abas:diagnosticarEstrutura(await lerCabecalhos(urlPlanilha,chamar))})}
+        catch(e:any){return fail(e?.message||'Falha ao ler a estrutura.',e?.http===403?403:502,'LEITURA_FALHOU')}
+      }
+      if(request.method!=='POST')return fail('Método não permitido.',405);
+      if(env.ESTRUTURA_AVALIACAO!=='ligada')return fail('A criação da estrutura da avaliação está desligada neste ambiente.',409,'ESTRUTURA_DESLIGADA');
+      const corpo=await lerCorpoLimitado(request,2048);
+      let pedido:any=null;try{pedido=corpo?JSON.parse(corpo):null}catch{}
+      if(!pedido||pedido.confirmo!=='CRIAR_ESTRUTURA_AVALIACAO'||!/^[a-f0-9]{16,128}$/.test(String(pedido.backup_checksum||'')))
+        return fail('Confirme a criação e informe o checksum do backup verificado.',400,'CONFIRMACAO_AUSENTE');
+      try{
+        const rel=await criarEstruturaAvaliacao(urlPlanilha,chamar);
+        return json({ok:true,...rel});
+      }catch(e:any){return fail(e?.message||'Falha ao criar a estrutura.',e?.http===403?403:502,'ESTRUTURA_FALHOU')}
     }
 
     if(url.pathname==='/api/documentos/estado'){

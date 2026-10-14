@@ -402,5 +402,5 @@ console.log(
   "2027.1: 3 turmas, 54 matrículas, 51 alunos, clone, cronograma, chamada alternativa, notas zero, histórico, duplicidades, backup e QR aprovados com dados fictícios.",
 );
 console.log(
-  "Lacunas não simuladas como sucesso: participação/competências estruturadas, reposição completa, pareceres e homologação versionada.",
+  "Lacunas não simuladas como sucesso: participação/competências estruturadas, reposição completa e homologação institucional de ponta a ponta. Pareceres/rubricas recentes são cobertos pelos testes específicos.",
 );

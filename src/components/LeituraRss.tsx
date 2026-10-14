@@ -34,9 +34,8 @@ export const LeituraRss: React.FC<{ registros: RegistroSemanal[] }> = ({ registr
       const rawSemana = String(obj.semana_rss ?? r.semana ?? '').trim();
       const semana = rawSemana && Number(rawSemana) >= 1 && Number(rawSemana) <= 12 ? rawSemana : 'não definida';
       const encontro = String(obj.encontro_numero ?? '').trim();
-      const revisao = String(obj.status_revisao ?? '').trim().toUpperCase();
-      const statusTexto = revisao === 'PENDENTE_REVISAO' ? 'Em revisão'
-        : obterSemanaRssValidada(r) !== null ? 'Validado' : revisao ? revisao.replaceAll('_',' ') : String(r.status || 'Não validado');
+      // Sem etapa de validação: o registro recebido é uma entrega; a semana pode estar por identificar.
+      const statusTexto = ['RECEBIDO', 'ENTREGUE'].includes(String(r.status || '').toUpperCase()) ? 'Entregue' : String(r.status || '—');
       const textos = CAMPOS_TEXTO_RSS.map(([key,label])=>({key,label,value:String(obj[key] ?? '').trim()})).filter(x=>x.value);
       const links = CAMPOS_LINK.map(key=>String(obj[key]??'').trim()).filter(v=>/^https:\/\//i.test(v));
       const conteudoDisponivel = textos.length>0 || links.length>0;

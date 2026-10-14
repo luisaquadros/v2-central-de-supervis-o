@@ -13,6 +13,8 @@ import {salvarTabelasNoIndexedDb} from '/src/services/indexedDbService.ts';
 import {ModalNovaOrientacao} from '/src/components/Modals.tsx';
 import {AvaliacaoView} from '/src/views/AvaliacaoView.tsx';
 import {ModoSupervisaoView} from '/src/views/ModoSupervisaoView.tsx';
+import {rubricaParaLinha,configParaLinha,evidenciaParaLinha} from '/src/services/estruturaAvaliacao.ts';
+import {criarRubricaDocumentacao,aprovarRubrica} from '/src/services/rubricasAvaliacao.ts';
 import '/src/index.css';
 const today='2026-10-13';
 const fixture={
@@ -25,16 +27,27 @@ const fixture={
  criterios_avaliacao:[{criterio_id:'c-test',turma_id:'t-test',disciplina_id:'d-test',periodo_id:'p-test',nome:'Critério sintético',nota_maxima:10,peso:1,ativo:true}],
  frequencias:[],avaliacoes:[{avaliacao_id:'av-test',matricula_id:'m-test',criterio_id:'c-test',nota:5,observacao:''}],documentos:[],encontros_turma:[],leituras_responsaveis:[{leitura_id:'l-test',turma_id:'t-test',tema:'Evidência e supervisão',artigo_leitura:'Material fictício',referencia_link:'https://exemplo.invalid/material'}],configuracoes:[]
 };
+fixture.config_avaliacao=[];fixture.rubricas_avaliacao=[];fixture.avaliacao_rascunhos=[];fixture.evidencias_avaliacao=[];fixture.rss_ajustes=[];
+const scenarioView=new URL(location.href).searchParams.get('view');
+if(['formativa','monitora-ficha'].includes(scenarioView)){
+ const agora='2026-10-14T10:00:00Z';
+ fixture.criterios_avaliacao[0].nota_maxima=2.5;fixture.criterios_avaliacao[0].codigo_criterio='DOCUMENTACAO';fixture.avaliacoes[0].nota=1.25;
+ const rubrica=aprovarRubrica(criarRubricaDocumentacao({tipoEstagio:'CLINICA_ADULTO',criterioId:'c-test',turmaId:'t-test',periodoId:'p-test',criadoPor:'professora@exemplo.com',agora}), 'professora@exemplo.com',agora);
+ fixture.rubricas_avaliacao.push(rubricaParaLinha(rubrica));
+ fixture.config_avaliacao.push(configParaLinha({config_id:'cfg-test',periodo_id:'p-test',turma_id:'t-test',criterio_id:'c-test',versao:1,status:'aprovada',tipo_calculo:'hybrid',tipo_estagio:'CLINICA_ADULTO',rubrica_id:rubrica.rubrica_id,config:{agregacao:'soma'},criado_em:agora,criado_por:'professora@exemplo.com',aprovado_em:agora,aprovado_por:'professora@exemplo.com'}));
+ fixture.evidencias_avaliacao.push(evidenciaParaLinha({evidencia_id:'ev-test',periodo_id:'p-test',turma_id:'t-test',matricula_id:'m-test',data:'2026-10-13',origem:'CONTRIBUICAO_MONITORA',polaridade:'POSITIVO',observacao:'Parecer fictício: organização consistente.',responsavel:'professora@exemplo.com',preliminar:true,criado_em:agora,atualizado_em:agora}));
+}
 const count=Number(new URL(location.href).searchParams.get('count')||1);
 for(let i=1;i<count;i++){fixture.alunos.push({...fixture.alunos[0],aluno_id:'a-test-'+i,nome:'Estudante fictício '+i});fixture.matriculas.push({...fixture.matriculas[0],matricula_id:'m-test-'+i,aluno_id:'a-test-'+i});}
 await salvarTabelasNoIndexedDb(fixture);
 function Probe(){
 const c=useSupervisao();window.auditContext=c;
 const view=new URL(location.href).searchParams.get('view');
-c.perfilServidor={papel:view==='monitora'?'MONITORA':'PROFESSORA_ADMIN',email:'professora@exemplo.com',turmas:['*'],operacoes:['CHAMADA','ENTREGAS','DOCUMENTOS_VER']};
+c.perfilServidor={papel:['monitora','monitora-ficha'].includes(view)?'MONITORA':'PROFESSORA_ADMIN',email:'professora@exemplo.com',turmas:['*'],operacoes:['CHAMADA','ENTREGAS','DOCUMENTOS_VER','CONTRIBUICAO_AVALIATIVA']};
 c.currentUser={uid:'uid-sintetico',email:'professora@exemplo.com'};if(!window.auditDisableAuthOverride)c.acessoGoogleValidado=true;c.hasLocalCache=true;
 if(view==='shell'||view==='monitora')return React.createElement(MainContent);
 if(view==='turma')return React.createElement(TurmaDetalheView,{turmaId:'t-test',onVoltar:()=>{},onIniciarSupervisao:()=>{},onOpenAluno:()=>{}});
+if(view==='formativa'||view==='monitora-ficha')return React.createElement(AlunoFichaView,{matriculaId:'m-test',initialTab:view==='formativa'?'avaliacao':'resumo',onVoltar:()=>{}});
 if(view==='ficha')return React.createElement(AlunoFichaView,{matriculaId:'m-test',onVoltar:()=>{}});
 if(view==='acervo')return React.createElement(AcervoView,{onOpenTurma:()=>{}});
 if(!c.turmas.length)return React.createElement('p',null,'Carregando dados sintéticos');

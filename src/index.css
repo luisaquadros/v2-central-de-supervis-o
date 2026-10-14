@@ -521,3 +521,9 @@ html button:disabled {
 }
 
 @media (max-width:639px) { input,textarea,select { font-size:16px; } }
+
+/* Pareceres positivos: contraste no tema escuro. */
+html[data-theme="dark"] .prisma-avaliacao .text-emerald-900 { color: var(--prisma-success); }
+@media (max-width: 639px) {
+  .prisma-table td[data-label]::before { content: attr(data-label); display: block; color: var(--prisma-muted); font-size: 0.75rem; font-weight: 400; }
+}

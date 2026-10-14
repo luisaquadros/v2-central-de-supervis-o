@@ -16,6 +16,8 @@ export const TABELAS_CRITICAS = new Set([
   'grupos_pratica',
   'grupo_integrantes',
   'configuracoes','criterios_avaliacao','marcos_academicos',
+  // Estrutura aditiva da avaliação: versão, idempotência e log como nas demais
+  'config_avaliacao','rubricas_avaliacao','avaliacao_rascunhos','evidencias_avaliacao','rss_ajustes',
 ]);
 
 export type OperacaoCritica = 'INSERT' | 'UPDATE' | 'DELETE';
@@ -120,7 +122,7 @@ export function compararVersaoDeCampos(
 }
 
 /** Colunas de texto livre: o log registra que mudaram, nunca o conteúdo (pode haver narrativa identificável). */
-const CAMPO_TEXTO_LIVRE=/(observa|justific|descri|texto|narrativ|relato|comentari|conteudo|resumo|mensagem|duvida|limita|prioridade|proximo_passo|anotac|nota_texto|feedback|devolutiva|pauta|diario|nome|email|identificador_academico)/i;
+const CAMPO_TEXTO_LIVRE=/(observa|justific|descri|texto|narrativ|relato|comentari|conteudo|resumo|mensagem|duvida|limita|prioridade|proximo_passo|anotac|nota_texto|feedback|devolutiva|pauta|diario|nome|email|identificador_academico|historico|selecoes|subcriterios)/i;
 const LIMITE_VALOR_LOG=80;
 const CAMPOS_TECNICOS=new Set(['atualizado_em','criado_em','sincronizado_em']);
 

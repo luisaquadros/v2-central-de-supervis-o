@@ -74,7 +74,7 @@ type AppView =
       type: "aluno-ficha";
       matriculaId: string;
       initialTab?: string;
-      returnTo?: "supervisao" | "turma" | "alunos" | "dashboard" | "pendencias";
+      returnTo?: "supervisao" | "turma" | "alunos" | "dashboard" | "pendencias" | "hoje" | "avaliacao";
       returnTurmaId?: string;
     };
 
@@ -134,7 +134,7 @@ export const MainContent: React.FC = () => {
   const handleOpenAlunoFicha = (
     matriculaId: string,
     initialTab: string = "resumo",
-    fromWhere?: "supervisao" | "turma" | "alunos" | "dashboard" | "pendencias",
+    fromWhere?: "supervisao" | "turma" | "alunos" | "dashboard" | "pendencias" | "hoje" | "avaliacao",
     fromTurmaId?: string,
   ) => {
     let returnTo = fromWhere;
@@ -188,6 +188,8 @@ export const MainContent: React.FC = () => {
         });
       } else if (currentView.returnTo === "pendencias") {
         setCurrentView({ type: "tab", tab: "pendencias" });
+      } else if (currentView.returnTo === "hoje" || currentView.returnTo === "avaliacao") {
+        setCurrentView({ type: "tab", tab: currentView.returnTo });
       } else if (currentView.returnTo === "dashboard") {
         setCurrentView({ type: "tab", tab: "dashboard" });
       } else {
@@ -401,7 +403,7 @@ export const MainContent: React.FC = () => {
 
               {currentView.type === "tab" &&
                 currentView.tab === "avaliacao" &&
-                !ehMonitora && <AvaliacaoView />}
+                !ehMonitora && <AvaliacaoView onOpenAluno={(id, tab) => handleOpenAlunoFicha(id, tab || "avaliacao", "avaliacao")} />}
 
               {currentView.type === "tab" &&
                 currentView.tab === "calendario" && <CalendarioView />}

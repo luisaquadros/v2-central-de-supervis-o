@@ -75,6 +75,12 @@ export interface DadosIniciais {
   encontrosTurma?: EncontroTurma[];
   preparacoesAula?: PreparacaoAula[];
   monitoramentoDocumentos?: MonitoramentoDocumento[];
+  /** Linhas brutas das abas aditivas da avaliação (convertidas por estruturaAvaliacao.ts) */
+  configAvaliacao?: Record<string, unknown>[];
+  rubricasAvaliacao?: Record<string, unknown>[];
+  rascunhosAvaliacao?: Record<string, unknown>[];
+  evidenciasAvaliacao?: Record<string, unknown>[];
+  rssAjustes?: Record<string, unknown>[];
   avaliacoesCompletas?: AvaliacaoCompleta[];
   sincronizacao?: Sincronizacao[];
   // Documentação e Contrato da Base Oficial

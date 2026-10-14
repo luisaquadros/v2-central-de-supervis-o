@@ -1,4 +1,6 @@
-import React, { useState } from "react";
+import { lerNumero } from '../services/avaliacaoEngine';
+import { somarNotasValidas, selecionarCriteriosAplicaveis } from '../services/avaliacaoResumo';
+import React, { useState } from 'react';
 import {
   Award,
   Users,
@@ -29,7 +31,7 @@ import {
 import { FeedbackModal } from "../components/FeedbackModal";
 import { NotasParciaisModal } from "../components/NotasParciaisModal";
 
-export const AvaliacaoView: React.FC = () => {
+export const AvaliacaoView: React.FC<{ onOpenAluno?: (id: string, tab?: string) => void }> = ({ onOpenAluno }) => {
   const {
     turmas,
     alunos,
@@ -132,15 +134,12 @@ export const AvaliacaoView: React.FC = () => {
 
   // Estados da Tela de Correção Ampla
   const [notaSimplesInput, setNotaSimplesInput] = useState<number>(0);
-  const [notasCriteriosMap, setNotasCriteriosMap] = useState<
-    Record<string, number>
-  >({});
-  const [comentariosCriteriosMap, setComentariosCriteriosMap] = useState<
-    Record<string, string>
-  >({});
-  const [pontosFortes, setPontosFortes] = useState("");
-  const [pontosDesenvolver, setPontosDesenvolver] = useState("");
-  const [comentarioGeral, setComentarioGeral] = useState("");
+  const [notasCriteriosMap, setNotasCriteriosMap] = useState<Record<string, number>>({});
+  const [criteriosComNotaInvalida, setCriteriosComNotaInvalida] = useState<string[]>([]);
+  const [comentariosCriteriosMap, setComentariosCriteriosMap] = useState<Record<string, string>>({});
+  const [pontosFortes, setPontosFortes] = useState('');
+  const [pontosDesenvolver, setPontosDesenvolver] = useState('');
+  const [comentarioGeral, setComentarioGeral] = useState('');
   const [mostrarEvidencias, setMostrarEvidencias] = useState(false);
   const [mostrarCadernoImportado, setMostrarCadernoImportado] = useState(false);
   const [modalFeedbackAvaliacao, setModalFeedbackAvaliacao] =
@@ -167,22 +166,10 @@ export const AvaliacaoView: React.FC = () => {
   // Critérios oficiais filtrados por turma, disciplina e instrumento da base (sem critérios hardcoded)
   const criteriosAplicaveis = React.useMemo(() => {
     if (!selectedInstrumentoNome) return [];
-    return criterios.filter((c) => {
-      if (c.ativo === false) return false;
-      if (c.periodo_id && c.periodo_id !== turmaAtual?.periodo_id) return false;
-      const matchTurma = !c.turma_id || c.turma_id === selectedTurmaId;
-      const matchDisc =
-        !c.disciplina_id ||
-        (turmaAtual && c.disciplina_id === turmaAtual.disciplina_id);
-      const inst = c.instrumento_avaliacao || c.instrumento;
-      const matchInst =
-        selectedInstrumentoNome === "Avaliação do estágio"
-          ? !String(inst || "").trim()
-          : inst
-            ? inst.trim() === selectedInstrumentoNome.trim()
-            : true;
-      return matchTurma && matchDisc && matchInst;
-    });
+    return selecionarCriteriosAplicaveis(
+      criterios.filter(c => !c.periodo_id || c.periodo_id === turmaAtual?.periodo_id),
+      { turmaId: selectedTurmaId, disciplinaId: turmaAtual?.disciplina_id, instrumento: selectedInstrumentoNome },
+    );
   }, [criterios, selectedTurmaId, turmaAtual, selectedInstrumentoNome]);
 
   // Nota máxima total do instrumento baseada nos critérios
@@ -300,16 +287,21 @@ export const AvaliacaoView: React.FC = () => {
       setPontosDesenvolver(avaliacaoExistente.pontos_desenvolver || "");
 
       const nMap: Record<string, number> = {};
+      const notasInvalidas: string[] = [];
       const cMap: Record<string, string> = {};
       (avaliacaoExistente.notas_criterios || []).forEach((item: any) => {
         if (item?.criterio_id) {
-          nMap[item.criterio_id] = Number(item.nota) || 0;
+          const lida = lerNumero(item.nota);
+          if (lida.valor !== null) nMap[item.criterio_id] = lida.valor; // ausente/inválido não vira 0 lançado
+          else if (lida.invalido) notasInvalidas.push(item.criterio_id);
           if (item.comentario) cMap[item.criterio_id] = String(item.comentario);
         }
       });
       setNotasCriteriosMap(nMap);
       setComentariosCriteriosMap(cMap);
+      setCriteriosComNotaInvalida(notasInvalidas);
     } else {
+      setCriteriosComNotaInvalida([]);
       setNotaSimplesInput(0);
       setComentarioGeral("");
       setPontosFortes("");
@@ -320,10 +312,7 @@ export const AvaliacaoView: React.FC = () => {
   }, [matriculaAtualId, selectedInstrumentoNome, avaliacaoExistente]);
 
   // Soma automática das notas dos critérios
-  const somaNotasCriterios = Object.values(notasCriteriosMap).reduce(
-    (acc, val) => acc + (Number(val) || 0),
-    0,
-  );
+  const somaNotasCriterios = somarNotasValidas(Object.values(notasCriteriosMap)).total;
   const notaFinalCalculada =
     selectedInstrumentoTipo === "RUBRICA" ||
     selectedInstrumentoTipo === "HIBRIDA"
@@ -462,14 +451,15 @@ export const AvaliacaoView: React.FC = () => {
             Frequência, documentação, RSS e registros existentes da matrícula.
             Consulte o painel do estudante selecionado abaixo.
           </p>
+          {currentItem && onOpenAluno && <button className="underline mt-2 p-2" onClick={() => onOpenAluno(currentItem.matricula.matricula_id, "avaliacao")}>Abrir ficha de avaliação</button>}
         </details>
         <details className="prisma-section">
           <summary>2. Pareceres</summary>
           <p className="prisma-meta">
-            Parecer não equivale a nota. O fluxo estruturado de monitoras
-            aguarda autorização e suporte seguros; nenhum parecer é criado nesta
-            tela.
+            Contribuições preliminares das monitoras e análise docente.
+            Parecer não equivale a nota oficial.
           </p>
+          {currentItem && onOpenAluno && <button className="underline mt-2 p-2" onClick={() => onOpenAluno(currentItem.matricula.matricula_id, "pareceres")}>Consultar pareceres</button>}
         </details>
         <details className="prisma-section">
           <summary>3. Notas oficiais</summary>

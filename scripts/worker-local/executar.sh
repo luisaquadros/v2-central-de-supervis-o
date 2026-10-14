@@ -15,6 +15,7 @@ setsid npx --no-install wrangler dev --local --persist-to "$TMP/state" --test-sc
   --var "ACESSOS_JSON:$ACESSOS" \
   --var "GOOGLE_SERVICE_ACCOUNT_JSON:$(cat "$TMP/sa.json")" \
   --var SINCRONIZACAO_DOCUMENTOS:ligada \
+  --var ESTRUTURA_AVALIACAO:ligada \
   --var "SHEETS_API_BASE:http://127.0.0.1:$PORTA_MOCK/v4/spreadsheets/" \
   --var "DRIVE_API_BASE:http://127.0.0.1:$PORTA_MOCK/drive/v3" \
   --var "TOKEN_URL:http://127.0.0.1:$PORTA_MOCK/token" \

@@ -38,7 +38,8 @@ const situacao:any={turmaId:'T',registrosEstudante:[
 ]};
 assert.deepEqual(obterLacunasRssDaAula(situacao,calendario,'2026-09-27'),{faltantes:[2],emRevisao:[]});
 const emRevisao:any={...situacao,registrosEstudante:[...situacao.registrosEstudante,{semana_rss:'2',status:'RECEBIDO',status_revisao:'PENDENTE_REVISAO'}]};
-assert.deepEqual(obterLacunasRssDaAula(emRevisao,calendario,'2026-09-27'),{faltantes:[],emRevisao:[2]});
+// Sem etapa de validação: o registro antes "em revisão" é uma entrega; não há mais lista de revisão.
+assert.deepEqual(obterLacunasRssDaAula(emRevisao,calendario,'2026-09-27'),{faltantes:[],emRevisao:[]});
 const notificacoes=derivarNotificacoesOperacionais([],[],[],[],[{registro_id:'x',semana:2,status:'FALTANTE'}] as any,[],[],[],[],new Date('2026-10-13T12:00:00'));
 assert(notificacoes.every(n=>!String(n.tipo).toUpperCase().includes('RSS')));
 

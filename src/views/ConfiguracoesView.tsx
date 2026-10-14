@@ -3,6 +3,7 @@ import { valorConfiguracaoVisivel } from '../services/configuracoesSeguras';
 import { lerCentralControleSomenteLeitura, type DiagnosticoCentralControle } from '../services/centralControleDiagnostico';
 import { BackupPainel } from '../components/BackupPainel';
 import { AcessoPainel } from '../components/AcessoPainel';
+import { EstruturaAvaliacaoPainel } from '../components/EstruturaAvaliacaoPainel';
 import { ConferenciaMonitoramento } from '../components/ConferenciaMonitoramento';
 import React, { useState } from 'react';
 import {
@@ -299,6 +300,7 @@ export const ConfiguracoesView: React.FC<{onOpenSemestres?:()=>void}> = ({onOpen
           <AcessoPainel />
           <ConferenciaMonitoramento />
           <BackupPainel />
+          <EstruturaAvaliacaoPainel />
         </div>
       )}
 

@@ -113,6 +113,16 @@ export async function conferirIntegridadeSemestre(
     return;
   }
   const novo = { ...(remoto || {}), ...registro };
+  if (tabela === 'avaliacao_rascunhos') {
+    const coletivo = novo.escopo === 'COLETIVA';
+    const alvo = coletivo ? await buscar('grupos_pratica','grupo_id',novo.grupo_id) : await buscar('matriculas','matricula_id',novo.matricula_id);
+    const criterio = await buscar('criterios_avaliacao','criterio_id',novo.criterio_id);
+    if (!alvo || String(alvo.turma_id) !== String(novo.turma_id) ||
+      (coletivo && String(novo.matricula_id) !== `GRUPO:${novo.grupo_id}`) ||
+      (criterio?.turma_id && String(criterio.turma_id) !== String(novo.turma_id))) {
+      throw new IntegridadeSemestreError('VINCULO_INCONSISTENTE','Confira o vínculo do rascunho com matrícula/grupo, turma e critério.');
+    }
+  }
   if (["frequencias", "encontros_turma"].includes(tabela)) {
     const pId = await periodo(novo),
       p = pId ? await buscar("periodos", "periodo_id", pId) : undefined;
