@@ -66,20 +66,20 @@ export default function EvidenciasPainel({ evidencias, matriculaId, turmaId, per
         <p className="text-xs text-slate-500">Observação curta e objetiva. Não copie conteúdo clínico: indique o registro de origem.</p>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <label className="text-xs text-slate-600">Data
-            <input type="date" value={data} onChange={e => setData(e.target.value)} className="mt-1 w-full min-h-[44px] rounded-lg border border-slate-300 px-3 text-sm" />
+            <input type="date" value={data} onChange={e => setData(e.target.value)} className="mt-1 w-full min-h-[44px]! rounded-lg border border-slate-300 px-3 text-sm" />
           </label>
           <label className="text-xs text-slate-600">Origem
-            <select value={origem} onChange={e => setOrigem(e.target.value as OrigemEvidencia)} className="mt-1 w-full min-h-[44px] rounded-lg border border-slate-300 px-3 text-sm">
+            <select value={origem} onChange={e => setOrigem(e.target.value as OrigemEvidencia)} className="mt-1 w-full min-h-[44px]! rounded-lg border border-slate-300 px-3 text-sm">
               {ORIGENS_EVIDENCIA.filter(o => o !== 'CONTRIBUICAO_MONITORA').map(o => <option key={o} value={o}>{ROTULO_ORIGEM[o]}</option>)}
             </select>
           </label>
           <label className="text-xs text-slate-600">Tipo
-            <select value={polaridade} onChange={e => setPolaridade(e.target.value as PolaridadeEvidencia)} className="mt-1 w-full min-h-[44px] rounded-lg border border-slate-300 px-3 text-sm">
+            <select value={polaridade} onChange={e => setPolaridade(e.target.value as PolaridadeEvidencia)} className="mt-1 w-full min-h-[44px]! rounded-lg border border-slate-300 px-3 text-sm">
               {(Object.keys(ROTULO_POLARIDADE) as PolaridadeEvidencia[]).map(p => <option key={p} value={p}>{ROTULO_POLARIDADE[p]}</option>)}
             </select>
           </label>
           <label className="text-xs text-slate-600">Critério (opcional)
-            <select value={criterioId} onChange={e => setCriterioId(e.target.value)} className="mt-1 w-full min-h-[44px] rounded-lg border border-slate-300 px-3 text-sm">
+            <select value={criterioId} onChange={e => setCriterioId(e.target.value)} className="mt-1 w-full min-h-[44px]! rounded-lg border border-slate-300 px-3 text-sm">
               <option value="">Sem critério</option>
               {criterios.map(c => <option key={c.criterio_id} value={c.criterio_id}>{c.nome}</option>)}
             </select>
@@ -90,10 +90,10 @@ export default function EvidenciasPainel({ evidencias, matriculaId, turmaId, per
           <span className="text-[11px] text-slate-400">{observacao.length}/600</span>
         </label>
         <label className="text-xs text-slate-600 block">Referência do registro de origem (opcional)
-          <input value={referencia} onChange={e => setReferencia(e.target.value)} placeholder="ex.: identificador do registro de supervisão" className="mt-1 w-full min-h-[44px] rounded-lg border border-slate-300 px-3 text-sm" />
+          <input value={referencia} onChange={e => setReferencia(e.target.value)} placeholder="ex.: identificador do registro de supervisão" className="mt-1 w-full min-h-[44px]! rounded-lg border border-slate-300 px-3 text-sm" />
         </label>
         {erro && <p role="alert" className="text-xs text-red-700">{erro}</p>}
-        <button onClick={salvar} disabled={salvando} className="min-h-[44px] w-full sm:w-auto rounded-lg bg-indigo-700 px-4 text-sm font-semibold text-white disabled:opacity-50">
+        <button onClick={salvar} disabled={salvando} className="min-h-[44px]! w-full sm:w-auto rounded-lg bg-indigo-700 px-4 text-sm font-semibold text-white disabled:opacity-50">
           {salvando ? 'Salvando…' : 'Salvar evidência'}
         </button>
       </div>
@@ -111,7 +111,7 @@ export default function EvidenciasPainel({ evidencias, matriculaId, turmaId, per
             <p className="text-sm text-slate-800">{e.observacao}</p>
             {e.referencia_id && <p className="text-[11px] text-slate-500">Referência: {e.referencia_id}</p>}
             {e.preliminar && (
-              <button onClick={() => aproveitar(e)} className="min-h-[44px] rounded-lg border border-indigo-300 px-3 text-xs font-semibold text-indigo-800">
+              <button onClick={() => aproveitar(e)} className="min-h-[44px]! rounded-lg border border-indigo-300 px-3 text-xs font-semibold text-indigo-800">
                 Aproveitar na avaliação
               </button>
             )}

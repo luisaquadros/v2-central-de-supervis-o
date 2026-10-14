@@ -38,7 +38,7 @@ export default function AvaliacaoAlunoPainel(p: Props) {
       <div role="tablist" aria-label="Seções da avaliação" className="flex overflow-x-auto rounded-lg border border-slate-300 bg-white p-0.5 text-xs">
         {SECOES.map(s => (
           <button key={s.id} role="tab" aria-selected={secao === s.id} onClick={() => setSecao(s.id)}
-            className={`min-h-[44px] flex-1 whitespace-nowrap rounded-md px-3 font-semibold ${secao === s.id ? 'bg-slate-800 text-white' : 'text-slate-700'}`}>{s.rotulo}</button>
+            className={`min-h-[44px]! flex-1 whitespace-nowrap rounded-md px-3 font-semibold ${secao === s.id ? 'bg-slate-800 text-white' : 'text-slate-700'}`}>{s.rotulo}</button>
         ))}
       </div>
       {dados.linhasInvalidas > 0 && <p role="alert" className="rounded-lg bg-red-50 p-2 text-xs text-red-800">{dados.linhasInvalidas} linha(s) das abas de avaliação estão com conteúdo inválido e foram ignoradas; confira na planilha.</p>}

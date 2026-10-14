@@ -40,14 +40,14 @@ export default function ResumoAvaliacao(p: Props) {
   return (
     <div className="space-y-4" aria-label="Resumo da avaliação">
       <div role="tablist" aria-label="Momento da avaliação" className="inline-flex rounded-lg border border-slate-300 p-0.5 text-xs">
-        <button role="tab" aria-selected={modo === 'PARCIAL'} onClick={() => setModo('PARCIAL')} className={`min-h-[44px] rounded-md px-4 ${modo === 'PARCIAL' ? 'bg-slate-800 text-white' : 'text-slate-700'}`}>Avaliação parcial</button>
-        <button role="tab" aria-selected={modo === 'FINAL'} onClick={() => setModo('FINAL')} className={`min-h-[44px] rounded-md px-4 ${modo === 'FINAL' ? 'bg-slate-800 text-white' : 'text-slate-700'}`}>Avaliação final</button>
+        <button role="tab" aria-selected={modo === 'PARCIAL'} onClick={() => setModo('PARCIAL')} className={`min-h-[44px]! rounded-md px-4 ${modo === 'PARCIAL' ? 'bg-slate-800 text-white' : 'text-slate-700'}`}>Avaliação parcial</button>
+        <button role="tab" aria-selected={modo === 'FINAL'} onClick={() => setModo('FINAL')} className={`min-h-[44px]! rounded-md px-4 ${modo === 'FINAL' ? 'bg-slate-800 text-white' : 'text-slate-700'}`}>Avaliação final</button>
       </div>
 
       {modo === 'PARCIAL' ? (
         <>
           <label className="block text-xs text-slate-600">Data de referência
-            <input type="date" value={ref} onChange={e => setRef(e.target.value)} className="mt-1 block min-h-[44px] rounded-lg border border-slate-300 px-3 text-sm" />
+            <input type="date" value={ref} onChange={e => setRef(e.target.value)} className="mt-1 block min-h-[44px]! rounded-lg border border-slate-300 px-3 text-sm" />
           </label>
           <dl className="grid grid-cols-2 gap-2 text-sm sm:grid-cols-4">
             <div className="rounded-lg bg-slate-50 p-3"><dt className="text-xs text-slate-500">Critérios com nota oficial</dt><dd className="font-bold">{avaliados.length} de {r.criterios.length}</dd></div>
@@ -80,7 +80,7 @@ export default function ResumoAvaliacao(p: Props) {
             <h4 className="text-sm font-semibold">{pendencias.length ? `Conferir antes de confirmar (${pendencias.length})` : 'Nenhuma pendência de conferência encontrada'}</h4>
             {pendencias.length > 0 && <ul className="mt-1 list-disc pl-5 text-xs space-y-0.5">{pendencias.map(x => <li key={x}>{x}</li>)}</ul>}
           </section>
-          <button onClick={p.irParaRubricas} className="min-h-[44px] rounded-lg bg-slate-900 px-4 text-sm font-semibold text-white">Preencher rubricas e confirmar notas</button>
+          <button onClick={p.irParaRubricas} className="min-h-[44px]! rounded-lg bg-slate-900 px-4 text-sm font-semibold text-white">Preencher rubricas e confirmar notas</button>
           <p className="text-xs text-slate-500">A nota só se torna oficial pela sua confirmação explícita na aba Rubricas.</p>
         </>
       )}

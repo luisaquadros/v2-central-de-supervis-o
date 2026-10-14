@@ -25,13 +25,13 @@ export default function ContribuicaoMonitora({ matriculaId, turmaId, periodoId, 
       <h3 className="text-sm font-bold text-slate-900">Contribuição para a avaliação (preliminar)</h3>
       <p className="text-xs text-slate-500">Registre pontos fortes, lacunas ou pendências documentais, de forma objetiva. Não inclua conteúdo clínico. A professora decide se usa.</p>
       <label className="block text-xs text-slate-600">Tipo
-        <select value={tipo} onChange={e => setTipo(e.target.value as PolaridadeEvidencia)} className="mt-1 w-full min-h-[44px] rounded-lg border border-slate-300 px-3 text-sm">
+        <select value={tipo} onChange={e => setTipo(e.target.value as PolaridadeEvidencia)} className="mt-1 w-full min-h-[44px]! rounded-lg border border-slate-300 px-3 text-sm">
           {(Object.keys(TIPOS) as PolaridadeEvidencia[]).map(t => <option key={t} value={t}>{TIPOS[t]}</option>)}
         </select>
       </label>
       <textarea aria-label="Contribuição" value={texto} onChange={e => setTexto(e.target.value)} rows={3} maxLength={600} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
       {erro && <p role="alert" className="text-xs text-red-700">{erro}</p>}
-      <button onClick={enviar} className="min-h-[44px] rounded-lg bg-indigo-700 px-4 text-sm font-semibold text-white">Enviar contribuição</button>
+      <button onClick={enviar} className="min-h-[44px]! rounded-lg bg-indigo-700 px-4 text-sm font-semibold text-white">Enviar contribuição</button>
       {minhas.length > 0 && <ul className="space-y-1 text-xs text-slate-700">{minhas.map(e => <li key={e.evidencia_id} className="rounded-lg bg-slate-50 p-2">{e.observacao} <span className="text-slate-400">· {e.preliminar ? 'preliminar' : 'aproveitada'}</span></li>)}</ul>}
     </section>
   );

@@ -52,7 +52,7 @@ export const EstruturaAvaliacaoPainel: React.FC = () => {
     <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs space-y-3" data-testid="estrutura-avaliacao">
       <h3 className="text-sm font-bold text-slate-900">Estrutura da avaliação (rubricas, evidências e rascunhos)</h3>
       <p className="text-slate-600">Quatro abas novas, aditivas e versionadas. As abas atuais de critérios, notas e devolutivas <b>não são alteradas</b>. Faça primeiro em uma cópia da planilha.</p>
-      <button onClick={verificar} disabled={ocupado} className="min-h-[44px] px-4 rounded-lg border border-slate-300 font-semibold">Verificar situação</button>
+      <button onClick={verificar} disabled={ocupado} className="min-h-[44px]! px-4 rounded-lg border border-slate-300 font-semibold">Verificar situação</button>
       {abas && (
         <ul className="divide-y divide-slate-100 rounded-lg border border-slate-200">
           {abas.map(a => <li key={a.aba} className="flex flex-wrap items-center justify-between gap-2 p-3"><span>{ROTULO[a.aba] ?? a.aba}</span><span className="text-xs text-slate-600">{SITUACAO[a.situacao]}</span></li>)}
@@ -61,10 +61,10 @@ export const EstruturaAvaliacaoPainel: React.FC = () => {
       {abas && faltam && (
         <div className="space-y-2 rounded-lg bg-slate-50 p-3">
           <p className="font-semibold text-slate-800">Para criar as abas que faltam</p>
-          <button onClick={gerarBackup} disabled={ocupado} className="min-h-[44px] px-4 rounded-lg bg-slate-900 text-white font-semibold">1. Baixar backup verificado</button>
+          <button onClick={gerarBackup} disabled={ocupado} className="min-h-[44px]! px-4 rounded-lg bg-slate-900 text-white font-semibold">1. Baixar backup verificado</button>
           {checksum && <p className="text-xs text-emerald-700">Backup gerado (checksum {checksum.slice(0, 12)}…).</p>}
           <label className="flex items-start gap-2 text-xs text-slate-700"><input type="checkbox" checked={aceite} onChange={e => setAceite(e.target.checked)} className="mt-0.5 h-5 w-5" />Entendo que serão criadas somente as abas ausentes, sem alterar nenhuma aba existente.</label>
-          <button onClick={criar} disabled={ocupado || !checksum || !aceite} className="min-h-[44px] px-4 rounded-lg bg-indigo-700 text-white font-semibold disabled:opacity-40">2. Criar abas ausentes</button>
+          <button onClick={criar} disabled={ocupado || !checksum || !aceite} className="min-h-[44px]! px-4 rounded-lg bg-indigo-700 text-white font-semibold disabled:opacity-40">2. Criar abas ausentes</button>
           <p className="text-xs text-slate-500">Se o botão responder que está desligado, a criação não foi habilitada neste ambiente (variável ESTRUTURA_AVALIACAO).</p>
         </div>
       )}

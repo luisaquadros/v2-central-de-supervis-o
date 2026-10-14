@@ -56,7 +56,7 @@ export default function DevolutivaPainel(p: Props) {
     <div className="space-y-4" aria-label="Devolutiva">
       <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-2">
         <p className="text-sm text-slate-800">O rascunho é montado por regras a partir da rubrica, das evidências, das notas oficiais e das pendências. <strong>Não usa IA e nunca é enviado sozinho.</strong></p>
-        <button onClick={gerar} className="min-h-[44px] w-full sm:w-auto rounded-lg bg-indigo-700 px-4 text-sm font-semibold text-white">{gerado ? 'Gerar novamente' : 'Gerar rascunho'}</button>
+        <button onClick={gerar} className="min-h-[44px]! w-full sm:w-auto rounded-lg bg-indigo-700 px-4 text-sm font-semibold text-white">{gerado ? 'Gerar novamente' : 'Gerar rascunho'}</button>
       </div>
 
       {gerado && (
@@ -77,8 +77,8 @@ export default function DevolutivaPainel(p: Props) {
             ))}</div>
           </details>
           <div className="flex flex-wrap gap-2">
-            <button onClick={async () => { try { await navigator.clipboard.writeText(texto); setCopiado(true); } catch { setCopiado(false); } }} className="min-h-[44px] rounded-lg border border-slate-400 px-4 text-sm font-semibold">{copiado ? 'Copiado' : 'Copiar texto'}</button>
-            <button onClick={() => setRevisando(true)} disabled={!texto.trim()} className="min-h-[44px] rounded-lg bg-slate-900 px-4 text-sm font-semibold text-white disabled:opacity-40">Revisar e aprovar</button>
+            <button onClick={async () => { try { await navigator.clipboard.writeText(texto); setCopiado(true); } catch { setCopiado(false); } }} className="min-h-[44px]! rounded-lg border border-slate-400 px-4 text-sm font-semibold">{copiado ? 'Copiado' : 'Copiar texto'}</button>
+            <button onClick={() => setRevisando(true)} disabled={!texto.trim()} className="min-h-[44px]! rounded-lg bg-slate-900 px-4 text-sm font-semibold text-white disabled:opacity-40">Revisar e aprovar</button>
           </div>
           <p className="text-xs text-slate-500">A aprovação e o envio acontecem na tela de revisão, por ação explícita sua.</p>
         </>

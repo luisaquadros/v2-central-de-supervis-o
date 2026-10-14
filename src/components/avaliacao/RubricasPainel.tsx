@@ -140,7 +140,7 @@ export default function RubricasPainel({ criterios, configs, rubricas, rascunhos
   return (
     <div className="space-y-4" aria-label="Rubricas">
       <label className="block text-xs text-slate-600">Critério
-        <select value={criterioId} onChange={e => { setCriterioId(e.target.value); setAlvoGrupo(false); setConfirmando(false); }} className="mt-1 w-full min-h-[44px] rounded-lg border border-slate-300 px-3 text-sm">
+        <select value={criterioId} onChange={e => { setCriterioId(e.target.value); setAlvoGrupo(false); setConfirmando(false); }} className="mt-1 w-full min-h-[44px]! rounded-lg border border-slate-300 px-3 text-sm">
           {criterios.map(c => <option key={c.criterio_id} value={c.criterio_id}>{c.nome} (valor {formatarPontos(Number(c.nota_maxima) || 0)})</option>)}
         </select>
       </label>
@@ -154,21 +154,21 @@ export default function RubricasPainel({ criterios, configs, rubricas, rascunhos
           <p className="text-sm text-slate-800">Este critério é lançado <strong>manualmente</strong> (nota oficial da planilha). Nenhuma fórmula é aplicada por semelhança de nome.</p>
           <p className="text-xs text-slate-500">Para usar a rubrica de Documentação (6 subcritérios, 2,50), escolha o tipo de estágio e configure. A nota oficial só muda quando você confirmar.</p>
           <label className="block text-xs text-slate-600">Tipo de estágio
-            <select value={estagio} onChange={e => setEstagio(e.target.value as TipoEstagio)} className="mt-1 w-full min-h-[44px] rounded-lg border border-slate-300 px-3 text-sm">
+            <select value={estagio} onChange={e => setEstagio(e.target.value as TipoEstagio)} className="mt-1 w-full min-h-[44px]! rounded-lg border border-slate-300 px-3 text-sm">
               {(Object.keys(ROTULO_ESTAGIO) as TipoEstagio[]).map(t => <option key={t} value={t}>{ROTULO_ESTAGIO[t]}</option>)}
             </select>
           </label>
           {Math.abs(maxCriterio - 2.5) > 1e-9 && (
             <label className="flex items-start gap-2 text-xs text-slate-700"><input type="checkbox" checked={escalar} onChange={e => setEscalar(e.target.checked)} className="mt-0.5 h-5 w-5" />Este critério vale {formatarPontos(maxCriterio)}: ajustar os pesos do modelo (2,50) proporcionalmente.</label>
           )}
-          <button onClick={configurar} disabled={ocupado} className="min-h-[44px] rounded-lg bg-indigo-700 px-4 text-sm font-semibold text-white disabled:opacity-50">Configurar rubrica neste critério</button>
+          <button onClick={configurar} disabled={ocupado} className="min-h-[44px]! rounded-lg bg-indigo-700 px-4 text-sm font-semibold text-white disabled:opacity-50">Configurar rubrica neste critério</button>
         </div>
       )}
 
       {config && !rubrica && (
         <div className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
           A rubrica deste critério ainda não foi aprovada{config.tipo_estagio === 'CONSULTORIA_ORGANIZACIONAL' ? ' e os descritores da Consultoria Organizacional estão por definir' : ''}. A nota oficial continua manual.
-          {rubricaPendente && <button onClick={aprovarVersao} className="ml-2 min-h-[44px] rounded-lg border border-amber-500 px-3 text-xs font-semibold">Aprovar versão {rubricaPendente.versao}</button>}
+          {rubricaPendente && <button onClick={aprovarVersao} className="ml-2 min-h-[44px]! rounded-lg border border-amber-500 px-3 text-xs font-semibold">Aprovar versão {rubricaPendente.versao}</button>}
         </div>
       )}
 
@@ -176,8 +176,8 @@ export default function RubricasPainel({ criterios, configs, rubricas, rascunhos
         <>
           {grupoId && (
             <div role="tablist" aria-label="Alvo da avaliação" className="inline-flex rounded-lg border border-slate-300 p-0.5 text-xs">
-              <button role="tab" aria-selected={!alvoGrupo} onClick={() => setAlvoGrupo(false)} className={`min-h-[44px] rounded-md px-3 ${!alvoGrupo ? 'bg-slate-800 text-white' : 'text-slate-700'}`}>Individual</button>
-              <button role="tab" aria-selected={alvoGrupo} onClick={() => setAlvoGrupo(true)} className={`min-h-[44px] rounded-md px-3 ${alvoGrupo ? 'bg-slate-800 text-white' : 'text-slate-700'}`}>Documento do grupo</button>
+              <button role="tab" aria-selected={!alvoGrupo} onClick={() => setAlvoGrupo(false)} className={`min-h-[44px]! rounded-md px-3 ${!alvoGrupo ? 'bg-slate-800 text-white' : 'text-slate-700'}`}>Individual</button>
+              <button role="tab" aria-selected={alvoGrupo} onClick={() => setAlvoGrupo(true)} className={`min-h-[44px]! rounded-md px-3 ${alvoGrupo ? 'bg-slate-800 text-white' : 'text-slate-700'}`}>Documento do grupo</button>
             </div>
           )}
           {alvoGrupo && <p className="text-xs text-slate-600">Avaliação do documento coletivo. Ela <strong>não gera a mesma nota</strong> para todos: serve de sugestão que você adota, item a item, na avaliação individual.</p>}
@@ -198,14 +198,14 @@ export default function RubricasPainel({ criterios, configs, rubricas, rascunhos
                 <div className="flex flex-wrap gap-2" role="group" aria-label={`Nível de ${def.nome}`}>
                   {NIVEIS.map(n => (
                     <button key={n} type="button" aria-pressed={sel?.nivel === n} onClick={() => escolherNivel(def.subcriterio_id, n)} title={DESCRICAO_NIVEL[n]}
-                      className={`min-h-[44px] rounded-lg border px-3 text-xs font-semibold ${sel?.nivel === n ? COR_NIVEL[n] + ' ring-2 ring-offset-1 ring-slate-400' : 'border-slate-300 bg-white text-slate-700'}`}>
+                      className={`min-h-[44px]! rounded-lg border px-3 text-xs font-semibold ${sel?.nivel === n ? COR_NIVEL[n] + ' ring-2 ring-offset-1 ring-slate-400' : 'border-slate-300 bg-white text-slate-700'}`}>
                       {ROTULO_NIVEL[n]}
                     </button>
                   ))}
                 </div>
                 {sel && sel.nivel !== 'NAO_AVALIADO' && <p className="rounded-lg bg-slate-50 p-2 text-xs text-slate-700">{descritorDoNivel(rb, def.subcriterio_id, sel.nivel)}</p>}
                 {sel?.ajuste && <p className="text-xs text-indigo-800">Ajuste manual: {formatarPontos(sel.ajuste.nota)} — {sel.ajuste.justificativa}</p>}
-                {sug && !sel && <p className="text-xs text-indigo-800">Sugestão do documento do grupo: {ROTULO_NIVEL[sug.nivel]} <button onClick={() => adotar(def.subcriterio_id)} className="ml-2 min-h-[44px] rounded-lg border border-indigo-300 px-3 font-semibold">Adotar</button></p>}
+                {sug && !sel && <p className="text-xs text-indigo-800">Sugestão do documento do grupo: {ROTULO_NIVEL[sug.nivel]} <button onClick={() => adotar(def.subcriterio_id)} className="ml-2 min-h-[44px]! rounded-lg border border-indigo-300 px-3 font-semibold">Adotar</button></p>}
                 <details className="text-xs text-slate-600">
                   <summary className="cursor-pointer">Ver os descritores de cada nível</summary>
                   <dl className="mt-1 space-y-1">{NIVEIS.filter(n => n !== 'NAO_AVALIADO').map(n => <div key={n}><dt className="font-semibold">{ROTULO_NIVEL[n]}</dt><dd>{descritorDoNivel(rb, def.subcriterio_id, n)}</dd></div>)}</dl>
@@ -213,9 +213,9 @@ export default function RubricasPainel({ criterios, configs, rubricas, rascunhos
                 <details className="text-xs text-slate-600">
                   <summary className="cursor-pointer">Ajustar pontuação (exige justificativa)</summary>
                   <div className="mt-2 grid gap-2">
-                    <input inputMode="decimal" aria-label={`Nota ajustada de ${def.nome}`} placeholder={`0 a ${formatarPontos(peso)}`} value={ajustes[def.subcriterio_id]?.nota ?? ''} onChange={e => setAjustes(a => ({ ...a, [def.subcriterio_id]: { nota: e.target.value, just: a[def.subcriterio_id]?.just ?? '' } }))} className="min-h-[44px] rounded-lg border border-slate-300 px-3 text-sm" />
+                    <input inputMode="decimal" aria-label={`Nota ajustada de ${def.nome}`} placeholder={`0 a ${formatarPontos(peso)}`} value={ajustes[def.subcriterio_id]?.nota ?? ''} onChange={e => setAjustes(a => ({ ...a, [def.subcriterio_id]: { nota: e.target.value, just: a[def.subcriterio_id]?.just ?? '' } }))} className="min-h-[44px]! rounded-lg border border-slate-300 px-3 text-sm" />
                     <textarea aria-label={`Justificativa do ajuste de ${def.nome}`} placeholder="Justificativa" rows={2} value={ajustes[def.subcriterio_id]?.just ?? ''} onChange={e => setAjustes(a => ({ ...a, [def.subcriterio_id]: { nota: a[def.subcriterio_id]?.nota ?? '', just: e.target.value } }))} className="rounded-lg border border-slate-300 px-3 py-2 text-sm" />
-                    <button type="button" onClick={() => ajustar(def.subcriterio_id)} className="min-h-[44px] rounded-lg border border-slate-400 px-3 font-semibold">Aplicar ajuste</button>
+                    <button type="button" onClick={() => ajustar(def.subcriterio_id)} className="min-h-[44px]! rounded-lg border border-slate-400 px-3 font-semibold">Aplicar ajuste</button>
                   </div>
                 </details>
                 <textarea aria-label={`Comentário sobre ${def.nome}`} placeholder="Comentário opcional (aparece na devolutiva)" rows={2} defaultValue={sel?.comentario ?? ''} onBlur={e => comentar(def.subcriterio_id, e.target.value)} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
@@ -233,9 +233,9 @@ export default function RubricasPainel({ criterios, configs, rubricas, rascunhos
 
           {!alvoGrupo && rascunhoAtual && (
             <div className="space-y-2">
-              {!bloqueado && <button onClick={() => { setConfirmando(true); setAceite(false); }} disabled={!confirmacao?.podeConfirmar || ocupado} className="min-h-[44px] w-full sm:w-auto rounded-lg bg-slate-900 px-4 text-sm font-semibold text-white disabled:opacity-40">Revisar e confirmar nota</button>}
+              {!bloqueado && <button onClick={() => { setConfirmando(true); setAceite(false); }} disabled={!confirmacao?.podeConfirmar || ocupado} className="min-h-[44px]! w-full sm:w-auto rounded-lg bg-slate-900 px-4 text-sm font-semibold text-white disabled:opacity-40">Revisar e confirmar nota</button>}
               {!bloqueado && confirmacao && !confirmacao.podeConfirmar && <p className="text-xs text-slate-500">{confirmacao.motivoBloqueio}</p>}
-              {bloqueado && <button onClick={novaRevisao} disabled={ocupado} className="min-h-[44px] rounded-lg border border-slate-400 px-4 text-sm font-semibold">Iniciar nova revisão</button>}
+              {bloqueado && <button onClick={novaRevisao} disabled={ocupado} className="min-h-[44px]! rounded-lg border border-slate-400 px-4 text-sm font-semibold">Iniciar nova revisão</button>}
             </div>
           )}
 
@@ -250,8 +250,8 @@ export default function RubricasPainel({ criterios, configs, rubricas, rascunhos
               {confirmacao.substituiOficial && <p className="rounded-lg bg-amber-50 p-2 text-xs text-amber-900">Esta ação substitui uma nota oficial já lançada. O valor anterior fica no log de alterações.</p>}
               <label className="flex items-start gap-2 text-xs text-slate-700"><input type="checkbox" checked={aceite} onChange={e => setAceite(e.target.checked)} className="mt-0.5 h-5 w-5" />Confirmo gravar esta nota como oficial neste critério.</label>
               <div className="flex flex-wrap gap-2">
-                <button onClick={confirmarNota} disabled={!aceite || ocupado} className="min-h-[44px] rounded-lg bg-emerald-700 px-4 text-sm font-semibold text-white disabled:opacity-40">Gravar nota oficial</button>
-                <button onClick={() => setConfirmando(false)} className="min-h-[44px] rounded-lg border border-slate-400 px-4 text-sm">Cancelar</button>
+                <button onClick={confirmarNota} disabled={!aceite || ocupado} className="min-h-[44px]! rounded-lg bg-emerald-700 px-4 text-sm font-semibold text-white disabled:opacity-40">Gravar nota oficial</button>
+                <button onClick={() => setConfirmando(false)} className="min-h-[44px]! rounded-lg border border-slate-400 px-4 text-sm">Cancelar</button>
               </div>
             </div>
           )}
@@ -272,14 +272,14 @@ export default function RubricasPainel({ criterios, configs, rubricas, rascunhos
               <div className="mt-2 space-y-2">
                 {rubrica.subcriterios.map(s => (
                   <label key={s.subcriterio_id} className="flex items-center justify-between gap-2">{s.nome}
-                    <input inputMode="decimal" value={pesosEdicao[s.subcriterio_id] ?? String(s.peso)} onChange={e => setPesosEdicao(p => ({ ...(p ?? {}), [s.subcriterio_id]: e.target.value }))} className="min-h-[44px] w-24 rounded-lg border border-slate-300 px-2 text-right" />
+                    <input inputMode="decimal" value={pesosEdicao[s.subcriterio_id] ?? String(s.peso)} onChange={e => setPesosEdicao(p => ({ ...(p ?? {}), [s.subcriterio_id]: e.target.value }))} className="min-h-[44px]! w-24 rounded-lg border border-slate-300 px-2 text-right" />
                   </label>
                 ))}
-                <input placeholder="Motivo da alteração" value={motivo} onChange={e => setMotivo(e.target.value)} className="min-h-[44px] w-full rounded-lg border border-slate-300 px-3" />
-                <div className="flex gap-2"><button onClick={salvarPesos} className="min-h-[44px] rounded-lg bg-slate-900 px-4 font-semibold text-white">Salvar nova versão</button><button onClick={() => setPesosEdicao(null)} className="min-h-[44px] rounded-lg border border-slate-400 px-4">Cancelar</button></div>
+                <input placeholder="Motivo da alteração" value={motivo} onChange={e => setMotivo(e.target.value)} className="min-h-[44px]! w-full rounded-lg border border-slate-300 px-3" />
+                <div className="flex gap-2"><button onClick={salvarPesos} className="min-h-[44px]! rounded-lg bg-slate-900 px-4 font-semibold text-white">Salvar nova versão</button><button onClick={() => setPesosEdicao(null)} className="min-h-[44px]! rounded-lg border border-slate-400 px-4">Cancelar</button></div>
               </div>
-            ) : <button onClick={() => setPesosEdicao({})} className="mt-2 min-h-[44px] rounded-lg border border-slate-400 px-4 font-semibold">Editar pesos</button>}
-            {rubricaPendente && <button onClick={aprovarVersao} className="mt-2 min-h-[44px] rounded-lg border border-emerald-600 px-4 font-semibold text-emerald-800">Aprovar versão {rubricaPendente.versao}</button>}
+            ) : <button onClick={() => setPesosEdicao({})} className="mt-2 min-h-[44px]! rounded-lg border border-slate-400 px-4 font-semibold">Editar pesos</button>}
+            {rubricaPendente && <button onClick={aprovarVersao} className="mt-2 min-h-[44px]! rounded-lg border border-emerald-600 px-4 font-semibold text-emerald-800">Aprovar versão {rubricaPendente.versao}</button>}
           </details>
         </>
       )}
