@@ -6,3 +6,6 @@ coverage/
 *.log
 .env*
 !.env.example
+
+# Evidências locais de testes de navegador
+artifacts/
