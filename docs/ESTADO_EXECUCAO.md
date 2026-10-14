@@ -45,3 +45,12 @@ lint ✔ · `npm test` (32 arquivos) ✔ · build ✔ · `test:worker-real` ✔ 
 
 ## Próxima ação exata
 Validar numa cópia da planilha: criar as 4 abas pelo painel, configurar a rubrica de uma turma, preencher uma avaliação e conferir log, versões e permissões da monitora com a conta de serviço real.
+
+## Checagem adicional de Configurações — Codex (14/10/2026)
+- Branch isolada `test/painel-configuracoes-pr46`, base exata `a3d6cba`, implementação `fede73d`. Não sobrescreve o PR #46 nem a branch PRISMA/semestres.
+- Painel completo de Configurações exercitado em navegador a 390/1280 px. Cinco abas, cabeçalho divergente, bloqueio sem backup/confirmação, download, criação desligada, resultado de criação e falhas de diagnóstico verificados. Todas as APIs e o backup foram simulados; nenhuma planilha/aba real alterada.
+- Erro reproduzido/corrigido: a atualização do diagnóstico apagava o resultado da criação. Agora preserva o resumo e acrescenta eventual erro de atualização.
+- Removido `vite-plugin-singlefile`: auditoria inicial apontou três alertas altos na cadeia de dependências; auditoria após remoção: zero alertas. Build usa assets normais; não foi publicado em produção.
+- Aprovados: `npm run test:painel-configuracoes`, lint/TypeScript, `npm test` (43 programas), build. Worker não alterado; seus testes de handler existentes foram executados na suíte. Evidências locais: `artifacts/painel-configuracoes/resultados.json`.
+- GitHub confirma CI e Workers Build/preview do commit `a3d6cba` aprovados. Build aprovado não comprova autenticação, leitura/escrita ou restauração reais. PR #46 segue aberto.
+- Diagnóstico: NÃO LIBERADO PARA PRODUÇÃO. Falta combinar as branches e validar ponta a ponta em cópia isolada/autorizada (Firebase, perfis por turma, Sheets/Drive, conflitos, backup/restauração). Rever Apps Script antes de merge. Criação de abas e crons permanecem sem ativação real.
