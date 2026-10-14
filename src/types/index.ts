@@ -658,6 +658,7 @@ export interface HistoricoAuditoria {
 // Navegação do aplicativo
 export type NavTab =
   | 'hoje'
+  | 'acervo'
   | 'dashboard'
   | 'turmas'
   | 'alunos'

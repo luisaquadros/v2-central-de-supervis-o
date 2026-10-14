@@ -9,3 +9,6 @@ coverage/
 
 .wrangler/
 .dev.vars*
+
+artifacts/
+/__prisma_ui_fixture.html

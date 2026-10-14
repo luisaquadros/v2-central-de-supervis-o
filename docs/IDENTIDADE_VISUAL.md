@@ -1,46 +1,49 @@
-# Identidade visual — Central de Supervisão Acadêmica
+# PRISMA — Supervisão Acadêmica
 
-**Escopo:** aplicativo de supervisão dos estágios de Psicologia da Faculdade Anhanguera de Brasília. Esta identidade é própria da Central; **não** importar paletas/logotipos da clínica, do Contexta ou da identidade pessoal da professora.
+Identidade provisória autorizada em 13/10/2026. Nome técnico, repositório, domínio e serviços preservados. Fontes: [especificação consolidada v1.2 e anexo UI/UX](https://docs.google.com/document/d/1AJeFxomAyQrtbkFOOE_igsKCYAJt9dEqwgSRkizJp94/edit), prompt de redesign e documentação do PR #46.
 
-## Direção criativa
-- Profissional, acadêmica, delicada, acolhedora e moderna; leve sem ser infantil.
-- Evoluir o desenho existente, sem remodelação desnecessária: sidebar, cards, cabeçalho, painel **Precisa da sua atenção**, navegação móvel inferior e modo de supervisão permanecem.
-- Interface enxuta para uso real em sala: contraste, escaneabilidade, hierarquia e respostas visíveis às ações. Poucas sombras; bordas leves e cantos arredondados.
-- Dados e funcionalidades nunca desaparecem por uma alteração estética. A identidade visual não modifica lógica de avaliações, segurança, sincronização, sigilo ou regras acadêmicas.
+## Design system
 
-## Tokens canônicos
-Definidos em `src/index.css` sob `:root`; utilizar variáveis em novos componentes. Os valores abaixo registram a paleta **já presente no código** (não uma nova paleta institucional aprovada):
-| Token | Valor | Uso |
-| --- | --- | --- |
-| `--cs-navy` | `#15233b` | ações principais, navegação ativa e títulos de grande peso |
-| `--cs-teal` | `#2c827e` | foco, interações, detalhe discreto |
-| `--cs-orchid` | `#8276b1` | acentos complementares com parcimônia |
-| `--cs-canvas` | `#f4f7fa` | fundo geral |
-| `--cs-surface` | `#ffffff` | superfície |
-| `--cs-ink` | `#15233b` | texto principal |
-| `--cs-border` | `#e2e8f0` | linhas e divisórias |
+Tokens em `src/index.css`, com variantes claras e escuras. Os aliases `--cs-*` e as utilidades legadas continuam compatíveis com os componentes existentes.
 
-Fontes: **Plus Jakarta Sans** para interface; **JetBrains Mono** apenas para dados técnicos, códigos e números que exigem alinhamento. Aplicar `tabular-nums` a contagens e notas quando cabível. Não depender da fonte remota para funcionalidade.
+| Finalidade | Token | Claro |
+|---|---|---|
+| Fundo | `--prisma-background` | #F6F4EE |
+| Superfície | `--prisma-surface` | #FFFFFF |
+| Texto | `--prisma-text` | #253D34 |
+| Texto secundário | `--prisma-muted` | #58685E |
+| Bordas | `--prisma-border` | #D5C5AD |
+| Ação | `--prisma-action` | #344E46 |
+| Sucesso / sincronização confirmada | `--prisma-success`, `--prisma-sync-confirmed` | #286348 |
+| Alerta / pendente no aparelho | `--prisma-warning`, `--prisma-sync-pending` | #80501D |
+| Erro / conflito | `--prisma-error`, `--prisma-sync-conflict` | #9D3631 |
+| Informação / foco | `--prisma-info` | #345D71 |
+| Seleção | `--prisma-selection` | #E6ECE5 |
+| Apoio | `--prisma-sage` | #829584 |
+| Detalhes | `--prisma-sand`, `--prisma-terracotta` | #D5C5AD / #C17D68 |
 
-## Componentes e navegação
-- Sidebar desktop: menu simples, estado ativo inequívoco; administração secundária recolhível.
-- Mobile: barra inferior com cinco ações e área segura; menu completo acessível pelo item **Mais**, incluindo demais telas.
-- Botões e controles têm área de toque confortável (alvo preferencial de 44 px), teclado/foco visível e texto legível.
-- Hierarquia: título → contexto/turma → ação principal → dados → detalhes; evitar cards dentro de cards quando não acrescentam significado.
-- Feedback imediato de salvar/sincronizar e erros com texto; nunca sinalizar êxito por cor isolada.
-- Alertas usam símbolo e texto; preservar **⚠** como indicador de atenção nas listas de alunos, sem criar ruído de vários ícones concorrentes.
-- Não pintar nota, risco, ausência ou avaliação com cor como único canal de informação.
-- Tablet em paisagem / Modo Supervisão: priorizar visualização dividida ~30% lista e ~70% ficha, sem comprometer rolagem e ações.
-- Não converter fluxos operacionais complexos em modais gigantes no telefone; manter navegação contextual e retorno ao aluno/turma de origem.
+Inter para interface, Fraunces apenas nos títulos editoriais. Fallbacks: system-ui/Segoe UI e Georgia/serif. As fontes externas usam `display=swap`; a interface funciona sem carregá-las. Lucide reaproveitado. Espaçamento 4/8/12/16/24/32 px; cantos 10–14 px; sombras mínimas. Foco visível, movimento reduzido, texto nos estados, alvos móveis de 44 px nas ações principais. Tokens semânticos devem ser usados em novos componentes; utilidades antigas remapeadas permitem migração gradual.
 
-## Disciplinas
-Uma mesma modalidade/ênfase mantém o mesmo acento, independentemente do turno. Os acentos são metadados visuais auxiliares, não códigos de avaliação nem identificadores persistentes. Se não houver mapeamento canônico e confiável da disciplina, utilizar a paleta neutra em vez de classificar pelo nome arbitrariamente.
+## Navegação e componentes
 
-## Acessibilidade, sigilo e manutenção
-- Contraste suficiente, labels, estados de foco, suporte a tema claro/escuro e movimento reduzido.
-- Identificadores de pacientes pseudonimizados; não expor informações clínicas em logs, títulos de tela, imagens de divulgação ou exemplos.
-- Utilizar `.cs-* ` e tokens canônicos para novos elementos; evitar hexadecimais espalhados. Preservar utilitários Tailwind existentes quando não conflitantes.
-- Alterações visuais devem passar por `npm run lint`, `npm test`, `npm run build` e conferência manual em 320/375/768/1024 px e desktop, em ambos os temas.
-- Logo Anhanguera: usar somente arquivo oficial fornecido/autorizado, discreto no cabeçalho. Não redesenhar marca nem confundir o ícone próprio da Central com o logo institucional.
+Desktop: Hoje, Agenda (rota interna `calendario`), Turmas, Avaliações (`avaliacao`) e Acervo. Administração recolhida mantém alunos, frequência, pendências, panorama anterior, semestres e configurações. Mobile: Hoje, Agenda, Turmas, Avaliações e Mais; Acervo acessível em Mais. Perfis restritos não recebem destinos de notas.
 
-**Origem das premissas:** decisões do projeto consolidadas em outubro de 2026; valores cromáticos/fontes auditados no código em 13/10/2026.
+Turma: Visão geral, Pessoas (inclui grupos existentes), Acompanhamento (documentação/RSS, leituras, frequência/reposições e pendências), Avaliação. Configuração no cabeçalho. A ficha mantém todas as seções anteriores em seletor contextual e oferece linha do tempo expansível, sem nova cópia de estado. Vínculos explícitos por matrícula prevalecem; vínculos legados ambíguos não são duplicados entre turmas.
+
+Reutilizados: `ModalWrapper`, formulários, metadados Drive, componentes de RSS, preparação de aula, sincronização e serviços canônicos. Componentes comuns: `cs-panel`, `cs-primary-action`, `prisma-tabs`, `prisma-section`, `prisma-empty`, `prisma-meta`. Tabelas modificadas têm apresentação compacta no mobile. Diálogo de chamada e menu móvel contêm foco, fecham por Escape quando seguro e restauram foco.
+
+## Limites funcionais preservados
+
+- Chamada continua NÃO_REGISTRADA antes da prévia e confirmação. Abrir/cancelar prévia não grava. Nenhuma retificação de frequência homologada foi habilitada.
+- Pesos/descritores são exibidos quando existentes. Não há cálculo novo nem versão fictícia de rubrica.
+- Modificação de arquivo é metadado, não qualidade. Parecer estruturado e revisão de monitoras aguardam módulo autorizado no servidor; nenhuma escrita foi habilitada para contornar a falta desse módulo.
+- Diário e retomadas reutilizam pautas/observações existentes. Diário estruturado, participação por evento, competências e homologação versionada continuam pendentes; as anotações não substituem essas entidades.
+- O backend do PR #46 ainda pode delegar CHAMADA à monitora. Interface bloqueia modo aula, frequência/editáveis e alterações de encontros nesse perfil; **o requisito de negar no servidor permanece pendente**, pois alterar permissões estava fora do escopo autorizado do redesign.
+
+## Validação reproduzível
+
+`npm run lint`, `npm test`, `npm run build`, `npm run test:worker-real`, `npm audit --audit-level=high` e `npm run test:ui`.
+
+Para testes UI: `npm ci`, `npx playwright install chromium` (ou `CHROMIUM_PATH` para navegador já instalado), `npm run test:ui`. O comando inicia Vite local na porta 4174, cria fixture temporária, bloqueia chamadas externas, simula serviços e remove a fixture ao encerrar. Artefatos em `artifacts/ui-prisma/`, fora do Git. Não usa dados acadêmicos reais.
+
+Verificações: nove telas em claro/escuro, axe com WCAG 2/2.1/2.2 AA, foco/menu, navegação, busca vazia, prévia/cancelamento/confirmação de chamada, restrição visual de monitora, nota digitada preservada na sincronização, erro em modal e lista com 60 estudantes em 320/390/768/1440 px. Axe não substitui avaliação manual por tecnologia assistiva ou dispositivos reais. Não houve validação em produção.

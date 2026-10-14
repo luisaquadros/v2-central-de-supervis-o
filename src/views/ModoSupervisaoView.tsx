@@ -1,10 +1,17 @@
-import { ResumoRssSemEnvio } from '../components/ResumoRssSemEnvio';
-import { ResumoDocumentosTurma } from '../components/ResumoDocumentosTurma';
-import { diagnosticarChamada } from '../services/aulaParticipants';
-import { temSupervisaoHorarioAlternativo, ROTULO_HORARIO_ALTERNATIVO } from '../services/condicoesMatricula';
-import { prepararEncerramentoChamada, naoRegistrados } from '../services/chamadaService';
-import { resolverResponsaveis } from '../services/aulaParticipants';
-import React, { useState, useMemo, useEffect, useRef } from 'react';
+import { AulaPreparacaoPainel } from "../components/AulaPreparacaoPainel";
+import { ResumoRssSemEnvio } from "../components/ResumoRssSemEnvio";
+import { ResumoDocumentosTurma } from "../components/ResumoDocumentosTurma";
+import { diagnosticarChamada } from "../services/aulaParticipants";
+import {
+  temSupervisaoHorarioAlternativo,
+  ROTULO_HORARIO_ALTERNATIVO,
+} from "../services/condicoesMatricula";
+import {
+  prepararEncerramentoChamada,
+  naoRegistrados,
+} from "../services/chamadaService";
+import { resolverResponsaveis } from "../services/aulaParticipants";
+import React, { useState, useMemo, useEffect, useRef } from "react";
 import {
   Search,
   AlertTriangle,
@@ -27,17 +34,20 @@ import {
   Users,
   AlertCircle,
   HelpCircle,
-} from 'lucide-react';
-import { useSupervisao } from '../context/SupervisaoContext';
+} from "lucide-react";
+import { useSupervisao } from "../context/SupervisaoContext";
 import {
   ModalNovaOrientacao,
   ModalNovoFeedback,
   ModalRegistrarOcorrencia,
   ModalNovoPontoAcompanhamento,
-} from '../components/Modals';
-import { getHojeDataIso } from '../services/supervisaoOperacionalService';
-import { obterLeiturasAgendadas, obterLacunasRssDaAula } from '../services/supervisaoOperacionalService';
-import { Frequencia, MotivoNaoRealizado } from '../types';
+} from "../components/Modals";
+import { getHojeDataIso } from "../services/supervisaoOperacionalService";
+import {
+  obterLeiturasAgendadas,
+  obterLacunasRssDaAula,
+} from "../services/supervisaoOperacionalService";
+import { Frequencia, MotivoNaoRealizado } from "../types";
 
 interface ModoSupervisaoViewProps {
   turmaId: string;
@@ -84,68 +94,85 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
     isTokenExpired,
     tokenExpiredAviso,
     reconectarESincronizar,
+    perfilServidor,
   } = useSupervisao();
 
-  const turma = turmas.find(t => t.turma_id === turmaId);
-  const disciplina = disciplinas.find(d => d.disciplina_id === turma?.disciplina_id);
+  const turma = turmas.find((t) => t.turma_id === turmaId);
+  const disciplina = disciplinas.find(
+    (d) => d.disciplina_id === turma?.disciplina_id,
+  );
   const alunosLista = getAlunosDaTurma(turmaId);
   const diagnosticoChamada = diagnosticarChamada(turmaId, matriculas, alunos);
-  const chamadaIncompleta = alunosLista.length === 0 || diagnosticoChamada.alunosLocalizados < diagnosticoChamada.matriculasElegiveis;
+  const chamadaIncompleta =
+    alunosLista.length === 0 ||
+    diagnosticoChamada.alunosLocalizados <
+      diagnosticoChamada.matriculasElegiveis;
 
   const hojeIso = useMemo(() => getHojeDataIso(), []);
 
   // 1. Verificação de Encontro de Hoje (Cancelado / Reagendado / Realizado)
   const encontroHoje = encontrosTurma.find(
-    e => e.turma_id === turmaId && e.data === hojeIso
+    (e) => e.turma_id === turmaId && e.data === hojeIso,
   );
 
   // 2. Estudo Dirigido de Hoje programado para esta turma
   const leiturasDaAula = useMemo(() => {
-    return obterLeiturasAgendadas(leiturasResponsaveis.filter(l => l.turma_id === turmaId), encontrosTurma)
-      .filter(l => l.data_apresentacao === hojeIso);
+    return obterLeiturasAgendadas(
+      leiturasResponsaveis.filter((l) => l.turma_id === turmaId),
+      encontrosTurma,
+    ).filter((l) => l.data_apresentacao === hojeIso);
   }, [leiturasResponsaveis, turmaId, hojeIso, encontrosTurma]);
-  const estudoDirigidoHoje = leiturasDaAula.find(l => l.reprogramada) || leiturasDaAula[0];
+  const estudoDirigidoHoje =
+    leiturasDaAula.find((l) => l.reprogramada) || leiturasDaAula[0];
 
   // Uma única fonte para múltiplos apresentadores, IDs e textos da planilha.
-  const responsaveisEstudo = useMemo(() => estudoDirigidoHoje
-    ? resolverResponsaveis({
-        leitura: estudoDirigidoHoje,
-        matriculas,
-        alunos,
-        grupos: gruposPratica,
-        integrantes: grupoIntegrantes,
-      })
-    : [], [estudoDirigidoHoje, matriculas, alunos, gruposPratica, grupoIntegrantes]);
+  const responsaveisEstudo = useMemo(
+    () =>
+      estudoDirigidoHoje
+        ? resolverResponsaveis({
+            leitura: estudoDirigidoHoje,
+            matriculas,
+            alunos,
+            grupos: gruposPratica,
+            integrantes: grupoIntegrantes,
+          })
+        : [],
+    [estudoDirigidoHoje, matriculas, alunos, gruposPratica, grupoIntegrantes],
+  );
 
   const nomeGrupoEstudo = useMemo(() => {
     if (!estudoDirigidoHoje || !estudoDirigidoHoje.grupo_id) return null;
-    const grupo = gruposPratica.find(g => g.grupo_id === estudoDirigidoHoje.grupo_id);
+    const grupo = gruposPratica.find(
+      (g) => g.grupo_id === estudoDirigidoHoje.grupo_id,
+    );
     return grupo ? grupo.nome_grupo || grupo.descricao : null;
   }, [estudoDirigidoHoje, gruposPratica]);
 
   const renderStatusEstudoBadge = (status?: string) => {
     if (!status) return null;
     let label = status;
-    let colorClass = 'bg-slate-100 text-slate-800 border-slate-200';
-    if (status === 'PLANEJADO') {
-      label = 'Previsto';
-      colorClass = 'bg-blue-50 text-blue-800 border-blue-200';
-    } else if (status === 'REALIZADO') {
-      label = 'Realizado';
-      colorClass = 'bg-emerald-50 text-emerald-800 border-emerald-200';
-    } else if (status === 'PARCIAL') {
-      label = 'Parcial';
-      colorClass = 'bg-amber-50 text-amber-800 border-amber-200';
-    } else if (status === 'NAO_REALIZADO') {
-      label = 'Não Realizado';
-      colorClass = 'bg-red-50 text-red-800 border-red-200';
-    } else if (status === 'SUBSTITUICAO') {
-      label = 'Substituição';
-      colorClass = 'bg-purple-50 text-purple-800 border-purple-200';
+    let colorClass = "bg-slate-100 text-slate-800 border-slate-200";
+    if (status === "PLANEJADO") {
+      label = "Previsto";
+      colorClass = "bg-blue-50 text-blue-800 border-blue-200";
+    } else if (status === "REALIZADO") {
+      label = "Realizado";
+      colorClass = "bg-emerald-50 text-emerald-800 border-emerald-200";
+    } else if (status === "PARCIAL") {
+      label = "Parcial";
+      colorClass = "bg-amber-50 text-amber-800 border-amber-200";
+    } else if (status === "NAO_REALIZADO") {
+      label = "Não Realizado";
+      colorClass = "bg-red-50 text-red-800 border-red-200";
+    } else if (status === "SUBSTITUICAO") {
+      label = "Substituição";
+      colorClass = "bg-purple-50 text-purple-800 border-purple-200";
     }
 
     return (
-      <span className={`inline-block font-bold text-[10px] px-1.5 py-0.5 rounded border ${colorClass} uppercase ml-2`}>
+      <span
+        className={`inline-block font-bold text-[10px] px-1.5 py-0.5 rounded border ${colorClass} uppercase ml-2`}
+      >
         {label}
       </span>
     );
@@ -156,78 +183,107 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
   // A chamada salva pertence exclusivamente à turma e à data em exibição.
   // Nunca aproveitar as exceções de outra turma quando o componente é reutilizado.
   const construirExcecoesDaTurma = (): Record<string, ExcecaoAluno> => {
-    const ids = new Set(alunosLista.map(item => item.matricula.matricula_id));
+    const ids = new Set(alunosLista.map((item) => item.matricula.matricula_id));
     const initialMap: Record<string, ExcecaoAluno> = {};
-    frequencias.filter(f => f.data_aula === hojeIso && ids.has(f.matricula_id)).forEach(f => {
-      const faltou = !['PRESENTE', 'ATRASO'].includes(String(f.status));
-      if (faltou || f.atraso || f.celular || f.justificativa || f.observacao) {
-        initialMap[f.matricula_id] = {
-          faltou,
-          atraso: !!f.atraso || String(f.status) === 'ATRASO',
-          celular: !!f.celular,
-          justificativa: f.justificativa || '',
-          observacao: f.observacao || '',
-        };
-      }
-    });
+    frequencias
+      .filter((f) => f.data_aula === hojeIso && ids.has(f.matricula_id))
+      .forEach((f) => {
+        const faltou = !["PRESENTE", "ATRASO"].includes(String(f.status));
+        if (
+          faltou ||
+          f.atraso ||
+          f.celular ||
+          f.justificativa ||
+          f.observacao
+        ) {
+          initialMap[f.matricula_id] = {
+            faltou,
+            atraso: !!f.atraso || String(f.status) === "ATRASO",
+            celular: !!f.celular,
+            justificativa: f.justificativa || "",
+            observacao: f.observacao || "",
+          };
+        }
+      });
     return initialMap;
   };
-  const [excecoes, setExcecoes] = useState<Record<string, ExcecaoAluno>>(construirExcecoesDaTurma);
+  const [excecoes, setExcecoes] = useState<Record<string, ExcecaoAluno>>(
+    construirExcecoesDaTurma,
+  );
   // Refaz o formulário quando a turma muda; não reseta alterações do usuário
   // durante a sincronização normal da mesma turma.
   useEffect(() => {
     setExcecoes(construirExcecoesDaTurma());
-    setSearchQuery('');
+    setSearchQuery("");
     setChamadaSalvaMsg(null);
   }, [turmaId, hojeIso]);
 
   const [chamadaSalvaMsg, setChamadaSalvaMsg] = useState<{
     texto: string;
-    tipo: 'remoto' | 'local';
+    tipo: "remoto" | "local";
     tokenExpirado?: boolean;
   } | null>(null);
-  const [mobileTab, setMobileTab] = useState<'LISTA' | 'DETALHE'>('LISTA');
-  const [searchQuery, setSearchQuery] = useState('');
+  const [mobileTab, setMobileTab] = useState<"LISTA" | "DETALHE" | "RETOMADAS">(
+    "LISTA",
+  );
+  const [searchQuery, setSearchQuery] = useState("");
   const [selectedMatriculaId, setSelectedMatriculaId] = useState<string>(() => {
-    return alunosLista.length > 0 ? alunosLista[0].matricula.matricula_id : '';
+    return alunosLista.length > 0 ? alunosLista[0].matricula.matricula_id : "";
   });
 
   // Ao concluir a leitura assíncrona da planilha, a lista pode chegar depois
   // de abrir a aula. Evita ficha vazia e seleção de matrícula de outra turma.
   useEffect(() => {
     if (alunosLista.length === 0) {
-      if (selectedMatriculaId) setSelectedMatriculaId('');
-      setMobileTab('LISTA');
+      if (selectedMatriculaId) setSelectedMatriculaId("");
+      setMobileTab("LISTA");
       return;
     }
-    if (!alunosLista.some(item => item.matricula.matricula_id === selectedMatriculaId)) {
+    if (
+      !alunosLista.some(
+        (item) => item.matricula.matricula_id === selectedMatriculaId,
+      )
+    ) {
       setSelectedMatriculaId(alunosLista[0].matricula.matricula_id);
     }
   }, [turmaId, alunosLista, selectedMatriculaId]);
 
   // Modals operacionais
   const [modalType, setModalType] = useState<
-    'orientacao' | 'feedback' | 'atraso' | 'ocorrencia' | 'ponto' | 'naoRealizada' | 'reagendar' | 'maisExcecao' | null
+    | "orientacao"
+    | "feedback"
+    | "atraso"
+    | "ocorrencia"
+    | "ponto"
+    | "naoRealizada"
+    | "reagendar"
+    | "maisExcecao"
+    | null
   >(null);
-  const [matriculaParaMais, setMatriculaParaMais] = useState<string>('');
+  const [matriculaParaMais, setMatriculaParaMais] = useState<string>("");
 
   // Estados dos formulários de aula não realizada / reagendamento
-  const [motivoNaoRealizada, setMotivoNaoRealizada] = useState<MotivoNaoRealizado>('Cancelamento institucional');
-  const [obsNaoRealizada, setObsNaoRealizada] = useState('');
-  const [novaDataReagendada, setNovaDataReagendada] = useState('');
-  const [novoHorarioReagendado, setNovoHorarioReagendado] = useState('');
-  const [motivoReagendamento, setMotivoReagendamento] = useState('');
+  const [motivoNaoRealizada, setMotivoNaoRealizada] =
+    useState<MotivoNaoRealizado>("Cancelamento institucional");
+  const [obsNaoRealizada, setObsNaoRealizada] = useState("");
+  const [novaDataReagendada, setNovaDataReagendada] = useState("");
+  const [novoHorarioReagendado, setNovoHorarioReagendado] = useState("");
+  const [motivoReagendamento, setMotivoReagendamento] = useState("");
   const [transferirEstudoCheck, setTransferirEstudoCheck] = useState(true);
 
   // Estado para seleção de substituição de estudo dirigido
   const [modoSubstituicao, setModoSubstituicao] = useState(false);
-  const [alunoSubstitutoId, setAlunoSubstitutoId] = useState('');
-  const [motivoSubstituicao, setMotivoSubstituicao] = useState('');
+  const [alunoSubstitutoId, setAlunoSubstitutoId] = useState("");
+  const [motivoSubstituicao, setMotivoSubstituicao] = useState("");
 
   // Helper de exceções
   const toggleFaltou = (matriculaId: string) => {
-    setExcecoes(prev => {
-      const atual = prev[matriculaId] || { faltou: false, atraso: false, celular: false };
+    setExcecoes((prev) => {
+      const atual = prev[matriculaId] || {
+        faltou: false,
+        atraso: false,
+        celular: false,
+      };
       return {
         ...prev,
         [matriculaId]: {
@@ -239,8 +295,12 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
   };
 
   const toggleAtraso = (matriculaId: string) => {
-    setExcecoes(prev => {
-      const atual = prev[matriculaId] || { faltou: false, atraso: false, celular: false };
+    setExcecoes((prev) => {
+      const atual = prev[matriculaId] || {
+        faltou: false,
+        atraso: false,
+        celular: false,
+      };
       return {
         ...prev,
         [matriculaId]: {
@@ -252,8 +312,12 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
   };
 
   const toggleCelular = (matriculaId: string) => {
-    setExcecoes(prev => {
-      const atual = prev[matriculaId] || { faltou: false, atraso: false, celular: false };
+    setExcecoes((prev) => {
+      const atual = prev[matriculaId] || {
+        faltou: false,
+        atraso: false,
+        celular: false,
+      };
       return {
         ...prev,
         [matriculaId]: {
@@ -267,68 +331,165 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
   // Encerrar chamada (D1): primeiro a prévia; a gravação só acontece após a confirmação explícita.
   const [previaAberta, setPreviaAberta] = useState(false);
   const [encerrando, setEncerrando] = useState(false);
-  const encerrandoRef=useRef(false);
+  const encerrandoRef = useRef(false);
+  useEffect(() => {
+    if (!previaAberta) return;
+    const previous = document.activeElement as HTMLElement | null;
+    const root = document.querySelector<HTMLElement>(
+      '[data-testid="previa-chamada"]',
+    );
+    // Foco inicial na ação reversível; Enter não confirma a chamada por acidente.
+    root?.querySelector<HTMLElement>("button")?.focus();
+    const key = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && !encerrandoRef.current) {
+        e.preventDefault();
+        setPreviaAberta(false);
+      }
+      if (e.key === "Tab") {
+        const nodes = Array.from(
+          root?.querySelectorAll<HTMLElement>("button:not(:disabled)") || [],
+        );
+        const first = nodes[0],
+          last = nodes[nodes.length - 1];
+        if (!first) {
+          e.preventDefault();
+          return;
+        }
+        if (e.shiftKey && document.activeElement === first) {
+          e.preventDefault();
+          last.focus();
+        } else if (!e.shiftKey && document.activeElement === last) {
+          e.preventDefault();
+          first.focus();
+        }
+      }
+    };
+    document.addEventListener("keydown", key);
+    return () => {
+      document.removeEventListener("keydown", key);
+      previous?.focus();
+    };
+  }, [previaAberta]);
   const previa = prepararEncerramentoChamada(alunosLista, excecoes);
   const abrirPrevia = () => {
     if (chamadaIncompleta) {
-      setChamadaSalvaMsg({ texto: 'Chamada não encerrada: lista de alunos incompleta. Confira a sincronização da turma.', tipo: 'local' });
+      setChamadaSalvaMsg({
+        texto:
+          "Chamada não encerrada: lista de alunos incompleta. Confira a sincronização da turma.",
+        tipo: "local",
+      });
       return;
     }
     setPreviaAberta(true);
   };
   const handleSalvarChamada = async () => {
     if (encerrandoRef.current) return;
-    encerrandoRef.current=true; // evita cliques repetidos e registros duplicados
+    encerrandoRef.current = true; // evita cliques repetidos e registros duplicados
     setEncerrando(true);
     try {
-      const res = await salvarChamadaPorExcecao(turmaId, hojeIso, previa.registros);
+      const res = await salvarChamadaPorExcecao(
+        turmaId,
+        hojeIso,
+        previa.registros,
+      );
       setPreviaAberta(false);
       setChamadaSalvaMsg({
         texto: `${res.statusTexto} — ${previa.presentes.length} presentes, ${previa.faltas.length} falta(s).`,
-        tipo: res.sincronizadoRemoto ? 'remoto' : 'local',
+        tipo: res.sincronizadoRemoto ? "remoto" : "local",
         tokenExpirado: res.tokenExpirado,
       });
       setTimeout(() => setChamadaSalvaMsg(null), 6000);
-    } catch(e) {
-      setChamadaSalvaMsg({texto:e instanceof Error?e.message:'Não foi possível encerrar a chamada.',tipo:'local'});
-    } finally { encerrandoRef.current=false;setEncerrando(false); }
+    } catch (e) {
+      setChamadaSalvaMsg({
+        texto:
+          e instanceof Error
+            ? e.message
+            : "Não foi possível encerrar a chamada.",
+        tipo: "local",
+      });
+    } finally {
+      encerrandoRef.current = false;
+      setEncerrando(false);
+    }
   };
 
   // Contagem instantânea em memória
-  const excecoesDaTurma = alunosLista.map(item => excecoes[item.matricula.matricula_id]).filter((e): e is ExcecaoAluno => !!e);
-  const faltasCount = excecoesDaTurma.filter(e => e.faltou).length;
-  const coletivos = alunosLista.filter(item => !temSupervisaoHorarioAlternativo(item.matricula));
+  const excecoesDaTurma = alunosLista
+    .map((item) => excecoes[item.matricula.matricula_id])
+    .filter((e): e is ExcecaoAluno => !!e);
+  const faltasCount = excecoesDaTurma.filter((e) => e.faltou).length;
+  const coletivos = alunosLista.filter(
+    (item) => !temSupervisaoHorarioAlternativo(item.matricula),
+  );
   const alternativos = alunosLista.length - coletivos.length;
-  const semMarcacao = naoRegistrados(alunosLista, excecoes).filter(i => !temSupervisaoHorarioAlternativo(i.matricula)).length;
-  const atrasosCount = excecoesDaTurma.filter(e => e.atraso).length;
-  const celularCount = excecoesDaTurma.filter(e => e.celular).length;
+  const semMarcacao = naoRegistrados(alunosLista, excecoes).filter(
+    (i) => !temSupervisaoHorarioAlternativo(i.matricula),
+  ).length;
+  const atrasosCount = excecoesDaTurma.filter((e) => e.atraso).length;
+  const celularCount = excecoesDaTurma.filter((e) => e.celular).length;
 
   // Filtro de alunos
-  const filteredAlunos = alunosLista.filter(item =>
-    item.aluno.nome.toLowerCase().includes(searchQuery.toLowerCase())
+  const filteredAlunos = alunosLista.filter((item) =>
+    item.aluno.nome.toLowerCase().includes(searchQuery.toLowerCase()),
   );
 
   // RSS: diagnóstico somente na aula. Um grupo corresponde a uma unidade
   // de envio, embora todas as integrantes possam ver as mesmas semanas.
-  const rssPorAluno = new Map(alunosLista.map(item => [
-    item.matricula.matricula_id,
-    obterLacunasRssDaAula(getSituacaoRssEstudante(item.matricula.matricula_id), calendarioRss, hojeIso),
-  ]));
-  const pendenciasRssTurma = new Map<string, { nome: string; faltantes: number[]; revisao: number[] }>();
-  alunosLista.forEach(item => {
-    const vinculo = grupoIntegrantes.find(gi => gi.matricula_id === item.matricula.matricula_id &&
-      gruposPratica.some(g => g.grupo_id === gi.grupo_id && g.turma_id === turmaId));
-    const grupo = vinculo ? gruposPratica.find(g => g.grupo_id === vinculo.grupo_id) : undefined;
+  const rssPorAluno = new Map(
+    alunosLista.map((item) => [
+      item.matricula.matricula_id,
+      obterLacunasRssDaAula(
+        getSituacaoRssEstudante(item.matricula.matricula_id),
+        calendarioRss,
+        hojeIso,
+      ),
+    ]),
+  );
+  const pendenciasRssTurma = new Map<
+    string,
+    { nome: string; faltantes: number[]; revisao: number[] }
+  >();
+  alunosLista.forEach((item) => {
+    const vinculo = grupoIntegrantes.find(
+      (gi) =>
+        gi.matricula_id === item.matricula.matricula_id &&
+        gruposPratica.some(
+          (g) => g.grupo_id === gi.grupo_id && g.turma_id === turmaId,
+        ),
+    );
+    const grupo = vinculo
+      ? gruposPratica.find((g) => g.grupo_id === vinculo.grupo_id)
+      : undefined;
     const chave = grupo ? grupo.grupo_id : item.matricula.matricula_id;
     const lacunas = rssPorAluno.get(item.matricula.matricula_id);
-    if (lacunas && (lacunas.faltantes.length || lacunas.emRevisao.length) && !pendenciasRssTurma.has(chave)) {
+    if (
+      lacunas &&
+      (lacunas.faltantes.length || lacunas.emRevisao.length) &&
+      !pendenciasRssTurma.has(chave)
+    ) {
       pendenciasRssTurma.set(chave, {
-        nome: grupo ? (grupo.nome_grupo || 'Grupo de prática') : item.aluno.nome,
-        faltantes: lacunas.faltantes, revisao: lacunas.emRevisao,
+        nome: grupo ? grupo.nome_grupo || "Grupo de prática" : item.aluno.nome,
+        faltantes: lacunas.faltantes,
+        revisao: lacunas.emRevisao,
       });
     }
   });
-  const resumoAluno = selectedMatriculaId ? getResumoAlunoSupervisao(selectedMatriculaId) : null;
+  const resumoAluno = selectedMatriculaId
+    ? getResumoAlunoSupervisao(selectedMatriculaId)
+    : null;
+
+  if (perfilServidor?.papel === "MONITORA")
+    return (
+      <section className="prisma-empty">
+        <h1 className="prisma-title text-xl">
+          Modo aula reservado à professora
+        </h1>
+        <p>Acompanhe as pendências documentais nas turmas autorizadas.</p>
+        <button onClick={onEncerrar} className="underline mt-3">
+          Voltar à turma
+        </button>
+      </section>
+    );
 
   return (
     <div className="flex flex-col min-h-0 md:h-full bg-slate-100 font-sans max-md:overflow-y-auto md:overflow-hidden">
@@ -351,18 +512,33 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
                 {disciplina?.nome} · Turno {turma?.turno}
               </span>
             </div>
-            <h2 className="text-sm font-bold text-white mt-0.5">{turma?.nome}</h2>
+            <h2 className="text-sm font-bold text-white mt-0.5">
+              {turma?.nome}
+            </h2>
           </div>
         </div>
 
         {/* Ações operacionais da aula: Não realizada, Reagendar, Encerrar */}
         <div className="flex items-center gap-2 flex-wrap">
-          {onPrepararAula && <button
-            onClick={() => onPrepararAula(turmaId)}
-            className="px-3 py-2 rounded-lg bg-indigo-200 text-slate-950 font-semibold text-xs hover:bg-indigo-100"
-          >Preparar aula</button>}
           <button
-            onClick={() => setModalType('naoRealizada')}
+            type="button"
+            onClick={() =>
+              setMobileTab(mobileTab === "RETOMADAS" ? "LISTA" : "RETOMADAS")
+            }
+            className="hidden md:block px-3 py-2 rounded-lg border border-white/40 text-xs"
+          >
+            Diário e retomadas
+          </button>
+          {onPrepararAula && (
+            <button
+              onClick={() => onPrepararAula(turmaId)}
+              className="px-3 py-2 rounded-lg bg-indigo-200 text-slate-950 font-semibold text-xs hover:bg-indigo-100"
+            >
+              Preparar aula
+            </button>
+          )}
+          <button
+            onClick={() => setModalType("naoRealizada")}
             className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-amber-300 text-xs font-medium transition-colors cursor-pointer border border-slate-700"
             title="Registrar que esta aula não ocorreu (feriado, cancelamento, etc.)"
           >
@@ -370,7 +546,7 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
           </button>
 
           <button
-            onClick={() => setModalType('reagendar')}
+            onClick={() => setModalType("reagendar")}
             className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium transition-colors cursor-pointer border border-slate-700"
             title="Reagendar supervisão para outra data"
           >
@@ -387,23 +563,28 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
       </header>
 
       {/* AVISO DE AULA NÃO REALIZADA / FERIADO (SE APLICÁVEL) */}
-      {encontroHoje && encontroHoje.status === 'NAO_REALIZADO' && (
+      {encontroHoje && encontroHoje.status === "NAO_REALIZADO" && (
         <div className="bg-amber-100 border-b border-amber-300 px-4 py-2.5 text-xs text-amber-900 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <AlertTriangle className="w-4 h-4 text-amber-700 shrink-0" />
             <span>
-              <strong>Atenção:</strong> Esta aula está registrada como <strong>NÃO REALIZADA</strong> (
-              {encontroHoje.motivo_nao_realizado}). Não serão geradas faltas ou chamada pendente.
+              <strong>Atenção:</strong> Esta aula está registrada como{" "}
+              <strong>NÃO REALIZADA</strong> (
+              {encontroHoje.motivo_nao_realizado}). Não serão geradas faltas ou
+              chamada pendente.
             </span>
           </div>
           <span className="font-mono text-[11px] text-amber-800">
-            {encontroHoje.observacao || ''}
+            {encontroHoje.observacao || ""}
           </span>
         </div>
       )}
 
-      <div className="px-4 pt-2 shrink-0"><ResumoRssSemEnvio turmaId={turmaId} compacto /></div>
-      <div className="px-4 pt-2 shrink-0"><ResumoDocumentosTurma turmaId={turmaId} compacto /></div>
+      <details className="mx-4 mt-2 prisma-section shrink-0">
+        <summary>Documentação e RSS da turma</summary>
+        <ResumoRssSemEnvio turmaId={turmaId} compacto />
+        <ResumoDocumentosTurma turmaId={turmaId} compacto />
+      </details>
 
       {/* 2. TOPO DO MODO SUPERVISÃO: ESTUDO DIRIGIDO / LEITURA DE HOJE */}
       {estudoDirigidoHoje && (
@@ -416,33 +597,61 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
               <div>
                 <div className="flex items-center gap-1.5 flex-wrap">
                   <span className="font-bold text-slate-900">
-                    {estudoDirigidoHoje.tema || estudoDirigidoHoje.artigo_leitura || 'Apresentação de Artigo / Caso'}
+                    {estudoDirigidoHoje.tema ||
+                      estudoDirigidoHoje.artigo_leitura ||
+                      "Apresentação de Artigo / Caso"}
                   </span>
-                  {estudoDirigidoHoje.artigo_leitura && estudoDirigidoHoje.tema && (
-                    <span className="text-slate-600 font-medium">
-                      · {estudoDirigidoHoje.artigo_leitura}
-                    </span>
+                  {estudoDirigidoHoje.artigo_leitura &&
+                    estudoDirigidoHoje.tema && (
+                      <span className="text-slate-600 font-medium">
+                        · {estudoDirigidoHoje.artigo_leitura}
+                      </span>
+                    )}
+                  {renderStatusEstudoBadge(
+                    estudoDirigidoHoje.status_realizacao,
                   )}
-                  {renderStatusEstudoBadge(estudoDirigidoHoje.status_realizacao)}
                 </div>
 
                 {estudoDirigidoHoje.reprogramada && (
                   <div className="text-[11px] font-semibold text-amber-800 mt-1">
-                    Apresentação transferida da aula cancelada de {estudoDirigidoHoje.data_original.split('-').reverse().join('/')} para hoje.
-                    Os responsáveis originais permanecem vinculados.
+                    Apresentação transferida da aula cancelada de{" "}
+                    {estudoDirigidoHoje.data_original
+                      .split("-")
+                      .reverse()
+                      .join("/")}{" "}
+                    para hoje. Os responsáveis originais permanecem vinculados.
                   </div>
                 )}
                 {leiturasDaAula.length > 1 && (
                   <div className="mt-2 space-y-2">
-                    <p className="font-bold text-xs text-amber-900">{leiturasDaAula.length} leituras programadas para hoje:</p>
+                    <p className="font-bold text-xs text-amber-900">
+                      {leiturasDaAula.length} leituras programadas para hoje:
+                    </p>
                     {leiturasDaAula.map((leitura, i) => {
                       const responsaveis = resolverResponsaveis({
-                        leitura, matriculas, alunos, grupos: gruposPratica, integrantes: grupoIntegrantes,
+                        leitura,
+                        matriculas,
+                        alunos,
+                        grupos: gruposPratica,
+                        integrantes: grupoIntegrantes,
                       });
                       return (
-                        <div key={leitura.leitura_id || String(i)} className="rounded-lg border border-amber-200 bg-white/80 p-2 text-xs">
-                          <p className="font-semibold text-slate-900">{i + 1}. {leitura.tema || leitura.titulo || leitura.artigo_leitura || 'Estudo dirigido'}</p>
-                          <p className="mt-1 text-slate-700"><strong>Responsáveis:</strong> {responsaveis.map(p => p.nome).join(', ') || 'Sem vínculo identificado na base'}</p>
+                        <div
+                          key={leitura.leitura_id || String(i)}
+                          className="rounded-lg border border-amber-200 bg-white/80 p-2 text-xs"
+                        >
+                          <p className="font-semibold text-slate-900">
+                            {i + 1}.{" "}
+                            {leitura.tema ||
+                              leitura.titulo ||
+                              leitura.artigo_leitura ||
+                              "Estudo dirigido"}
+                          </p>
+                          <p className="mt-1 text-slate-700">
+                            <strong>Responsáveis:</strong>{" "}
+                            {responsaveis.map((p) => p.nome).join(", ") ||
+                              "Sem vínculo identificado na base"}
+                          </p>
                         </div>
                       );
                     })}
@@ -458,12 +667,21 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
                   <div className="mt-1 text-[11px] text-slate-700">
                     <span className="font-bold">Responsáveis: </span>
                     <span className="inline-flex gap-2.5 flex-wrap mt-0.5">
-                      {responsaveisEstudo.map(resp => (
-                        <span key={resp.matriculaId + '-' + resp.nome} className="bg-white border border-slate-200 px-2 py-0.5 rounded text-slate-900 font-medium flex items-center gap-1">
+                      {responsaveisEstudo.map((resp) => (
+                        <span
+                          key={resp.matriculaId + "-" + resp.nome}
+                          className="bg-white border border-slate-200 px-2 py-0.5 rounded text-slate-900 font-medium flex items-center gap-1"
+                        >
                           {resp.nome}
-                          {resp.papel && <span className="text-slate-400 font-normal text-[10px]">({resp.papel})</span>}
-                          {resp.tipo === 'SUBSTITUTO' && (
-                            <span className="text-[9px] bg-blue-100 text-blue-800 font-bold px-1 rounded uppercase scale-90">Substituto</span>
+                          {resp.papel && (
+                            <span className="text-slate-400 font-normal text-[10px]">
+                              ({resp.papel})
+                            </span>
+                          )}
+                          {resp.tipo === "SUBSTITUTO" && (
+                            <span className="text-[9px] bg-blue-100 text-blue-800 font-bold px-1 rounded uppercase scale-90">
+                              Substituto
+                            </span>
                           )}
                         </span>
                       ))}
@@ -471,13 +689,15 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
                   </div>
                 ) : (
                   <div className="text-[11px] text-slate-400 mt-1">
-                    Nenhum responsável vinculado na base oficial para este estudo dirigido.
+                    Nenhum responsável vinculado na base oficial para este
+                    estudo dirigido.
                   </div>
                 )}
 
                 {estudoDirigidoHoje.motivo_substituicao && (
                   <div className="mt-1 text-[11px] text-purple-700 italic">
-                    Motivo da substituição: {estudoDirigidoHoje.motivo_substituicao}
+                    Motivo da substituição:{" "}
+                    {estudoDirigidoHoje.motivo_substituicao}
                   </div>
                 )}
               </div>
@@ -488,14 +708,16 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
               <button
                 onClick={() =>
                   atualizarStatusEstudoDirigido(
-                    estudoDirigidoHoje.leitura_id || estudoDirigidoHoje.data || '',
-                    'REALIZADO'
+                    estudoDirigidoHoje.leitura_id ||
+                      estudoDirigidoHoje.data ||
+                      "",
+                    "REALIZADO",
                   )
                 }
                 className={`px-2.5 py-1 rounded text-xs font-semibold transition-colors cursor-pointer ${
-                  estudoDirigidoHoje.status_realizacao === 'REALIZADO'
-                    ? 'bg-emerald-700 text-white'
-                    : 'bg-emerald-100 hover:bg-emerald-200 text-emerald-900'
+                  estudoDirigidoHoje.status_realizacao === "REALIZADO"
+                    ? "bg-emerald-700 text-white"
+                    : "bg-emerald-100 hover:bg-emerald-200 text-emerald-900"
                 }`}
               >
                 ✓ Realizado
@@ -504,14 +726,16 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
               <button
                 onClick={() =>
                   atualizarStatusEstudoDirigido(
-                    estudoDirigidoHoje.leitura_id || estudoDirigidoHoje.data || '',
-                    'PARCIAL'
+                    estudoDirigidoHoje.leitura_id ||
+                      estudoDirigidoHoje.data ||
+                      "",
+                    "PARCIAL",
                   )
                 }
                 className={`px-2 py-1 rounded text-xs font-semibold transition-colors cursor-pointer ${
-                  estudoDirigidoHoje.status_realizacao === 'PARCIAL'
-                    ? 'bg-blue-700 text-white'
-                    : 'bg-blue-100 hover:bg-blue-200 text-blue-900'
+                  estudoDirigidoHoje.status_realizacao === "PARCIAL"
+                    ? "bg-blue-700 text-white"
+                    : "bg-blue-100 hover:bg-blue-200 text-blue-900"
                 }`}
               >
                 Parcial
@@ -520,14 +744,16 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
               <button
                 onClick={() =>
                   atualizarStatusEstudoDirigido(
-                    estudoDirigidoHoje.leitura_id || estudoDirigidoHoje.data || '',
-                    'NAO_REALIZADO'
+                    estudoDirigidoHoje.leitura_id ||
+                      estudoDirigidoHoje.data ||
+                      "",
+                    "NAO_REALIZADO",
                   )
                 }
                 className={`px-2 py-1 rounded text-xs font-semibold transition-colors cursor-pointer ${
-                  estudoDirigidoHoje.status_realizacao === 'NAO_REALIZADO'
-                    ? 'bg-red-700 text-white'
-                    : 'bg-red-100 hover:bg-red-200 text-red-900'
+                  estudoDirigidoHoje.status_realizacao === "NAO_REALIZADO"
+                    ? "bg-red-700 text-white"
+                    : "bg-red-100 hover:bg-red-200 text-red-900"
                 }`}
               >
                 Não realizado
@@ -536,9 +762,9 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
               <button
                 onClick={() => setModoSubstituicao(!modoSubstituicao)}
                 className={`px-2.5 py-1 rounded text-xs font-semibold transition-colors cursor-pointer border ${
-                  estudoDirigidoHoje.status_realizacao === 'SUBSTITUICAO'
-                    ? 'bg-purple-700 text-white border-purple-800'
-                    : 'bg-white hover:bg-purple-50 text-purple-900 border-purple-200'
+                  estudoDirigidoHoje.status_realizacao === "SUBSTITUICAO"
+                    ? "bg-purple-700 text-white border-purple-800"
+                    : "bg-white hover:bg-purple-50 text-purple-900 border-purple-200"
                 }`}
               >
                 Substituição
@@ -549,15 +775,22 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
           {/* Inline Quick Selector de Substituição */}
           {modoSubstituicao && (
             <div className="mt-2.5 pt-2 border-t border-amber-200 flex flex-wrap items-center gap-2 text-xs bg-amber-100/50 p-2 rounded-lg">
-              <span className="font-semibold text-slate-800">Quem apresentou no lugar?</span>
+              <span className="font-semibold text-slate-800">
+                Quem apresentou no lugar?
+              </span>
               <select
                 value={alunoSubstitutoId}
-                onChange={e => setAlunoSubstitutoId(e.target.value)}
+                onChange={(e) => setAlunoSubstitutoId(e.target.value)}
                 className="border border-slate-300 rounded px-2 py-1 bg-white text-xs text-slate-800"
               >
-                <option value="">Selecione o estudante que apresentou...</option>
-                {alunosLista.map(item => (
-                  <option key={item.matricula.matricula_id} value={item.matricula.matricula_id}>
+                <option value="">
+                  Selecione o estudante que apresentou...
+                </option>
+                {alunosLista.map((item) => (
+                  <option
+                    key={item.matricula.matricula_id}
+                    value={item.matricula.matricula_id}
+                  >
                     {item.aluno.nome} ({item.aluno.identificador_academico})
                   </option>
                 ))}
@@ -566,7 +799,7 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
               <input
                 type="text"
                 value={motivoSubstituicao}
-                onChange={e => setMotivoSubstituicao(e.target.value)}
+                onChange={(e) => setMotivoSubstituicao(e.target.value)}
                 placeholder="Motivo da substituição (opcional)..."
                 className="border border-slate-300 rounded px-2 py-1 text-xs bg-white text-slate-800 flex-1 min-w-[180px]"
               />
@@ -574,13 +807,17 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
               <button
                 onClick={() => {
                   if (alunoSubstitutoId) {
-                    const subMat = alunosLista.find(a => a.matricula.matricula_id === alunoSubstitutoId);
-                    const subNome = subMat ? subMat.aluno.nome : 'Colega';
+                    const subMat = alunosLista.find(
+                      (a) => a.matricula.matricula_id === alunoSubstitutoId,
+                    );
+                    const subNome = subMat ? subMat.aluno.nome : "Colega";
                     atualizarStatusEstudoDirigido(
-                      estudoDirigidoHoje.leitura_id || estudoDirigidoHoje.data || '',
-                      'SUBSTITUICAO',
+                      estudoDirigidoHoje.leitura_id ||
+                        estudoDirigidoHoje.data ||
+                        "",
+                      "SUBSTITUICAO",
                       [alunoSubstitutoId],
-                      `Apresentado por ${subNome}${motivoSubstituicao ? ` (${motivoSubstituicao})` : ''}`
+                      `Apresentado por ${subNome}${motivoSubstituicao ? ` (${motivoSubstituicao})` : ""}`,
                     );
                     setModoSubstituicao(false);
                   }
@@ -606,7 +843,10 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
         <div className="bg-amber-600 text-white px-4 py-2.5 flex flex-wrap items-center justify-between gap-2 shadow-sm shrink-0">
           <div className="flex items-center gap-2 text-xs font-semibold">
             <AlertTriangle className="w-4 h-4 shrink-0 text-amber-200" />
-            <span>Sessão do Google expirada durante a supervisão. Nenhum dado foi perdido (estão preservados localmente).</span>
+            <span>
+              Sessão do Google expirada durante a supervisão. Nenhum dado foi
+              perdido (estão preservados localmente).
+            </span>
           </div>
           <button
             onClick={() => reconectarESincronizar()}
@@ -619,32 +859,86 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
 
       {/* FEEDBACK DE CHAMADA SALVA */}
       {previaAberta && (
-        <div className="fixed inset-0 z-[120] bg-slate-950/60 flex items-end sm:items-center justify-center p-0 sm:p-4" role="dialog" aria-modal="true" aria-labelledby="titulo-previa-chamada" data-testid="previa-chamada">
+        <div
+          className="fixed inset-0 z-[120] bg-slate-950/60 flex items-end sm:items-center justify-center p-0 sm:p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="titulo-previa-chamada"
+          data-testid="previa-chamada"
+        >
           <div className="bg-white w-full sm:max-w-xl max-h-[92vh] flex flex-col rounded-t-2xl sm:rounded-2xl shadow-xl">
             <div className="p-4 border-b border-slate-200">
-              <h2 id="titulo-previa-chamada" className="text-base font-bold text-slate-900">Encerrar a chamada?</h2>
-              <p className="text-xs text-slate-600 mt-1">Confira quem será registrado. Quem não foi marcado entra como <b>presente</b> somente se você confirmar aqui.</p>
+              <h2
+                id="titulo-previa-chamada"
+                className="text-base font-bold text-slate-900"
+              >
+                Encerrar a chamada?
+              </h2>
+              <p className="text-xs text-slate-600 mt-1">
+                Confira quem será registrado. Quem não foi marcado entra como{" "}
+                <b>presente</b> somente se você confirmar aqui.
+              </p>
             </div>
             <div className="p-4 space-y-3 overflow-y-auto text-xs">
               <section>
-                <h3 className="font-bold text-emerald-800">Serão registrados como presentes ({previa.presentes.length})</h3>
-                <p className="text-slate-700 leading-relaxed">{previa.presentes.length ? previa.presentes.map(i => i.aluno.nome + (previa.atrasos.includes(i) ? ' (atraso)' : '')).join(', ') : 'Ninguém.'}</p>
+                <h3 className="font-bold text-emerald-800">
+                  Serão registrados como presentes ({previa.presentes.length})
+                </h3>
+                <p className="text-slate-700 leading-relaxed">
+                  {previa.presentes.length
+                    ? previa.presentes
+                        .map(
+                          (i) =>
+                            i.aluno.nome +
+                            (previa.atrasos.includes(i) ? " (atraso)" : ""),
+                        )
+                        .join(", ")
+                    : "Ninguém."}
+                </p>
               </section>
               <section>
-                <h3 className="font-bold text-red-800">Faltas e justificativas ({previa.faltas.length})</h3>
-                <p className="text-slate-700 leading-relaxed">{previa.faltas.length ? previa.faltas.map(f => `${f.item.aluno.nome} — ${f.status === 'JUSTIFICATIVA_PENDENTE' ? 'justificativa a avaliar' : 'sem justificativa'}`).join('; ') : 'Nenhuma.'}</p>
+                <h3 className="font-bold text-red-800">
+                  Faltas e justificativas ({previa.faltas.length})
+                </h3>
+                <p className="text-slate-700 leading-relaxed">
+                  {previa.faltas.length
+                    ? previa.faltas
+                        .map(
+                          (f) =>
+                            `${f.item.aluno.nome} — ${f.status === "JUSTIFICATIVA_PENDENTE" ? "justificativa a avaliar" : "sem justificativa"}`,
+                        )
+                        .join("; ")
+                    : "Nenhuma."}
+                </p>
               </section>
               {previa.semRegistro.length > 0 && (
                 <section>
-                  <h3 className="font-bold text-indigo-800">{ROTULO_HORARIO_ALTERNATIVO}: nada será registrado ({previa.semRegistro.length})</h3>
-                  <p className="text-slate-700 leading-relaxed">{previa.semRegistro.map(i => i.aluno.nome).join(', ')}</p>
+                  <h3 className="font-bold text-indigo-800">
+                    {ROTULO_HORARIO_ALTERNATIVO}: nada será registrado (
+                    {previa.semRegistro.length})
+                  </h3>
+                  <p className="text-slate-700 leading-relaxed">
+                    {previa.semRegistro.map((i) => i.aluno.nome).join(", ")}
+                  </p>
                 </section>
               )}
             </div>
             <div className="p-4 border-t border-slate-200 flex flex-col-reverse sm:flex-row gap-2 sm:justify-end">
-              <button type="button" onClick={() => setPreviaAberta(false)} disabled={encerrando} className="min-h-[48px] px-4 rounded-xl border border-slate-300 text-slate-800 font-semibold">Voltar e ajustar</button>
-              <button type="button" autoFocus onClick={() => void handleSalvarChamada()} disabled={encerrando} className="min-h-[48px] px-4 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold disabled:opacity-60">
-                {encerrando ? 'Gravando…' : 'Confirmar e encerrar chamada'}
+              <button
+                type="button"
+                onClick={() => setPreviaAberta(false)}
+                disabled={encerrando}
+                className="min-h-[48px] px-4 rounded-xl border border-slate-300 text-slate-800 font-semibold"
+              >
+                Voltar e ajustar
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleSalvarChamada()}
+                disabled={encerrando}
+                className="min-h-[48px] px-4 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold disabled:opacity-60"
+              >
+                {encerrando ? "Gravando…" : "Confirmar e encerrar chamada"}
               </button>
             </div>
           </div>
@@ -654,11 +948,13 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
       {chamadaSalvaMsg && (
         <div
           className={`text-white text-xs px-4 py-2.5 flex items-center justify-between shadow-xs shrink-0 ${
-            chamadaSalvaMsg.tipo === 'remoto' ? 'bg-emerald-600' : 'bg-slate-800'
+            chamadaSalvaMsg.tipo === "remoto"
+              ? "bg-emerald-700"
+              : "bg-slate-800"
           }`}
         >
           <div className="flex items-center gap-2">
-            {chamadaSalvaMsg.tipo === 'remoto' ? (
+            {chamadaSalvaMsg.tipo === "remoto" ? (
               <Check className="w-4 h-4 text-emerald-200" />
             ) : (
               <Clock className="w-4 h-4 text-amber-300" />
@@ -674,7 +970,10 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
                 Reconectar Agora
               </button>
             )}
-            <button onClick={() => setChamadaSalvaMsg(null)} className="text-white hover:opacity-80">
+            <button
+              aria-label="Fechar mensagem da chamada" onClick={() => setChamadaSalvaMsg(null)}
+              className="text-white hover:opacity-80"
+            >
               <X className="w-3.5 h-3.5" />
             </button>
           </div>
@@ -684,46 +983,86 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
       {/* SELETOR MOBILE: CHAMADA VS FICHA DO ALUNO */}
       <div className="flex md:hidden bg-slate-200 p-1 border-b border-slate-300 shrink-0">
         <button
-          onClick={() => setMobileTab('LISTA')}
+          onClick={() => setMobileTab("LISTA")}
           className={`flex-1 min-h-[44px] py-2 text-xs font-bold rounded-lg transition-colors cursor-pointer flex items-center justify-center gap-1.5 ${
-            mobileTab === 'LISTA'
-              ? 'bg-white text-slate-900 shadow-xs'
-              : 'text-slate-600 hover:text-slate-900'
+            mobileTab === "LISTA"
+              ? "bg-white text-slate-900 shadow-xs"
+              : "text-slate-600 hover:text-slate-900"
           }`}
         >
           <UserCheck className="w-4 h-4 text-emerald-600" />
           <span>Chamada ({alunosLista.length})</span>
         </button>
         <button
-          onClick={() => setMobileTab('DETALHE')}
+          onClick={() => setMobileTab("DETALHE")}
           className={`flex-1 min-h-[44px] py-2 text-xs font-bold rounded-lg transition-colors cursor-pointer flex items-center justify-center gap-1.5 ${
-            mobileTab === 'DETALHE'
-              ? 'bg-white text-slate-900 shadow-xs'
-              : 'text-slate-600 hover:text-slate-900'
+            mobileTab === "DETALHE"
+              ? "bg-white text-slate-900 shadow-xs"
+              : "text-slate-600 hover:text-slate-900"
           }`}
         >
           <Users className="w-4 h-4 text-indigo-600" />
-          <span>Ficha do Aluno</span>
+          <span>Participação e orientações</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => setMobileTab("RETOMADAS")}
+          className={`flex-1 min-h-[44px] rounded-lg text-xs font-bold ${mobileTab === "RETOMADAS" ? "cs-nav-active" : "text-slate-600"}`}
+        >
+          Diário e retomadas
         </button>
       </div>
 
+      <section
+        className={`p-4 space-y-3 ${mobileTab === "RETOMADAS" ? "block" : "hidden"}`}
+        aria-label="Diário e retomadas"
+      >
+        <h2 className="prisma-title text-xl">Diário, discussão e retomadas</h2>
+        <p className="prisma-meta">
+          Use as anotações existentes para pautas, observações e
+          encaminhamentos. Marque como concluído somente o que ocorreu. Não
+          identifique pacientes.
+        </p>
+        <AulaPreparacaoPainel turmaId={turmaId} />
+        <p className="prisma-meta">
+          Participação e competências por evento aguardam um módulo próprio; as
+          anotações não atribuem notas automaticamente.
+        </p>
+      </section>
       {/* 3. MAIN SPLIT SCREEN: LISTA DE ALUNOS COM CHAMADA POR EXCEÇÃO (35%) / DETALHES DO ALUNO (65%) */}
       <div className="flex-1 min-h-[420px] md:min-h-0 flex flex-col md:flex-row max-md:overflow-visible md:overflow-hidden">
         {/* COLUNA ESQUERDA: CHAMADA POR EXCEÇÃO + LISTA RÁPIDA (Tablet 35%) */}
-        <div className={`w-full md:w-[380px] lg:w-[420px] bg-white border-r border-slate-200 flex-col shrink-0 min-h-[420px] md:min-h-0 max-md:overflow-visible md:overflow-hidden ${mobileTab === 'DETALHE' ? 'hidden md:flex' : 'flex'}`}>
+        <div
+          className={`w-full md:w-[380px] lg:w-[420px] bg-white border-r border-slate-200 flex-col shrink-0 min-h-[420px] md:min-h-0 max-md:overflow-visible md:overflow-hidden ${mobileTab !== "LISTA" ? "hidden md:flex" : "flex"}`}
+        >
           {/* HEADER DA CHAMADA: RESUMO E BOTÃO DE SALVAMENTO */}
           <div className="p-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between gap-2 shrink-0">
             <div>
               <div className="flex items-center gap-1.5">
                 <UserCheck className="w-4 h-4 text-emerald-600" />
-                <span className="font-bold text-slate-900 text-xs">Chamada por Exceção</span>
+                <span className="font-bold text-slate-900 text-xs">
+                  Chamada por Exceção
+                </span>
               </div>
               <p className="text-[11px] text-slate-500 mt-0.5">
-                <span className="text-slate-700 font-semibold" title="Quem não foi marcado só é registrado como presente ao encerrar a chamada, depois da sua confirmação.">{semMarcacao} sem marcação (não registrados)</span> ·{' '}
-                <span className={faltasCount > 0 ? 'text-red-700 font-semibold' : 'text-slate-400'}>
+                <span
+                  className="text-slate-700 font-semibold"
+                  title="Quem não foi marcado só é registrado como presente ao encerrar a chamada, depois da sua confirmação."
+                >
+                  {semMarcacao} sem marcação (não registrados)
+                </span>{" "}
+                ·{" "}
+                <span
+                  className={
+                    faltasCount > 0
+                      ? "text-red-700 font-semibold"
+                      : "text-slate-400"
+                  }
+                >
                   {faltasCount} falta(s)
                 </span>
-                {alternativos > 0 && ` · ${alternativos} em horário alternativo (sem presença automática)`}
+                {alternativos > 0 &&
+                  ` · ${alternativos} em horário alternativo (sem presença automática)`}
                 {atrasosCount > 0 && ` · ${atrasosCount} atraso`}
                 {celularCount > 0 && ` · ${celularCount} celular`}
               </p>
@@ -731,7 +1070,7 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
 
             <button
               onClick={abrirPrevia}
-              disabled={saveStatus === 'SALVANDO' || chamadaIncompleta}
+              disabled={saveStatus === "SALVANDO" || chamadaIncompleta}
               className="min-h-[44px] px-4 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 active:scale-98 text-white font-bold text-xs flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer"
               title="Revisar quem será considerado presente e encerrar a chamada"
             >
@@ -741,24 +1080,45 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
           </div>
 
           {chamadaIncompleta && (
-            <div role="alert" className="p-3 border-b border-amber-300 bg-amber-50 text-amber-950 text-xs space-y-2">
-              <p className="font-bold">A lista desta turma está incompleta. O salvamento da chamada foi bloqueado para evitar presença incorreta.</p>
-              <p>{diagnosticoChamada.alunosLocalizados} estudantes identificados de {diagnosticoChamada.matriculasElegiveis} matrículas elegíveis na turma.</p>
-              <button type="button" onClick={() => void reconectarESincronizar()} className="underline font-semibold">Atualizar dados da planilha</button>
+            <div
+              role="alert"
+              className="p-3 border-b border-amber-300 bg-amber-50 text-amber-950 text-xs space-y-2"
+            >
+              <p className="font-bold">
+                A lista desta turma está incompleta. O salvamento da chamada foi
+                bloqueado para evitar presença incorreta.
+              </p>
+              <p>
+                {diagnosticoChamada.alunosLocalizados} estudantes identificados
+                de {diagnosticoChamada.matriculasElegiveis} matrículas elegíveis
+                na turma.
+              </p>
+              <button
+                type="button"
+                onClick={() => void reconectarESincronizar()}
+                className="underline font-semibold"
+              >
+                Atualizar dados da planilha
+              </button>
             </div>
           )}
           {/* O RSS fica acessível na aula, sem acionar o sino de notificações. */}
           {pendenciasRssTurma.size > 0 && (
             <details className="px-3 py-2 border-b border-slate-200 bg-amber-50/90 text-xs">
               <summary className="cursor-pointer text-amber-800 font-semibold">
-                RSS a conferir nesta turma ({pendenciasRssTurma.size} {pendenciasRssTurma.size === 1 ? 'unidade' : 'unidades'})
+                RSS a conferir nesta turma ({pendenciasRssTurma.size}{" "}
+                {pendenciasRssTurma.size === 1 ? "unidade" : "unidades"})
               </summary>
               <div className="mt-2 max-h-36 overflow-y-auto space-y-1.5">
-                {[...pendenciasRssTurma.entries()].map(([id,info]) => <div key={id} className="text-slate-800">
-                  <span className="font-semibold">{info.nome}:</span>
-                  {info.faltantes.length > 0 && ` sem registro validado nas semanas ${info.faltantes.join(', ')}.`}
-                  {info.revisao.length > 0 && ` Em revisão: ${info.revisao.join(', ')}.`}
-                </div>)}
+                {[...pendenciasRssTurma.entries()].map(([id, info]) => (
+                  <div key={id} className="text-slate-800">
+                    <span className="font-semibold">{info.nome}:</span>
+                    {info.faltantes.length > 0 &&
+                      ` sem registro validado nas semanas ${info.faltantes.join(", ")}.`}
+                    {info.revisao.length > 0 &&
+                      ` Em revisão: ${info.revisao.join(", ")}.`}
+                  </div>
+                ))}
               </div>
             </details>
           )}
@@ -769,13 +1129,13 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
               <input
                 type="text"
                 value={searchQuery}
-                onChange={e => setSearchQuery(e.target.value)}
+                onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Buscar aluno na turma..."
                 className="w-full pl-8 pr-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-900"
               />
               {searchQuery && (
                 <button
-                  onClick={() => setSearchQuery('')}
+                  onClick={() => setSearchQuery("")}
                   className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
                 >
                   <X className="w-3 h-3" />
@@ -791,10 +1151,14 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
                 Nenhum aluno encontrado nesta turma.
               </div>
             ) : (
-              filteredAlunos.map(item => {
+              filteredAlunos.map((item) => {
                 const matId = item.matricula.matricula_id;
                 const isSelected = matId === selectedMatriculaId;
-                const exc = excecoes[matId] || { faltou: false, atraso: false, celular: false };
+                const exc = excecoes[matId] || {
+                  faltou: false,
+                  atraso: false,
+                  celular: false,
+                };
                 const resumo = getResumoAlunoSupervisao(matId);
                 const hasAlert = resumo?.temAtencao;
                 const rss = rssPorAluno.get(matId);
@@ -803,52 +1167,67 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
                   <div
                     key={matId}
                     className={`p-2.5 flex items-center justify-between gap-2 transition-colors select-none ${
-                      isSelected ? 'bg-slate-100 border-l-4 border-slate-900' : 'hover:bg-slate-50'
+                      isSelected
+                        ? "bg-slate-100 border-l-4 border-slate-900"
+                        : "hover:bg-slate-50"
                     }`}
                   >
                     {/* Aluno Nome + Indicador */}
                     <button
                       onClick={() => {
                         setSelectedMatriculaId(matId);
-                        setMobileTab('DETALHE');
+                        setMobileTab("DETALHE");
                       }}
                       className="text-left flex-1 min-w-0 cursor-pointer pr-1 py-1"
                     >
                       <div className="flex items-center gap-1.5 truncate">
                         <span
                           className={`text-xs font-semibold truncate ${
-                            exc.faltou ? 'line-through text-red-700' : 'text-slate-900'
+                            exc.faltou
+                              ? "line-through text-red-700"
+                              : "text-slate-900"
                           }`}
                         >
                           {item.aluno.nome}
                         </span>
                         {temSupervisaoHorarioAlternativo(item.matricula) && (
-                          <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-800 border border-indigo-200 shrink-0" title="Os encontros coletivos desta turma não geram presença nem falta automática para esta matrícula.">
+                          <span
+                            className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-800 border border-indigo-200 shrink-0"
+                            title="Os encontros coletivos desta turma não geram presença nem falta automática para esta matrícula."
+                          >
                             {ROTULO_HORARIO_ALTERNATIVO}
                           </span>
                         )}
                         {hasAlert && (
                           <span
                             className="text-amber-500 font-bold text-xs shrink-0 cursor-help"
-                            title={`${resumo?.motivosAtencao.length || 0} pendências:\n${resumo?.motivosAtencao.map(m => `· ${m}`).join('\n') || ''}`}
+                            title={`${resumo?.motivosAtencao.length || 0} pendências:\n${resumo?.motivosAtencao.map((m) => `· ${m}`).join("\n") || ""}`}
                           >
                             ⚠
                           </span>
                         )}
                       </div>
-                      {rss && (rss.faltantes.length > 0 || rss.emRevisao.length > 0) && (
-                        <div className="text-[10px] text-amber-700 font-semibold mt-0.5">
-                          {rss.faltantes.length > 0 && `RSS sem validação: ${rss.faltantes.join(', ')}`}
-                          {rss.emRevisao.length > 0 && ` · Em revisão: ${rss.emRevisao.join(', ')}`}
-                        </div>
-                      )}
+                      {rss &&
+                        (rss.faltantes.length > 0 ||
+                          rss.emRevisao.length > 0) && (
+                          <div className="text-[10px] text-amber-700 font-semibold mt-0.5">
+                            {rss.faltantes.length > 0 &&
+                              `RSS sem validação: ${rss.faltantes.join(", ")}`}
+                            {rss.emRevisao.length > 0 &&
+                              ` · Em revisão: ${rss.emRevisao.join(", ")}`}
+                          </div>
+                        )}
                       <div className="text-[10px] text-slate-400 font-mono truncate">
                         {item.aluno.identificador_academico}
                         {exc.justificativa && (
-                          <span className="text-blue-600 ml-1">· Justificada</span>
+                          <span className="text-blue-600 ml-1">
+                            · Justificada
+                          </span>
                         )}
                         {exc.observacao && (
-                          <span className="text-slate-500 ml-1">· Obs: {exc.observacao}</span>
+                          <span className="text-slate-500 ml-1">
+                            · Obs: {exc.observacao}
+                          </span>
                         )}
                       </div>
                     </button>
@@ -860,12 +1239,12 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
                         onClick={() => toggleFaltou(matId)}
                         className={`min-h-[44px] min-w-[52px] px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center justify-center ${
                           exc.faltou
-                            ? 'bg-red-600 text-white shadow-xs'
-                            : 'bg-slate-100 hover:bg-red-50 text-slate-600 hover:text-red-700'
+                            ? "bg-red-600 text-white shadow-xs"
+                            : "bg-slate-100 hover:bg-red-50 text-slate-600 hover:text-red-700"
                         }`}
                         title="Marcar falta para este aluno"
                       >
-                        {exc.faltou ? 'FALTA' : 'Faltou'}
+                        {exc.faltou ? "FALTA" : "Faltou"}
                       </button>
 
                       {/* [Atraso] */}
@@ -873,8 +1252,8 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
                         onClick={() => toggleAtraso(matId)}
                         className={`min-h-[44px] min-w-[44px] p-2 rounded-lg text-xs font-medium transition-all cursor-pointer flex items-center justify-center ${
                           exc.atraso
-                            ? 'bg-amber-500 text-white shadow-xs'
-                            : 'bg-slate-100 hover:bg-amber-50 text-slate-500 hover:text-amber-700'
+                            ? "bg-amber-500 text-white shadow-xs"
+                            : "bg-slate-100 hover:bg-amber-50 text-slate-500 hover:text-amber-700"
                         }`}
                         title="Registrar atraso"
                       >
@@ -886,8 +1265,8 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
                         onClick={() => toggleCelular(matId)}
                         className={`min-h-[44px] min-w-[44px] p-2 rounded-lg text-xs font-medium transition-all cursor-pointer flex items-center justify-center ${
                           exc.celular
-                            ? 'bg-amber-500 text-white shadow-xs'
-                            : 'bg-slate-100 hover:bg-amber-50 text-slate-500 hover:text-amber-700'
+                            ? "bg-amber-500 text-white shadow-xs"
+                            : "bg-slate-100 hover:bg-amber-50 text-slate-500 hover:text-amber-700"
                         }`}
                         title="Registrar uso de smartphone durante aula"
                       >
@@ -898,7 +1277,7 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
                       <button
                         onClick={() => {
                           setMatriculaParaMais(matId);
-                          setModalType('maisExcecao');
+                          setModalType("maisExcecao");
                         }}
                         className="min-h-[44px] min-w-[44px] p-2 rounded-lg text-xs font-bold bg-slate-100 hover:bg-slate-200 text-slate-700 cursor-pointer flex items-center justify-center"
                         title="Adicionar justificativa ou observação"
@@ -914,10 +1293,13 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
         </div>
 
         {/* COLUNA DIREITA: FICHA RESUMIDA DO ALUNO SELECIONADO (65%) */}
-        <div className={`flex-1 min-h-[420px] md:min-h-0 bg-slate-50 overflow-y-auto overscroll-contain touch-pan-y [-webkit-overflow-scrolling:touch] p-4 md:p-6 space-y-4 ${mobileTab === 'LISTA' ? 'hidden md:block' : 'block'}`}>
+        <div
+          className={`flex-1 min-h-[420px] md:min-h-0 bg-slate-50 overflow-y-auto overscroll-contain touch-pan-y [-webkit-overflow-scrolling:touch] p-4 md:p-6 space-y-4 ${mobileTab !== "DETALHE" ? "hidden md:block" : "block"}`}
+        >
           {!resumoAluno ? (
             <div className="h-full flex items-center justify-center text-slate-400 text-xs">
-              Selecione um aluno na coluna à esquerda para visualizar sua ficha e registrar orientações.
+              Selecione um aluno na coluna à esquerda para visualizar sua ficha
+              e registrar orientações.
             </div>
           ) : (
             <div className="max-w-4xl space-y-4">
@@ -938,7 +1320,12 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
                 </div>
 
                 <button
-                  onClick={() => onOpenFichaAluno(resumoAluno.matricula.matricula_id, 'resumo')}
+                  onClick={() =>
+                    onOpenFichaAluno(
+                      resumoAluno.matricula.matricula_id,
+                      "resumo",
+                    )
+                  }
                   className="px-3.5 py-2 rounded-lg border border-slate-200 hover:bg-slate-100 text-slate-700 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer self-start sm:self-auto"
                 >
                   <span>Abrir Ficha Completa</span>
@@ -948,7 +1335,12 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
 
               <div className="flex justify-end">
                 <button
-                  onClick={() => onOpenFichaAluno(resumoAluno.matricula.matricula_id, 'registros')}
+                  onClick={() =>
+                    onOpenFichaAluno(
+                      resumoAluno.matricula.matricula_id,
+                      "registros",
+                    )
+                  }
                   className="min-h-[44px] px-4 py-2 rounded-lg bg-slate-900 text-white text-xs font-bold hover:bg-slate-700 transition-colors"
                 >
                   Ler todos os RSS deste estudante
@@ -958,68 +1350,88 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
               {/* RESUMO COMPACTO DE INDICADORES */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
                 <div className="p-3 bg-white border border-slate-200 rounded-xl shadow-xs">
-                  <div className="text-[11px] text-slate-500">Registros Semanais (RSS)</div>
+                  <div className="text-[11px] text-slate-500">
+                    Registros Semanais (RSS)
+                  </div>
                   <div className="text-base font-bold font-mono text-slate-900 mt-0.5">
                     {resumoAluno.totalRegistrosEntregues}
                     <span className="text-slate-400 font-normal"> de </span>
                     {resumoAluno.totalRegistrosEsperados}
-                    <span className="text-[11px] text-slate-400 font-normal"> esperados</span>
+                    <span className="text-[11px] text-slate-400 font-normal">
+                      {" "}
+                      esperados
+                    </span>
                   </div>
                   <div className="text-[10px] text-slate-500 mt-0.5 flex items-center justify-between">
                     <span className="text-emerald-600 font-semibold">
-                      {resumoAluno.totalRegistrosEntregues >= resumoAluno.totalRegistrosEsperados ? 'Em dia' : 'Atrasado'}
+                      {resumoAluno.totalRegistrosEntregues >=
+                      resumoAluno.totalRegistrosEsperados
+                        ? "Em dia"
+                        : "Atrasado"}
                     </span>
-                    <span>{resumoAluno.totalPrevistoNoPeriodo ?? 12} no semestre</span>
+                    <span>
+                      {resumoAluno.totalPrevistoNoPeriodo ?? 12} no semestre
+                    </span>
                   </div>
                 </div>
 
                 <div
                   className={`p-3 bg-white border rounded-xl shadow-xs ${
                     resumoAluno.faltasInjustificadasCount > 0
-                      ? 'border-red-200 bg-red-50/30'
-                      : 'border-slate-200'
+                      ? "border-red-200 bg-red-50/30"
+                      : "border-slate-200"
                   }`}
                 >
-                  <div className="text-[11px] text-slate-500">Faltas no Semestre</div>
+                  <div className="text-[11px] text-slate-500">
+                    Faltas no Semestre
+                  </div>
                   <div className="text-base font-bold font-mono text-slate-900 mt-0.5">
                     {resumoAluno.faltasInjustificadasCount}
                   </div>
                   <div className="text-[10px] text-slate-500 mt-0.5">
-                    {resumoAluno.faltasInjustificadasCount > 0 ? '⚠ Injustificada' : 'Sem faltas graves'}
+                    {resumoAluno.faltasInjustificadasCount > 0
+                      ? "⚠ Injustificada"
+                      : "Sem faltas graves"}
                   </div>
                 </div>
 
                 <div
                   className={`p-3 bg-white border rounded-xl shadow-xs ${
                     resumoAluno.docsPendentesCount > 0
-                      ? 'border-amber-200 bg-amber-50/30'
-                      : 'border-slate-200'
+                      ? "border-amber-200 bg-amber-50/30"
+                      : "border-slate-200"
                   }`}
                 >
                   <div className="text-[11px] text-slate-500">Documentação</div>
                   <div className="text-base font-bold font-mono text-slate-900 mt-0.5">
                     {resumoAluno.docsPendentesCount === 0
-                      ? 'Regular'
+                      ? "Regular"
                       : `${resumoAluno.docsPendentesCount} pend.`}
                   </div>
                   <div className="text-[10px] text-slate-500 mt-0.5">
-                    {resumoAluno.docsPendentesCount > 0 ? 'TCLE / Termo' : 'Tudo entregue'}
+                    {resumoAluno.docsPendentesCount > 0
+                      ? "TCLE / Termo"
+                      : "Tudo entregue"}
                   </div>
                 </div>
 
                 <div
                   className={`p-3 bg-white border rounded-xl shadow-xs ${
                     resumoAluno.orientacoesAbertasCount > 0
-                      ? 'border-amber-200 bg-amber-50/30'
-                      : 'border-slate-200'
+                      ? "border-amber-200 bg-amber-50/30"
+                      : "border-slate-200"
                   }`}
                 >
-                  <div className="text-[11px] text-slate-500">Orientações Abertas</div>
+                  <div className="text-[11px] text-slate-500">
+                    Orientações Abertas
+                  </div>
                   <div className="text-base font-bold font-mono text-slate-900 mt-0.5">
                     {resumoAluno.orientacoesAbertasCount}
                   </div>
                   <div className="text-[10px] text-slate-500 mt-0.5">
-                    {resumoAluno.orientacoesAbertasCount > 0 ? 'Aguardando retorno' : 'Resolvidas'}
+                    {resumoAluno.orientacoesAbertasCount > 0
+                      ? "Aguardando retorno"
+                      : "Resolvidas"}
                   </div>
                 </div>
               </div>
@@ -1034,7 +1446,7 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
                     </span>
                   </div>
                   <button
-                    onClick={() => setModalType('ponto')}
+                    onClick={() => setModalType("ponto")}
                     className="text-xs text-slate-700 hover:text-slate-950 font-semibold flex items-center gap-1 cursor-pointer"
                   >
                     <Plus className="w-3.5 h-3.5" />
@@ -1048,7 +1460,7 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
                   </p>
                 ) : (
                   <div className="space-y-2">
-                    {resumoAluno.pontosAtivos.map(ponto => (
+                    {resumoAluno.pontosAtivos.map((ponto) => (
                       <div
                         key={ponto.ponto_id}
                         className="p-2.5 rounded-lg bg-slate-50 border border-slate-200 flex items-start justify-between gap-3 text-xs"
@@ -1059,7 +1471,7 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
                             className="mt-0.5 w-4 h-4 rounded border border-slate-300 hover:border-slate-500 bg-white flex items-center justify-center cursor-pointer"
                             title="Concluir ponto formativo"
                           >
-                            {ponto.status === 'CONCLUIDO' && (
+                            {ponto.status === "CONCLUIDO" && (
                               <Check className="w-3 h-3 text-emerald-600" />
                             )}
                           </button>
@@ -1091,7 +1503,7 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
                     Últimas Orientações da Supervisão
                   </span>
                   <button
-                    onClick={() => setModalType('orientacao')}
+                    onClick={() => setModalType("orientacao")}
                     className="text-xs text-slate-700 hover:text-slate-950 font-semibold flex items-center gap-1 cursor-pointer"
                   >
                     <Plus className="w-3.5 h-3.5" />
@@ -1105,8 +1517,8 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
                   </p>
                 ) : (
                   <div className="space-y-2">
-                    {resumoAluno.ultimasOrientacoes.map(ori => {
-                      const isAberta = ori.status === 'ABERTA';
+                    {resumoAluno.ultimasOrientacoes.map((ori) => {
+                      const isAberta = ori.status === "ABERTA";
                       return (
                         <div
                           key={ori.orientacao_id}
@@ -1114,24 +1526,30 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
                         >
                           <div className="space-y-1">
                             <div className="flex items-center gap-2">
-                              <span className="font-semibold text-slate-800">{ori.categoria}</span>
+                              <span className="font-semibold text-slate-800">
+                                {ori.categoria}
+                              </span>
                               <span
                                 className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
                                   isAberta
-                                    ? 'bg-amber-100 text-amber-800'
-                                    : 'bg-emerald-100 text-emerald-800'
+                                    ? "bg-amber-100 text-amber-800"
+                                    : "bg-emerald-100 text-emerald-800"
                                 }`}
                               >
-                                {isAberta ? 'Aberta' : 'Concluída'}
+                                {isAberta ? "Aberta" : "Concluída"}
                               </span>
                             </div>
-                            <p className="text-slate-700 leading-relaxed">{ori.texto}</p>
+                            <p className="text-slate-700 leading-relaxed">
+                              {ori.texto}
+                            </p>
                           </div>
                           <button
-                            onClick={() => toggleOrientacaoStatus(ori.orientacao_id)}
+                            onClick={() =>
+                              toggleOrientacaoStatus(ori.orientacao_id)
+                            }
                             className="text-[11px] text-slate-500 hover:text-slate-900 font-medium underline cursor-pointer"
                           >
-                            {isAberta ? 'Concluir' : 'Reabrir'}
+                            {isAberta ? "Concluir" : "Reabrir"}
                           </button>
                         </div>
                       );
@@ -1147,7 +1565,7 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
                 </span>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
                   <button
-                    onClick={() => setModalType('orientacao')}
+                    onClick={() => setModalType("orientacao")}
                     className="p-3 rounded-lg bg-slate-900 hover:bg-slate-800 text-white font-semibold text-xs flex items-center justify-center gap-2 transition-colors cursor-pointer shadow-xs active:scale-98"
                   >
                     <Plus className="w-4 h-4" />
@@ -1155,7 +1573,7 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
                   </button>
 
                   <button
-                    onClick={() => setModalType('feedback')}
+                    onClick={() => setModalType("feedback")}
                     className="p-3 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-800 font-semibold text-xs flex items-center justify-center gap-2 transition-colors cursor-pointer active:scale-98"
                   >
                     <MessageSquare className="w-4 h-4 text-slate-600" />
@@ -1163,7 +1581,7 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
                   </button>
 
                   <button
-                    onClick={() => setModalType('ponto')}
+                    onClick={() => setModalType("ponto")}
                     className="p-3 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-800 font-semibold text-xs flex items-center justify-center gap-2 transition-colors cursor-pointer active:scale-98"
                   >
                     <CheckCircle2 className="w-4 h-4 text-slate-600" />
@@ -1171,7 +1589,7 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
                   </button>
 
                   <button
-                    onClick={() => setModalType('ocorrencia')}
+                    onClick={() => setModalType("ocorrencia")}
                     className="p-3 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-800 font-semibold text-xs flex items-center justify-center gap-2 transition-colors cursor-pointer active:scale-98"
                   >
                     <AlertTriangle className="w-4 h-4 text-amber-600" />
@@ -1185,7 +1603,7 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
       </div>
 
       {/* MODAL 1: MARCAR AULA COMO NÃO REALIZADA */}
-      {modalType === 'naoRealizada' && (
+      {modalType === "naoRealizada" && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs">
           <div className="bg-white rounded-xl shadow-xl border border-slate-200 w-full max-w-md p-5 text-xs space-y-4">
             <div className="flex items-center justify-between pb-2 border-b border-slate-100">
@@ -1204,33 +1622,44 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
             </div>
 
             <p className="text-slate-600 leading-relaxed">
-              Esta ação registra que o encontro da turma <strong>{turma?.nome}</strong> em{' '}
-              <strong>{hojeIso}</strong> não aconteceu. <strong>NÃO</strong> gerará falta para os
-              estudantes nem chamada pendente.
+              Esta ação registra que o encontro da turma{" "}
+              <strong>{turma?.nome}</strong> em <strong>{hojeIso}</strong> não
+              aconteceu. <strong>NÃO</strong> gerará falta para os estudantes
+              nem chamada pendente.
             </p>
 
             <div className="space-y-3">
               <div>
-                <label className="font-semibold text-slate-700 block mb-1">Motivo do Encontro Não Ocorrido</label>
+                <label className="font-semibold text-slate-700 block mb-1">
+                  Motivo do Encontro Não Ocorrido
+                </label>
                 <select
                   value={motivoNaoRealizada}
-                  onChange={e => setMotivoNaoRealizada(e.target.value as MotivoNaoRealizado)}
+                  onChange={(e) =>
+                    setMotivoNaoRealizada(e.target.value as MotivoNaoRealizado)
+                  }
                   className="w-full border border-slate-200 rounded-lg p-2.5 bg-slate-50 text-xs font-semibold text-slate-800"
                 >
                   <option value="Feriado">Feriado</option>
                   <option value="Recesso acadêmico">Recesso acadêmico</option>
-                  <option value="Cancelamento institucional">Cancelamento institucional</option>
-                  <option value="Cancelamento da professora">Cancelamento da professora</option>
+                  <option value="Cancelamento institucional">
+                    Cancelamento institucional
+                  </option>
+                  <option value="Cancelamento da professora">
+                    Cancelamento da professora
+                  </option>
                   <option value="Outro">Outro</option>
                 </select>
               </div>
 
               <div>
-                <label className="font-semibold text-slate-700 block mb-1">Observação (Opcional)</label>
+                <label className="font-semibold text-slate-700 block mb-1">
+                  Observação (Opcional)
+                </label>
                 <input
                   type="text"
                   value={obsNaoRealizada}
-                  onChange={e => setObsNaoRealizada(e.target.value)}
+                  onChange={(e) => setObsNaoRealizada(e.target.value)}
                   placeholder="Ex: Feriado da Proclamação da República"
                   className="w-full border border-slate-200 rounded-lg p-2.5 text-xs bg-slate-50 text-slate-800"
                 />
@@ -1250,7 +1679,7 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
                     turmaId,
                     hojeIso,
                     motivoNaoRealizada,
-                    obsNaoRealizada
+                    obsNaoRealizada,
                   );
                   setModalType(null);
                   onEncerrar();
@@ -1265,13 +1694,15 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
       )}
 
       {/* MODAL 2: REAGENDAR AULA */}
-      {modalType === 'reagendar' && (
+      {modalType === "reagendar" && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs">
           <div className="bg-white rounded-xl shadow-xl border border-slate-200 w-full max-w-md p-5 text-xs space-y-4">
             <div className="flex items-center justify-between pb-2 border-b border-slate-100">
               <div className="flex items-center gap-2">
                 <Calendar className="w-4 h-4 text-slate-700" />
-                <h3 className="text-sm font-bold text-slate-900">Reagendar Supervisão</h3>
+                <h3 className="text-sm font-bold text-slate-900">
+                  Reagendar Supervisão
+                </h3>
               </div>
               <button
                 onClick={() => setModalType(null)}
@@ -1282,40 +1713,47 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
             </div>
 
             <p className="text-slate-600">
-              A data original ({hojeIso}) será preservada no histórico e não gerará faltas nem chamada
-              pendente. A nova data assumirá o encontro ativo.
+              A data original ({hojeIso}) será preservada no histórico e não
+              gerará faltas nem chamada pendente. A nova data assumirá o
+              encontro ativo.
             </p>
 
             <div className="space-y-3">
               <div>
-                <label className="font-semibold text-slate-700 block mb-1">Nova Data do Encontro</label>
+                <label className="font-semibold text-slate-700 block mb-1">
+                  Nova Data do Encontro
+                </label>
                 <input
                   type="date"
                   required
                   value={novaDataReagendada}
-                  onChange={e => setNovaDataReagendada(e.target.value)}
+                  onChange={(e) => setNovaDataReagendada(e.target.value)}
                   className="w-full border border-slate-200 rounded-lg p-2.5 font-mono text-slate-800 bg-slate-50"
                 />
               </div>
 
               <div>
-                <label className="font-semibold text-slate-700 block mb-1">Novo Horário (Opcional)</label>
+                <label className="font-semibold text-slate-700 block mb-1">
+                  Novo Horário (Opcional)
+                </label>
                 <input
                   type="text"
                   placeholder="Ex: 08:30–11:00 (deixar em branco para manter)"
                   value={novoHorarioReagendado}
-                  onChange={e => setNovoHorarioReagendado(e.target.value)}
+                  onChange={(e) => setNovoHorarioReagendado(e.target.value)}
                   className="w-full border border-slate-200 rounded-lg p-2.5 text-xs bg-slate-50 text-slate-800"
                 />
               </div>
 
               <div>
-                <label className="font-semibold text-slate-700 block mb-1">Motivo do Reagendamento</label>
+                <label className="font-semibold text-slate-700 block mb-1">
+                  Motivo do Reagendamento
+                </label>
                 <input
                   type="text"
                   placeholder="Ex: Reposição de feriado acadêmico"
                   value={motivoReagendamento}
-                  onChange={e => setMotivoReagendamento(e.target.value)}
+                  onChange={(e) => setMotivoReagendamento(e.target.value)}
                   className="w-full border border-slate-200 rounded-lg p-2.5 text-xs bg-slate-50 text-slate-800"
                 />
               </div>
@@ -1324,10 +1762,13 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
                 <input
                   type="checkbox"
                   checked={transferirEstudoCheck}
-                  onChange={e => setTransferirEstudoCheck(e.target.checked)}
+                  onChange={(e) => setTransferirEstudoCheck(e.target.checked)}
                   className="rounded border-slate-300"
                 />
-                <span>Transferir estudo dirigido e leitores previstos para a nova data</span>
+                <span>
+                  Transferir estudo dirigido e leitores previstos para a nova
+                  data
+                </span>
               </label>
             </div>
 
@@ -1347,7 +1788,7 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
                       novaDataReagendada,
                       novoHorarioReagendado,
                       motivoReagendamento,
-                      transferirEstudoCheck
+                      transferirEstudoCheck,
                     );
                     setModalType(null);
                   }
@@ -1363,13 +1804,17 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
       )}
 
       {/* MODAL 3: MAIS EXCEÇÃO (+ Observação / Justificativa na Chamada) */}
-      {modalType === 'maisExcecao' && matriculaParaMais && (
+      {modalType === "maisExcecao" && matriculaParaMais && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs">
           <div className="bg-white rounded-xl shadow-xl border border-slate-200 w-full max-w-md p-5 text-xs space-y-4">
             <div className="flex items-center justify-between pb-2 border-b border-slate-100">
               <h3 className="text-sm font-bold text-slate-900">
-                Anotações de Chamada —{' '}
-                {alunosLista.find(a => a.matricula.matricula_id === matriculaParaMais)?.aluno.nome}
+                Anotações de Chamada —{" "}
+                {
+                  alunosLista.find(
+                    (a) => a.matricula.matricula_id === matriculaParaMais,
+                  )?.aluno.nome
+                }
               </h3>
               <button
                 onClick={() => setModalType(null)}
@@ -1382,16 +1827,21 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
             <div className="space-y-3">
               <div>
                 <label className="font-semibold text-slate-700 block mb-1">
-                  Justificativa de Falta (se houver atestado ou comunicação prévia)
+                  Justificativa de Falta (se houver atestado ou comunicação
+                  prévia)
                 </label>
                 <textarea
                   rows={2}
-                  value={excecoes[matriculaParaMais]?.justificativa || ''}
-                  onChange={e =>
-                    setExcecoes(prev => ({
+                  value={excecoes[matriculaParaMais]?.justificativa || ""}
+                  onChange={(e) =>
+                    setExcecoes((prev) => ({
                       ...prev,
                       [matriculaParaMais]: {
-                        ...(prev[matriculaParaMais] || { faltou: true, atraso: false, celular: false }),
+                        ...(prev[matriculaParaMais] || {
+                          faltou: true,
+                          atraso: false,
+                          celular: false,
+                        }),
                         justificativa: e.target.value,
                       },
                     }))
@@ -1407,12 +1857,16 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
                 </label>
                 <input
                   type="text"
-                  value={excecoes[matriculaParaMais]?.observacao || ''}
-                  onChange={e =>
-                    setExcecoes(prev => ({
+                  value={excecoes[matriculaParaMais]?.observacao || ""}
+                  onChange={(e) =>
+                    setExcecoes((prev) => ({
                       ...prev,
                       [matriculaParaMais]: {
-                        ...(prev[matriculaParaMais] || { faltou: false, atraso: false, celular: false }),
+                        ...(prev[matriculaParaMais] || {
+                          faltou: false,
+                          atraso: false,
+                          celular: false,
+                        }),
                         observacao: e.target.value,
                       },
                     }))
@@ -1436,34 +1890,34 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
       )}
 
       {/* MODALS DA FICHA: ORIENTAÇÃO, FEEDBACK, PONTO */}
-      {modalType === 'orientacao' && (
+      {modalType === "orientacao" && (
         <ModalNovaOrientacao
           matriculaId={selectedMatriculaId}
-          alunoNome={resumoAluno?.aluno.nome || ''}
+          alunoNome={resumoAluno?.aluno.nome || ""}
           onClose={() => setModalType(null)}
         />
       )}
 
-      {modalType === 'feedback' && (
+      {modalType === "feedback" && (
         <ModalNovoFeedback
           matriculaId={selectedMatriculaId}
-          alunoNome={resumoAluno?.aluno.nome || ''}
+          alunoNome={resumoAluno?.aluno.nome || ""}
           onClose={() => setModalType(null)}
         />
       )}
 
-      {modalType === 'ponto' && (
+      {modalType === "ponto" && (
         <ModalNovoPontoAcompanhamento
           matriculaId={selectedMatriculaId}
-          alunoNome={resumoAluno?.aluno.nome || ''}
+          alunoNome={resumoAluno?.aluno.nome || ""}
           onClose={() => setModalType(null)}
         />
       )}
 
-      {modalType === 'ocorrencia' && (
+      {modalType === "ocorrencia" && (
         <ModalRegistrarOcorrencia
           matriculaId={selectedMatriculaId}
-          alunoNome={resumoAluno?.aluno.nome || ''}
+          alunoNome={resumoAluno?.aluno.nome || ""}
           tipoInicial="USO_INADEQUADO_DISPOSITIVO"
           onClose={() => setModalType(null)}
         />

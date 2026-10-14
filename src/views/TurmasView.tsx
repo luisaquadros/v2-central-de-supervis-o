@@ -1,9 +1,12 @@
-import { ResumoRssSemEnvio } from '../components/ResumoRssSemEnvio';
-import { ResumoDocumentosTurma } from '../components/ResumoDocumentosTurma';
-import { DocumentosDriveTurma } from '../components/DocumentosDrive';
-import { temSupervisaoHorarioAlternativo, ROTULO_HORARIO_ALTERNATIVO } from '../services/condicoesMatricula';
-import { resumirDocumentacaoOficial } from '../services/documentacaoAcademicaService';
-import React, { useState } from 'react';
+import { ResumoRssSemEnvio } from "../components/ResumoRssSemEnvio";
+import { ResumoDocumentosTurma } from "../components/ResumoDocumentosTurma";
+import { DocumentosDriveTurma } from "../components/DocumentosDrive";
+import {
+  temSupervisaoHorarioAlternativo,
+  ROTULO_HORARIO_ALTERNATIVO,
+} from "../services/condicoesMatricula";
+import { resumirDocumentacaoOficial } from "../services/documentacaoAcademicaService";
+import React, { useState } from "react";
 import {
   Users,
   Play,
@@ -17,10 +20,19 @@ import {
   X,
   Check,
   Trash2,
-} from 'lucide-react';
-import { useSupervisao, NovoHorarioInput, NovaOrigemInput } from '../context/SupervisaoContext';
-import { Turma } from '../types';
-import { classificarRssOperacional, getHojeDataIso, obterLeiturasAgendadas } from '../services/supervisaoOperacionalService';
+} from "lucide-react";
+import {
+  useSupervisao,
+  NovoHorarioInput,
+  NovaOrigemInput,
+} from "../context/SupervisaoContext";
+import { Turma } from "../types";
+import {
+  classificarRssOperacional,
+  getHojeDataIso,
+  obterLeiturasAgendadas,
+  listarProximasSupervisoes,
+} from "../services/supervisaoOperacionalService";
 
 interface TurmasViewProps {
   onSelectTurma: (turmaId: string) => void;
@@ -40,38 +52,48 @@ export const TurmasView: React.FC<TurmasViewProps> = ({
     matriculas,
     horariosTurma,
     turmasOrigem,
+    encontrosTurma,
     orientacoes,
     documentos,
     entregas,
     addTurma,
     updateTurma,
     toggleArchiveTurma,
+    perfilServidor,
   } = useSupervisao();
 
-  const [filtroStatus, setFiltroStatus] = useState<'ATIVAS' | 'ARQUIVADAS' | 'TODAS'>('ATIVAS');
+  const [filtroStatus, setFiltroStatus] = useState<
+    "ATIVAS" | "ARQUIVADAS" | "TODAS"
+  >("ATIVAS");
   const [modalTurmaOpen, setModalTurmaOpen] = useState(false);
   const [turmaEmEdicao, setTurmaEmEdicao] = useState<Turma | null>(null);
 
-  const currentPeriodo = periodos.find(p => p.periodo_id === selectedPeriodoId);
+  const currentPeriodo = periodos.find(
+    (p) => p.periodo_id === selectedPeriodoId,
+  );
   const todasTurmasPeriodo = getTurmasDoPeriodo(selectedPeriodoId, true);
 
-  const turmasExibidas = todasTurmasPeriodo.filter(t => {
-    if (filtroStatus === 'ATIVAS') return t.status !== 'ARQUIVADO';
-    if (filtroStatus === 'ARQUIVADAS') return t.status === 'ARQUIVADO';
+  const turmasExibidas = todasTurmasPeriodo.filter((t) => {
+    if (filtroStatus === "ATIVAS") return t.status !== "ARQUIVADO";
+    if (filtroStatus === "ARQUIVADAS") return t.status === "ARQUIVADO";
     return true;
   });
 
-  const turmasAtivasCount = todasTurmasPeriodo.filter(t => t.status !== 'ARQUIVADO').length;
-  const turmasArquivadasCount = todasTurmasPeriodo.filter(t => t.status === 'ARQUIVADO').length;
+  const turmasAtivasCount = todasTurmasPeriodo.filter(
+    (t) => t.status !== "ARQUIVADO",
+  ).length;
+  const turmasArquivadasCount = todasTurmasPeriodo.filter(
+    (t) => t.status === "ARQUIVADO",
+  ).length;
 
   const diasSemanaNome = [
-    'Domingo',
-    'Segunda-feira',
-    'Terça-feira',
-    'Quarta-feira',
-    'Quinta-feira',
-    'Sexta-feira',
-    'Sábado',
+    "Domingo",
+    "Segunda-feira",
+    "Terça-feira",
+    "Quarta-feira",
+    "Quinta-feira",
+    "Sexta-feira",
+    "Sábado",
   ];
 
   const handleOpenNovaTurma = () => {
@@ -95,14 +117,16 @@ export const TurmasView: React.FC<TurmasViewProps> = ({
       {/* Header com Ação de Criar Turma Dinâmica */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-3 border-b border-slate-200">
         <div>
-          <h2 className="text-xl font-bold tracking-tight text-slate-900">Turmas de Estágio</h2>
+          <h2 className="prisma-title text-2xl text-slate-900">Turmas</h2>
           <p className="text-xs text-slate-500 mt-0.5">
-            Semestre {currentPeriodo?.nome} · Gestão dinâmica de turmas, disciplinas e horários
+            Semestre {currentPeriodo?.nome} · Acompanhamento por turma e
+            matrícula
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <button
+            disabled={perfilServidor?.papel === "MONITORA"}
             onClick={handleOpenNovaTurma}
             className="flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition-all shadow-xs cursor-pointer active:scale-98"
           >
@@ -115,31 +139,31 @@ export const TurmasView: React.FC<TurmasViewProps> = ({
       {/* Filtros de Status */}
       <div className="flex items-center gap-2">
         <button
-          onClick={() => setFiltroStatus('ATIVAS')}
+          onClick={() => setFiltroStatus("ATIVAS")}
           className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
-            filtroStatus === 'ATIVAS'
-              ? 'bg-slate-900 text-white'
-              : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
+            filtroStatus === "ATIVAS"
+              ? "bg-slate-900 text-white"
+              : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-50"
           }`}
         >
           Turmas Ativas ({turmasAtivasCount})
         </button>
         <button
-          onClick={() => setFiltroStatus('ARQUIVADAS')}
+          onClick={() => setFiltroStatus("ARQUIVADAS")}
           className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
-            filtroStatus === 'ARQUIVADAS'
-              ? 'bg-slate-900 text-white'
-              : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
+            filtroStatus === "ARQUIVADAS"
+              ? "bg-slate-900 text-white"
+              : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-50"
           }`}
         >
           Arquivadas ({turmasArquivadasCount})
         </button>
         <button
-          onClick={() => setFiltroStatus('TODAS')}
+          onClick={() => setFiltroStatus("TODAS")}
           className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
-            filtroStatus === 'TODAS'
-              ? 'bg-slate-900 text-white'
-              : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
+            filtroStatus === "TODAS"
+              ? "bg-slate-900 text-white"
+              : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-50"
           }`}
         >
           Todas ({todasTurmasPeriodo.length})
@@ -150,14 +174,17 @@ export const TurmasView: React.FC<TurmasViewProps> = ({
       {turmasExibidas.length === 0 ? (
         <div className="p-12 text-center bg-white border border-slate-200 rounded-xl">
           <Users className="w-10 h-10 text-slate-300 mx-auto mb-3" />
-          <h3 className="text-sm font-bold text-slate-800">Nenhuma turma encontrada</h3>
+          <h3 className="text-sm font-bold text-slate-800">
+            Nenhuma turma encontrada
+          </h3>
           <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
-            {filtroStatus === 'ARQUIVADAS'
-              ? 'Não há turmas arquivadas neste período.'
-              : 'Cadastre sua primeira turma para vincular disciplina, horários e alunos.'}
+            {filtroStatus === "ARQUIVADAS"
+              ? "Não há turmas arquivadas neste período."
+              : "Cadastre sua primeira turma para vincular disciplina, horários e alunos."}
           </p>
-          {filtroStatus !== 'ARQUIVADAS' && (
+          {filtroStatus !== "ARQUIVADAS" && (
             <button
+              disabled={perfilServidor?.papel === "MONITORA"}
               onClick={handleOpenNovaTurma}
               className="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-slate-900 text-white rounded-lg text-xs font-semibold"
             >
@@ -168,36 +195,53 @@ export const TurmasView: React.FC<TurmasViewProps> = ({
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {turmasExibidas.map(turma => {
-            const disc = disciplinas.find(d => d.disciplina_id === turma.disciplina_id);
-            const mats = matriculas.filter(
-              m => m.turma_id === turma.turma_id && m.status === 'MATRICULADO'
+          {turmasExibidas.map((turma) => {
+            const disc = disciplinas.find(
+              (d) => d.disciplina_id === turma.disciplina_id,
             );
-            const matIds = mats.map(m => m.matricula_id);
-            const horarios = horariosTurma.filter(h => h.turma_id === turma.turma_id && h.ativo);
-            const origens = turmasOrigem.filter(o => o.turma_id === turma.turma_id && o.ativo);
+            const mats = matriculas.filter(
+              (m) =>
+                m.turma_id === turma.turma_id && m.status === "MATRICULADO",
+            );
+            const matIds = mats.map((m) => m.matricula_id);
+            const horarios = horariosTurma.filter(
+              (h) => h.turma_id === turma.turma_id && h.ativo,
+            );
+            const origens = turmasOrigem.filter(
+              (o) => o.turma_id === turma.turma_id && o.ativo,
+            );
 
             const pendDocs = resumirDocumentacaoOficial(
-              entregas, documentos, new Set(matIds)
+              entregas,
+              documentos,
+              new Set(matIds),
             ).pendentes;
             const oriAbertas = orientacoes.filter(
-              o => matIds.includes(o.matricula_id) && o.status === 'ABERTA'
+              (o) => matIds.includes(o.matricula_id) && o.status === "ABERTA",
             ).length;
 
-            const isArquivada = turma.status === 'ARQUIVADO';
+            const proximo = listarProximasSupervisoes(
+              [turma],
+              horariosTurma,
+              encontrosTurma,
+              new Date(),
+            )[0];
+            const isArquivada = turma.status === "ARQUIVADO";
 
             return (
               <div
                 key={turma.turma_id}
                 className={`bg-white border rounded-xl p-5 shadow-xs transition-all flex flex-col justify-between ${
                   isArquivada
-                    ? 'border-slate-200 bg-slate-50/70 opacity-80'
-                    : 'border-slate-200 hover:border-slate-300'
+                    ? "border-slate-200 bg-slate-50/70 opacity-80"
+                    : "border-slate-200 hover:border-slate-300"
                 }`}
               >
                 <div>
                   <div className="flex items-center justify-between text-xs text-slate-500 mb-2">
-                    <span className="font-semibold text-slate-700">{disc?.nome || 'Disciplina'}</span>
+                    <span className="font-semibold text-slate-700">
+                      {disc?.nome || "Disciplina"}
+                    </span>
                     <div className="flex items-center gap-1.5">
                       {isArquivada && (
                         <span className="bg-amber-100 text-amber-800 font-semibold px-2 py-0.5 rounded text-[10px]">
@@ -210,16 +254,21 @@ export const TurmasView: React.FC<TurmasViewProps> = ({
                     </div>
                   </div>
 
-                  <h3 className="text-lg font-bold text-slate-900 mb-2">{turma.nome}</h3>
+                  <h3 className="text-lg font-bold text-slate-900 mb-2">
+                    {turma.nome}
+                  </h3>
 
                   {/* Horários */}
                   <div className="space-y-1 mb-3">
                     {horarios.length > 0 ? (
-                      horarios.map(h => (
-                        <div key={h.horario_id} className="flex items-center gap-1.5 text-xs text-slate-600">
+                      horarios.map((h) => (
+                        <div
+                          key={h.horario_id}
+                          className="flex items-center gap-1.5 text-xs text-slate-600"
+                        >
                           <Clock className="w-3.5 h-3.5 text-slate-400" />
                           <span>
-                            {diasSemanaNome[h.dia_semana]} ·{' '}
+                            {diasSemanaNome[h.dia_semana]} ·{" "}
                             <span className="font-mono font-medium text-slate-800">
                               {h.hora_inicio} às {h.hora_fim}
                             </span>
@@ -227,7 +276,9 @@ export const TurmasView: React.FC<TurmasViewProps> = ({
                         </div>
                       ))
                     ) : (
-                      <div className="text-xs text-slate-400">Sem horário cadastrado</div>
+                      <div className="text-xs text-slate-400">
+                        Sem horário cadastrado
+                      </div>
                     )}
                   </div>
 
@@ -235,7 +286,7 @@ export const TurmasView: React.FC<TurmasViewProps> = ({
                   {origens.length > 0 && (
                     <div className="flex items-center gap-1.5 text-[11px] text-slate-500 flex-wrap pt-2 border-t border-slate-100">
                       <span className="text-slate-400">Docente Online:</span>
-                      {origens.map(orig => (
+                      {origens.map((orig) => (
                         <span
                           key={orig.origem_id}
                           className="font-mono text-[10px] bg-slate-100 text-slate-700 px-2 py-0.5 rounded"
@@ -250,7 +301,9 @@ export const TurmasView: React.FC<TurmasViewProps> = ({
                   <div className="mt-3 flex items-center gap-4 text-xs text-slate-600">
                     <div className="flex items-center gap-1">
                       <Users className="w-3.5 h-3.5 text-slate-400" />
-                      <span className="font-semibold">{mats.length} alunos</span>
+                      <span className="font-semibold">
+                        {mats.length} alunos
+                      </span>
                     </div>
                     {pendDocs > 0 && (
                       <span className="text-amber-700 bg-amber-50 px-2 py-0.5 rounded text-[11px] font-medium">
@@ -265,6 +318,12 @@ export const TurmasView: React.FC<TurmasViewProps> = ({
                   </div>
                 </div>
 
+                <p className="prisma-meta mt-3">
+                  Próximo encontro:{" "}
+                  {proximo
+                    ? `${new Date(`${proximo.dataProxima}T12:00:00`).toLocaleDateString("pt-BR")} · ${proximo.horaInicio}`
+                    : "sem data disponível"}
+                </p>
                 {/* Botões de Ação */}
                 <div className="mt-5 pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
                   <div className="flex items-center gap-1.5">
@@ -275,15 +334,21 @@ export const TurmasView: React.FC<TurmasViewProps> = ({
                       Abrir
                     </button>
                     <button
-                      onClick={e => handleOpenEditarTurma(turma, e)}
+                      disabled={perfilServidor?.papel === "MONITORA"}
+                      onClick={(e) => handleOpenEditarTurma(turma, e)}
                       title="Editar Turma"
                       className="p-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors cursor-pointer"
                     >
                       <Edit2 className="w-3.5 h-3.5" />
                     </button>
                     <button
-                      onClick={e => handleToggleArchive(turma.turma_id, e)}
-                      title={isArquivada ? 'Desarquivar Turma' : 'Arquivar Turma (sem apagar dados)'}
+                      disabled={perfilServidor?.papel === "MONITORA"}
+                      onClick={(e) => handleToggleArchive(turma.turma_id, e)}
+                      title={
+                        isArquivada
+                          ? "Desarquivar Turma"
+                          : "Arquivar Turma (sem apagar dados)"
+                      }
                       className="p-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors cursor-pointer"
                     >
                       {isArquivada ? (
@@ -295,6 +360,7 @@ export const TurmasView: React.FC<TurmasViewProps> = ({
                   </div>
 
                   <button
+                    disabled={perfilServidor?.papel === "MONITORA"}
                     onClick={() => onIniciarSupervisao(turma.turma_id)}
                     className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold transition-colors cursor-pointer active:scale-98 shadow-xs"
                   >
@@ -313,7 +379,7 @@ export const TurmasView: React.FC<TurmasViewProps> = ({
         <ModalTurmaForm
           turma={turmaEmEdicao}
           onClose={() => setModalTurmaOpen(false)}
-          onSave={async dados => {
+          onSave={async (dados) => {
             if (turmaEmEdicao) {
               await updateTurma(turmaEmEdicao.turma_id, dados);
             } else {
@@ -336,46 +402,55 @@ interface ModalTurmaFormProps {
   onSave: (dados: {
     disciplina_id: string;
     nome: string;
-    turno: 'MATUTINO' | 'NOTURNO' | 'VESPERTINO' | 'INTEGRAL';
-    status?: 'ATIVO' | 'ENCERRADO' | 'ARQUIVADO';
+    turno: "MATUTINO" | "NOTURNO" | "VESPERTINO" | "INTEGRAL";
+    status?: "ATIVO" | "ENCERRADO" | "ARQUIVADO";
     horarios?: NovoHorarioInput[];
     origens?: NovaOrigemInput[];
   }) => Promise<void>;
 }
 
-const ModalTurmaForm: React.FC<ModalTurmaFormProps> = ({ turma, onClose, onSave }) => {
+const ModalTurmaForm: React.FC<ModalTurmaFormProps> = ({
+  turma,
+  onClose,
+  onSave,
+}) => {
   const { disciplinas, horariosTurma, turmasOrigem } = useSupervisao();
 
   const [disciplinaId, setDisciplinaId] = useState(
-    turma ? turma.disciplina_id : disciplinas[0]?.disciplina_id || ''
+    turma ? turma.disciplina_id : disciplinas[0]?.disciplina_id || "",
   );
-  const [nome, setNome] = useState(turma ? turma.nome : '');
-  const [turno, setTurno] = useState<'MATUTINO' | 'NOTURNO' | 'VESPERTINO' | 'INTEGRAL'>(
-    turma ? turma.turno : 'MATUTINO'
-  );
-  const [status, setStatus] = useState<'ATIVO' | 'ENCERRADO' | 'ARQUIVADO'>(
-    turma ? turma.status : 'ATIVO'
+  const [nome, setNome] = useState(turma ? turma.nome : "");
+  const [turno, setTurno] = useState<
+    "MATUTINO" | "NOTURNO" | "VESPERTINO" | "INTEGRAL"
+  >(turma ? turma.turno : "MATUTINO");
+  const [status, setStatus] = useState<"ATIVO" | "ENCERRADO" | "ARQUIVADO">(
+    turma ? turma.status : "ATIVO",
   );
 
   // Horários existentes ou default
   const horariosIniciais = turma
     ? horariosTurma
-        .filter(h => h.turma_id === turma.turma_id)
-        .map(h => ({ dia_semana: h.dia_semana, hora_inicio: h.hora_inicio, hora_fim: h.hora_fim }))
-    : [{ dia_semana: 1, hora_inicio: '08:20', hora_fim: '11:00' }];
+        .filter((h) => h.turma_id === turma.turma_id)
+        .map((h) => ({
+          dia_semana: h.dia_semana,
+          hora_inicio: h.hora_inicio,
+          hora_fim: h.hora_fim,
+        }))
+    : [{ dia_semana: 1, hora_inicio: "08:20", hora_fim: "11:00" }];
 
-  const [horarios, setHorarios] = useState<NovoHorarioInput[]>(horariosIniciais);
+  const [horarios, setHorarios] =
+    useState<NovoHorarioInput[]>(horariosIniciais);
 
   // Origem Docente Online
   const origensIniciais = turma
     ? turmasOrigem
-        .filter(o => o.turma_id === turma.turma_id)
-        .map(o => ({
+        .filter((o) => o.turma_id === turma.turma_id)
+        .map((o) => ({
           sistema: o.sistema,
           codigo_externo: o.codigo_externo,
           nome_externo: o.nome_externo,
         }))
-    : [{ sistema: 'Docente Online', codigo_externo: '', nome_externo: '' }];
+    : [{ sistema: "Docente Online", codigo_externo: "", nome_externo: "" }];
 
   const [origens, setOrigens] = useState<NovaOrigemInput[]>(origensIniciais);
   const [salvando, setSalvando] = useState(false);
@@ -391,8 +466,8 @@ const ModalTurmaForm: React.FC<ModalTurmaFormProps> = ({ turma, onClose, onSave 
         nome: nome.trim(),
         turno,
         status,
-        horarios: horarios.filter(h => h.hora_inicio && h.hora_fim),
-        origens: origens.filter(o => o.codigo_externo.trim()),
+        horarios: horarios.filter((h) => h.hora_inicio && h.hora_fim),
+        origens: origens.filter((o) => o.codigo_externo.trim()),
       });
     } finally {
       setSalvando(false);
@@ -400,33 +475,44 @@ const ModalTurmaForm: React.FC<ModalTurmaFormProps> = ({ turma, onClose, onSave 
   };
 
   const addHorario = () => {
-    setHorarios(prev => [...prev, { dia_semana: 2, hora_inicio: '18:30', hora_fim: '21:12' }]);
+    setHorarios((prev) => [
+      ...prev,
+      { dia_semana: 2, hora_inicio: "18:30", hora_fim: "21:12" },
+    ]);
   };
 
   const removeHorario = (index: number) => {
-    setHorarios(prev => prev.filter((_, i) => i !== index));
+    setHorarios((prev) => prev.filter((_, i) => i !== index));
   };
 
-  const updateHorario = (index: number, campo: keyof NovoHorarioInput, valor: any) => {
-    setHorarios(prev =>
-      prev.map((h, i) => (i === index ? { ...h, [campo]: valor } : h))
+  const updateHorario = (
+    index: number,
+    campo: keyof NovoHorarioInput,
+    valor: any,
+  ) => {
+    setHorarios((prev) =>
+      prev.map((h, i) => (i === index ? { ...h, [campo]: valor } : h)),
     );
   };
 
   const addOrigem = () => {
-    setOrigens(prev => [
+    setOrigens((prev) => [
       ...prev,
-      { sistema: 'Docente Online', codigo_externo: '', nome_externo: '' },
+      { sistema: "Docente Online", codigo_externo: "", nome_externo: "" },
     ]);
   };
 
   const removeOrigem = (index: number) => {
-    setOrigens(prev => prev.filter((_, i) => i !== index));
+    setOrigens((prev) => prev.filter((_, i) => i !== index));
   };
 
-  const updateOrigem = (index: number, campo: keyof NovaOrigemInput, valor: string) => {
-    setOrigens(prev =>
-      prev.map((o, i) => (i === index ? { ...o, [campo]: valor } : o))
+  const updateOrigem = (
+    index: number,
+    campo: keyof NovaOrigemInput,
+    valor: string,
+  ) => {
+    setOrigens((prev) =>
+      prev.map((o, i) => (i === index ? { ...o, [campo]: valor } : o)),
     );
   };
 
@@ -436,10 +522,11 @@ const ModalTurmaForm: React.FC<ModalTurmaFormProps> = ({ turma, onClose, onSave 
         <div className="flex items-center justify-between p-5 border-b border-slate-100">
           <div>
             <h3 className="font-bold text-base text-slate-900">
-              {turma ? 'Editar Turma' : 'Cadastrar Nova Turma'}
+              {turma ? "Editar Turma" : "Cadastrar Nova Turma"}
             </h3>
             <p className="text-xs text-slate-500 mt-0.5">
-              Defina a disciplina, horários de supervisão e códigos do Docente Online
+              Defina a disciplina, horários de supervisão e códigos do Docente
+              Online
             </p>
           </div>
           <button
@@ -458,11 +545,11 @@ const ModalTurmaForm: React.FC<ModalTurmaFormProps> = ({ turma, onClose, onSave 
             </label>
             <select
               value={disciplinaId}
-              onChange={e => setDisciplinaId(e.target.value)}
+              onChange={(e) => setDisciplinaId(e.target.value)}
               className="w-full border border-slate-200 rounded-lg p-2.5 bg-slate-50 font-medium"
               required
             >
-              {disciplinas.map(d => (
+              {disciplinas.map((d) => (
                 <option key={d.disciplina_id} value={d.disciplina_id}>
                   {d.nome} ({d.codigo}) · {d.tipo}
                 </option>
@@ -472,11 +559,13 @@ const ModalTurmaForm: React.FC<ModalTurmaFormProps> = ({ turma, onClose, onSave 
 
           {/* Nome da Turma */}
           <div>
-            <label className="font-semibold text-slate-700 block mb-1">Nome da Turma</label>
+            <label className="font-semibold text-slate-700 block mb-1">
+              Nome da Turma
+            </label>
             <input
               type="text"
               value={nome}
-              onChange={e => setNome(e.target.value)}
+              onChange={(e) => setNome(e.target.value)}
               placeholder="Ex: Clínica Adulto - Matutino"
               className="w-full border border-slate-200 rounded-lg p-2.5 bg-slate-50 font-medium"
               required
@@ -486,10 +575,12 @@ const ModalTurmaForm: React.FC<ModalTurmaFormProps> = ({ turma, onClose, onSave 
           {/* Turno e Status */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="font-semibold text-slate-700 block mb-1">Turno</label>
+              <label className="font-semibold text-slate-700 block mb-1">
+                Turno
+              </label>
               <select
                 value={turno}
-                onChange={e => setTurno(e.target.value as any)}
+                onChange={(e) => setTurno(e.target.value as any)}
                 className="w-full border border-slate-200 rounded-lg p-2.5 bg-slate-50 font-medium"
               >
                 <option value="MATUTINO">Matutino</option>
@@ -500,10 +591,12 @@ const ModalTurmaForm: React.FC<ModalTurmaFormProps> = ({ turma, onClose, onSave 
             </div>
 
             <div>
-              <label className="font-semibold text-slate-700 block mb-1">Status</label>
+              <label className="font-semibold text-slate-700 block mb-1">
+                Status
+              </label>
               <select
                 value={status}
-                onChange={e => setStatus(e.target.value as any)}
+                onChange={(e) => setStatus(e.target.value as any)}
                 className="w-full border border-slate-200 rounded-lg p-2.5 bg-slate-50 font-medium"
               >
                 <option value="ATIVO">Ativa</option>
@@ -516,7 +609,9 @@ const ModalTurmaForm: React.FC<ModalTurmaFormProps> = ({ turma, onClose, onSave 
           {/* Horários da Turma */}
           <div className="pt-2 border-t border-slate-100">
             <div className="flex items-center justify-between mb-2">
-              <label className="font-semibold text-slate-700">Horários Semanais da Aula</label>
+              <label className="font-semibold text-slate-700">
+                Horários Semanais da Aula
+              </label>
               <button
                 type="button"
                 onClick={addHorario}
@@ -529,10 +624,19 @@ const ModalTurmaForm: React.FC<ModalTurmaFormProps> = ({ turma, onClose, onSave 
 
             <div className="space-y-2">
               {horarios.map((h, idx) => (
-                <div key={idx} className="flex items-center gap-2 p-2 bg-slate-50 rounded-lg border border-slate-100">
+                <div
+                  key={idx}
+                  className="flex items-center gap-2 p-2 bg-slate-50 rounded-lg border border-slate-100"
+                >
                   <select
                     value={h.dia_semana}
-                    onChange={e => updateHorario(idx, 'dia_semana', parseInt(e.target.value, 10))}
+                    onChange={(e) =>
+                      updateHorario(
+                        idx,
+                        "dia_semana",
+                        parseInt(e.target.value, 10),
+                      )
+                    }
                     className="border border-slate-200 rounded p-1.5 bg-white text-xs"
                   >
                     <option value={1}>Segunda-feira</option>
@@ -546,14 +650,18 @@ const ModalTurmaForm: React.FC<ModalTurmaFormProps> = ({ turma, onClose, onSave 
                   <input
                     type="time"
                     value={h.hora_inicio}
-                    onChange={e => updateHorario(idx, 'hora_inicio', e.target.value)}
+                    onChange={(e) =>
+                      updateHorario(idx, "hora_inicio", e.target.value)
+                    }
                     className="border border-slate-200 rounded p-1 bg-white font-mono text-xs w-24"
                   />
                   <span className="text-slate-400">às</span>
                   <input
                     type="time"
                     value={h.hora_fim}
-                    onChange={e => updateHorario(idx, 'hora_fim', e.target.value)}
+                    onChange={(e) =>
+                      updateHorario(idx, "hora_fim", e.target.value)
+                    }
                     className="border border-slate-200 rounded p-1 bg-white font-mono text-xs w-24"
                   />
 
@@ -574,7 +682,9 @@ const ModalTurmaForm: React.FC<ModalTurmaFormProps> = ({ turma, onClose, onSave 
           {/* Vínculo Docente Online */}
           <div className="pt-2 border-t border-slate-100">
             <div className="flex items-center justify-between mb-2">
-              <label className="font-semibold text-slate-700">Códigos do Docente Online</label>
+              <label className="font-semibold text-slate-700">
+                Códigos do Docente Online
+              </label>
               <button
                 type="button"
                 onClick={addOrigem}
@@ -587,18 +697,25 @@ const ModalTurmaForm: React.FC<ModalTurmaFormProps> = ({ turma, onClose, onSave 
 
             <div className="space-y-2">
               {origens.map((orig, idx) => (
-                <div key={idx} className="flex items-center gap-2 p-2 bg-slate-50 rounded-lg border border-slate-100">
+                <div
+                  key={idx}
+                  className="flex items-center gap-2 p-2 bg-slate-50 rounded-lg border border-slate-100"
+                >
                   <input
                     type="text"
                     value={orig.codigo_externo}
-                    onChange={e => updateOrigem(idx, 'codigo_externo', e.target.value)}
+                    onChange={(e) =>
+                      updateOrigem(idx, "codigo_externo", e.target.value)
+                    }
                     placeholder="Ex: PSIC-101-A"
                     className="border border-slate-200 rounded p-1.5 bg-white font-mono text-xs flex-1 uppercase"
                   />
                   <input
                     type="text"
                     value={orig.nome_externo}
-                    onChange={e => updateOrigem(idx, 'nome_externo', e.target.value)}
+                    onChange={(e) =>
+                      updateOrigem(idx, "nome_externo", e.target.value)
+                    }
                     placeholder="Descrição institucional"
                     className="border border-slate-200 rounded p-1.5 bg-white text-xs flex-1"
                   />
@@ -655,7 +772,13 @@ export const TurmaDetalheView: React.FC<{
   onIniciarSupervisao: (turmaId: string) => void;
   onOpenPrepararAula?: (turmaId: string) => void;
   onOpenAluno: (matriculaId: string) => void;
-}> = ({ turmaId, onVoltar, onIniciarSupervisao, onOpenPrepararAula, onOpenAluno }) => {
+}> = ({
+  turmaId,
+  onVoltar,
+  onIniciarSupervisao,
+  onOpenPrepararAula,
+  onOpenAluno,
+}) => {
   const {
     turmas,
     disciplinas,
@@ -675,67 +798,101 @@ export const TurmaDetalheView: React.FC<{
     avaliacoes,
     updateTurma,
     toggleArchiveTurma,
+    perfilServidor,
   } = useSupervisao();
 
-  const [activeTab, setActiveTab] = useState<'geral' | 'alunos' | 'rss' | 'leituras' | 'frequencia' | 'pendencias' | 'avaliacao'>('geral');
+  const [activeTab, setActiveTab] = useState<
+    | "geral"
+    | "alunos"
+    | "rss"
+    | "leituras"
+    | "frequencia"
+    | "pendencias"
+    | "avaliacao"
+  >("geral");
   const [modalEditarOpen, setModalEditarOpen] = useState(false);
 
-  const turma = turmas.find(t => t.turma_id === turmaId);
-  const disciplina = disciplinas.find(d => d.disciplina_id === turma?.disciplina_id);
-  const periodo = periodos.find(p => p.periodo_id === turma?.periodo_id);
+  const turma = turmas.find((t) => t.turma_id === turmaId);
+  const disciplina = disciplinas.find(
+    (d) => d.disciplina_id === turma?.disciplina_id,
+  );
+  const periodo = periodos.find((p) => p.periodo_id === turma?.periodo_id);
   const alunosTurma = getAlunosDaTurma(turmaId);
-  const horarios = horariosTurma.filter(h => h.turma_id === turmaId && h.ativo);
-  const origens = turmasOrigem.filter(o => o.turma_id === turmaId && o.ativo);
-  const leiturasTurma = obterLeiturasAgendadas(leiturasResponsaveis.filter(l => l.turma_id === turmaId), encontrosTurma);
-  const gruposDestaTurma = gruposPratica.filter(g => g.turma_id === turmaId);
-  const classificacoesRss = alunosTurma.map(item => {
+  const horarios = horariosTurma.filter(
+    (h) => h.turma_id === turmaId && h.ativo,
+  );
+  const origens = turmasOrigem.filter((o) => o.turma_id === turmaId && o.ativo);
+  const leiturasTurma = obterLeiturasAgendadas(
+    leiturasResponsaveis.filter((l) => l.turma_id === turmaId),
+    encontrosTurma,
+  );
+  const gruposDestaTurma = gruposPratica.filter((g) => g.turma_id === turmaId);
+  const classificacoesRss = alunosTurma.map((item) => {
     const situacao = getSituacaoRssEstudante(item.matricula.matricula_id);
-    const classificacao = classificarRssOperacional(situacao, calendarioRss, getHojeDataIso());
-    const vinculo = grupoIntegrantes.find(g => g.matricula_id === item.matricula.matricula_id &&
-      gruposDestaTurma.some(gr => gr.grupo_id === g.grupo_id));
+    const classificacao = classificarRssOperacional(
+      situacao,
+      calendarioRss,
+      getHojeDataIso(),
+    );
+    const vinculo = grupoIntegrantes.find(
+      (g) =>
+        g.matricula_id === item.matricula.matricula_id &&
+        gruposDestaTurma.some((gr) => gr.grupo_id === g.grupo_id),
+    );
     return { ...item, situacao, classificacao, grupoId: vinculo?.grupo_id };
   });
   const resumoRss = {
-    dia: classificacoesRss.filter(x => x.classificacao.categoria === 'EM_DIA').length,
-    recente: classificacoesRss.filter(x => x.classificacao.categoria === 'RECENTE_PENDENTE').length,
-    historico: classificacoesRss.filter(x => x.classificacao.categoria === 'HISTORICO_INCOMPLETO').length,
-    revisao: classificacoesRss.filter(x => x.classificacao.categoria === 'EM_REVISAO').length,
+    dia: classificacoesRss.filter((x) => x.classificacao.categoria === "EM_DIA")
+      .length,
+    recente: classificacoesRss.filter(
+      (x) => x.classificacao.categoria === "RECENTE_PENDENTE",
+    ).length,
+    historico: classificacoesRss.filter(
+      (x) => x.classificacao.categoria === "HISTORICO_INCOMPLETO",
+    ).length,
+    revisao: classificacoesRss.filter(
+      (x) => x.classificacao.categoria === "EM_REVISAO",
+    ).length,
   };
-  const statusRotulo: Record<string,string> = {
-    EM_DIA: 'Todas as semanas entregues',
-    RECENTE_PENDENTE: 'Última semana pendente',
-    HISTORICO_INCOMPLETO: 'Em dia agora · histórico incompleto',
-    EM_REVISAO: 'Última semana em revisão',
-    AGUARDANDO_CALENDARIO: 'Aguardando calendário',
+  const statusRotulo: Record<string, string> = {
+    EM_DIA: "Todas as semanas entregues",
+    RECENTE_PENDENTE: "Última semana pendente",
+    HISTORICO_INCOMPLETO: "Em dia agora · histórico incompleto",
+    EM_REVISAO: "Última semana em revisão",
+    AGUARDANDO_CALENDARIO: "Aguardando calendário",
   };
-
 
   const marcosTurma = marcosAcademicos.filter(
-    m => m.turma_id === turmaId || (m.disciplina_id === turma?.disciplina_id && !m.turma_id)
+    (m) =>
+      m.turma_id === turmaId ||
+      (m.disciplina_id === turma?.disciplina_id && !m.turma_id),
   );
 
   const diasSemanaNome = [
-    'Domingo',
-    'Segunda-feira',
-    'Terça-feira',
-    'Quarta-feira',
-    'Quinta-feira',
-    'Sexta-feira',
-    'Sábado',
+    "Domingo",
+    "Segunda-feira",
+    "Terça-feira",
+    "Quarta-feira",
+    "Quinta-feira",
+    "Sexta-feira",
+    "Sábado",
   ];
 
   if (!turma) {
     return (
       <div className="p-8 text-center text-xs text-slate-500">
         Turma não encontrada.
-        <button onClick={onVoltar} className="block mx-auto mt-2 text-slate-900 underline">
+        <button
+          onClick={onVoltar}
+          className="block mx-auto mt-2 text-slate-900 underline"
+        >
           Voltar
         </button>
       </div>
     );
   }
 
-  const isArquivada = turma.status === 'ARQUIVADO';
+  const isArquivada = turma.status === "ARQUIVADO";
 
   return (
     <div className="space-y-5">
@@ -752,7 +909,8 @@ export const TurmaDetalheView: React.FC<{
           <div>
             <div className="flex items-center gap-2">
               <span className="text-xs font-semibold text-slate-500">
-                {disciplina?.nome} · Turno {turma.turno} · Período {periodo?.nome}
+                {disciplina?.nome} · Turno {turma.turno} · Período{" "}
+                {periodo?.nome}
               </span>
               {isArquivada && (
                 <span className="bg-amber-100 text-amber-800 text-[10px] font-bold px-2 py-0.5 rounded">
@@ -760,20 +918,24 @@ export const TurmaDetalheView: React.FC<{
                 </span>
               )}
             </div>
-            <h2 className="text-xl font-bold text-slate-900 tracking-tight">{turma.nome}</h2>
+            <h2 className="text-xl font-bold text-slate-900 tracking-tight">
+              {turma.nome}
+            </h2>
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <button
+            disabled={perfilServidor?.papel === "MONITORA"}
             onClick={() => setModalEditarOpen(true)}
             className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold cursor-pointer"
           >
             <Edit2 className="w-3.5 h-3.5" />
-            <span>Editar Turma</span>
+            <span>Configurações da turma</span>
           </button>
 
           <button
+            disabled={perfilServidor?.papel === "MONITORA"}
             onClick={() => toggleArchiveTurma(turma.turma_id)}
             className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold cursor-pointer"
           >
@@ -790,13 +952,16 @@ export const TurmaDetalheView: React.FC<{
             )}
           </button>
 
-          {onOpenPrepararAula && (
-            <button onClick={() => onOpenPrepararAula(turmaId)}
-              className="px-3 py-2 rounded-xl bg-indigo-50 border border-indigo-200 text-indigo-800 text-xs font-semibold hover:bg-indigo-100">
+          {onOpenPrepararAula && perfilServidor?.papel !== "MONITORA" && (
+            <button
+              onClick={() => onOpenPrepararAula(turmaId)}
+              className="px-3 py-2 rounded-xl bg-indigo-50 border border-indigo-200 text-indigo-800 text-xs font-semibold hover:bg-indigo-100"
+            >
               Preparar aula
             </button>
           )}
           <button
+            disabled={perfilServidor?.papel === "MONITORA"}
             onClick={() => onIniciarSupervisao(turmaId)}
             className="flex items-center justify-center gap-2 px-5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold shadow-sm transition-all cursor-pointer active:scale-98"
           >
@@ -806,39 +971,118 @@ export const TurmaDetalheView: React.FC<{
         </div>
       </div>
 
-      <ResumoRssSemEnvio turmaId={turmaId} />
-      <ResumoDocumentosTurma turmaId={turmaId} comQuadro />
-      <DocumentosDriveTurma turmaId={turmaId} />
+      <nav aria-label="Áreas da turma" className="prisma-tabs">
+        {[
+          { id: "geral", label: "Visão geral" },
+          { id: "alunos", label: "Pessoas" },
+          { id: "rss", label: "Acompanhamento" },
+          ...(perfilServidor?.papel === "MONITORA"
+            ? []
+            : [{ id: "avaliacao", label: "Avaliação" }]),
+        ].map((t) => (
+          <button
+            key={t.id}
+            aria-current={
+              (
+                t.id === "rss"
+                  ? ["rss", "leituras", "frequencia", "pendencias"].includes(
+                      activeTab,
+                    )
+                  : activeTab === t.id
+              )
+                ? "page"
+                : undefined
+            }
+            className={
+              (
+                t.id === "rss"
+                  ? ["rss", "leituras", "frequencia", "pendencias"].includes(
+                      activeTab,
+                    )
+                  : activeTab === t.id
+              )
+                ? "cs-nav-active"
+                : ""
+            }
+            onClick={() => setActiveTab(t.id as typeof activeTab)}
+          >
+            {t.label}
+          </button>
+        ))}
+      </nav>
+      {["rss", "leituras", "frequencia", "pendencias"].includes(activeTab) && (
+        <>
+          <nav aria-label="Acompanhamento da turma" className="prisma-tabs">
+            {[
+              { id: "rss", label: "Documentação e RSS" },
+              { id: "leituras", label: "Leituras e cronograma" },
+              ...(perfilServidor?.papel === "MONITORA"
+                ? []
+                : [{ id: "frequencia", label: "Frequência e reposições" }]),
+              { id: "pendencias", label: "Pendências" },
+            ].map((t) => (
+              <button
+                key={t.id}
+                className={activeTab === t.id ? "cs-nav-active" : ""}
+                aria-current={activeTab === t.id ? "page" : undefined}
+                onClick={() => setActiveTab(t.id as typeof activeTab)}
+              >
+                {t.label}
+              </button>
+            ))}
+          </nav>
+          {activeTab === "rss" && (
+            <details className="prisma-section">
+              <summary>Documentação e conferência</summary>
+              <ResumoDocumentosTurma turmaId={turmaId} comQuadro />
+              <DocumentosDriveTurma turmaId={turmaId} />
+              <p className="prisma-meta">
+                Modificação recente do arquivo não confirma a qualidade
+                documental.
+              </p>
+            </details>
+          )}
+          {activeTab === "rss" && <ResumoRssSemEnvio turmaId={turmaId} />}
+        </>
+      )}
 
-      {/* Tabs */}
-      <div className="bg-white border border-slate-200 rounded-xl p-1 overflow-x-auto shadow-xs">
-        <div className="flex items-center gap-1 min-w-max">
-          {[
-            { id: 'geral', label: 'Visão Geral' },
-            { id: 'alunos', label: `Alunos (${alunosTurma.length})` },
-            { id: 'rss', label: 'Situação RSS' },
-            { id: 'leituras', label: `Leituras (${leiturasTurma.length})` },
-            { id: 'frequencia', label: 'Frequência' },
-            { id: 'pendencias', label: 'Pendências' },
-            { id: 'avaliacao', label: 'Avaliação' },
-          ].map(t => (
-            <button
-              key={t.id}
-              onClick={() => setActiveTab(t.id as any)}
-              className={`px-4 py-2 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
-                activeTab === t.id
-                  ? 'bg-slate-900 text-white shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
-              }`}
-            >
-              {t.label}
-            </button>
+      {activeTab === "alunos" && gruposDestaTurma.length > 0 && (
+        <section className="space-y-3" aria-label="Grupos da turma">
+          <h3 className="prisma-title text-xl">Grupos de prática</h3>
+          {gruposDestaTurma.map((g) => (
+            <details key={g.grupo_id} className="prisma-section">
+              <summary>{g.nome || "Grupo de prática"}</summary>
+              <p className="prisma-meta">
+                Documento coletivo único; evidências e notas individuais
+                permanecem separadas.
+              </p>
+              <ul>
+                {grupoIntegrantes
+                  .filter((v) => v.grupo_id === g.grupo_id)
+                  .map((v) => {
+                    const pessoa = alunosTurma.find(
+                      (p) => p.matricula.matricula_id === v.matricula_id,
+                    );
+                    return pessoa ? (
+                      <li key={v.matricula_id}>
+                        <button
+                          className="underline p-2 text-sm"
+                          onClick={() =>
+                            onOpenAluno(pessoa.matricula.matricula_id)
+                          }
+                        >
+                          {pessoa.aluno.nome}
+                        </button>
+                      </li>
+                    ) : null;
+                  })}
+              </ul>
+            </details>
           ))}
-        </div>
-      </div>
-
+        </section>
+      )}
       {/* 1. ABA: VISÃO GERAL */}
-      {activeTab === 'geral' && (
+      {activeTab === "geral" && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
           {/* Programação de Aulas */}
           <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs space-y-3">
@@ -850,7 +1094,7 @@ export const TurmaDetalheView: React.FC<{
               <p className="text-slate-400">Nenhum horário cadastrado.</p>
             ) : (
               <div className="space-y-2">
-                {horarios.map(h => (
+                {horarios.map((h) => (
                   <div
                     key={h.horario_id}
                     className="p-3 bg-slate-50 rounded-lg border border-slate-100 flex items-center justify-between"
@@ -874,20 +1118,25 @@ export const TurmaDetalheView: React.FC<{
               <span>Códigos Vinculados no Docente Online</span>
             </h3>
             <p className="text-[11px] text-slate-500">
-              Uma turma lógica da Central pode corresponder a múltiplos códigos do sistema institucional.
+              Uma turma lógica da Central pode corresponder a múltiplos códigos
+              do sistema institucional.
             </p>
             {origens.length === 0 ? (
               <p className="text-slate-400">Nenhum código externo mapeado.</p>
             ) : (
               <div className="space-y-2">
-                {origens.map(o => (
+                {origens.map((o) => (
                   <div
                     key={o.origem_id}
                     className="p-3 bg-slate-50 rounded-lg border border-slate-100 flex items-center justify-between"
                   >
                     <div>
-                      <div className="font-mono font-bold text-slate-900">{o.codigo_externo}</div>
-                      <div className="text-[11px] text-slate-500">{o.nome_externo}</div>
+                      <div className="font-mono font-bold text-slate-900">
+                        {o.codigo_externo}
+                      </div>
+                      <div className="text-[11px] text-slate-500">
+                        {o.nome_externo}
+                      </div>
                     </div>
                     <span className="text-[10px] bg-slate-200 text-slate-700 px-2 py-0.5 rounded font-medium">
                       {o.sistema}
@@ -900,18 +1149,29 @@ export const TurmaDetalheView: React.FC<{
 
           {/* Marcos da Turma */}
           <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs space-y-3 md:col-span-2">
-            <h3 className="font-bold text-slate-900">Marcos e Prazos Específicos</h3>
+            <h3 className="font-bold text-slate-900">
+              Marcos e Prazos Específicos
+            </h3>
             {marcosTurma.length === 0 ? (
               <p className="text-slate-400">Nenhum marco cadastrado.</p>
             ) : (
               <div className="divide-y divide-slate-100">
-                {marcosTurma.map(m => (
-                  <div key={m.marco_id} className="py-2.5 flex items-center justify-between">
+                {marcosTurma.map((m) => (
+                  <div
+                    key={m.marco_id}
+                    className="py-2.5 flex items-center justify-between"
+                  >
                     <div>
-                      <div className="font-semibold text-slate-800">{m.nome}</div>
-                      <div className="text-[11px] text-slate-400">{m.observacao}</div>
+                      <div className="font-semibold text-slate-800">
+                        {m.nome}
+                      </div>
+                      <div className="text-[11px] text-slate-400">
+                        {m.observacao}
+                      </div>
                     </div>
-                    <span className="font-mono font-medium text-slate-700">{m.data_prazo}</span>
+                    <span className="font-mono font-medium text-slate-700">
+                      {m.data_prazo}
+                    </span>
                   </div>
                 ))}
               </div>
@@ -921,7 +1181,7 @@ export const TurmaDetalheView: React.FC<{
       )}
 
       {/* 2. ABA: ALUNOS */}
-      {activeTab === 'alunos' && (
+      {activeTab === "alunos" && (
         <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-xs">
           <div className="divide-y divide-slate-100">
             {alunosTurma.map(({ matricula, aluno }) => {
@@ -937,14 +1197,21 @@ export const TurmaDetalheView: React.FC<{
                     </div>
                     <div>
                       <div className="flex items-center gap-2">
-                        <span className="font-bold text-slate-900 text-sm">{aluno.nome}</span>
+                        <span className="font-bold text-slate-900 text-sm">
+                          {aluno.nome}
+                        </span>
                         {temSupervisaoHorarioAlternativo(matricula) && (
-                          <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-800 border border-indigo-200" title="Encontros coletivos desta turma não geram presença nem falta automática para esta matrícula.">{ROTULO_HORARIO_ALTERNATIVO}</span>
+                          <span
+                            className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-800 border border-indigo-200"
+                            title="Encontros coletivos desta turma não geram presença nem falta automática para esta matrícula."
+                          >
+                            {ROTULO_HORARIO_ALTERNATIVO}
+                          </span>
                         )}
                         {resumo?.temAtencao && (
                           <span
                             className="text-amber-500 font-bold cursor-help"
-                            title={`${resumo.motivosAtencao.length} pendências:\n${resumo.motivosAtencao.map(m => `· ${m}`).join('\n')}`}
+                            title={`${resumo.motivosAtencao.length} pendências:\n${resumo.motivosAtencao.map((m) => `· ${m}`).join("\n")}`}
                           >
                             ⚠
                           </span>
@@ -958,7 +1225,10 @@ export const TurmaDetalheView: React.FC<{
 
                   <div className="flex items-center gap-6">
                     <div className="text-right">
-                      <div className="text-slate-500 text-[11px]" title="Entregues de esperados até hoje (total previsto no período)">
+                      <div
+                        className="text-slate-500 text-[11px]"
+                        title="Entregues de esperados até hoje (total previsto no período)"
+                      >
                         Registros RSS
                       </div>
                       <div className="font-mono font-bold text-slate-900">
@@ -993,98 +1263,191 @@ export const TurmaDetalheView: React.FC<{
       )}
 
       {/* STATUS RSS: detalhamento por semana e responsabilidade coletiva do grupo */}
-      {activeTab === 'rss' && (
+      {activeTab === "rss" && (
         <section className="space-y-3">
           <div className="bg-white rounded-xl border border-slate-200 p-4">
-            <h3 className="text-sm font-bold text-slate-900">RSS da turma · situação atual e histórico</h3>
+            <h3 className="text-sm font-bold text-slate-900">
+              RSS da turma · situação atual e histórico
+            </h3>
             <p className="text-xs text-slate-500 mt-1">
-              Semana corrente não gera atraso. Lacunas antigas permanecem aqui, sem criar novas notificações.
-              {gruposDestaTurma.length > 0 && ' Na Clínica Ampliada, uma entrega vale para todos os integrantes do grupo.'}
+              Semana corrente não gera atraso. Lacunas antigas permanecem aqui,
+              sem criar novas notificações.
+              {gruposDestaTurma.length > 0 &&
+                " Na Clínica Ampliada, uma entrega vale para todos os integrantes do grupo."}
             </p>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-3 text-xs">
-              <span className="bg-emerald-50 text-emerald-800 rounded-lg p-2">{resumoRss.dia} sem lacunas</span>
-              <span className="bg-amber-50 text-amber-800 rounded-lg p-2">{resumoRss.recente} pendência recente</span>
-              <span className="bg-slate-100 text-slate-700 rounded-lg p-2">{resumoRss.historico} histórico incompleto</span>
-              <span className="bg-indigo-50 text-indigo-800 rounded-lg p-2">{resumoRss.revisao} em revisão</span>
+              <span className="bg-emerald-50 text-emerald-800 rounded-lg p-2">
+                {resumoRss.dia} sem lacunas
+              </span>
+              <span className="bg-amber-50 text-amber-800 rounded-lg p-2">
+                {resumoRss.recente} pendência recente
+              </span>
+              <span className="bg-slate-100 text-slate-700 rounded-lg p-2">
+                {resumoRss.historico} histórico incompleto
+              </span>
+              <span className="bg-indigo-50 text-indigo-800 rounded-lg p-2">
+                {resumoRss.revisao} em revisão
+              </span>
             </div>
           </div>
           <div className="bg-white rounded-xl border border-slate-200 divide-y divide-slate-100">
-            {classificacoesRss.map(item => {
-              const group = gruposDestaTurma.find(g => g.grupo_id === item.grupoId);
+            {classificacoesRss.map((item) => {
+              const group = gruposDestaTurma.find(
+                (g) => g.grupo_id === item.grupoId,
+              );
               const c = item.classificacao;
-              return <div key={item.matricula.matricula_id} className="p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
-                <div>
-                  <div className="font-semibold text-slate-900">{item.aluno.nome}</div>
-                  {group && <div className="text-[11px] text-indigo-700">Entrega coletiva: {group.nome_grupo}</div>}
+              return (
+                <div
+                  key={item.matricula.matricula_id}
+                  className="p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs"
+                >
+                  <div>
+                    <div className="font-semibold text-slate-900">
+                      {item.aluno.nome}
+                    </div>
+                    {group && (
+                      <div className="text-[11px] text-indigo-700">
+                        Entrega coletiva: {group.nome_grupo}
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span
+                      className={`px-2 py-1 rounded font-semibold ${
+                        c.categoria === "RECENTE_PENDENTE"
+                          ? "bg-amber-100 text-amber-800"
+                          : c.categoria === "HISTORICO_INCOMPLETO"
+                            ? "bg-slate-100 text-slate-800"
+                            : c.categoria === "EM_DIA"
+                              ? "bg-emerald-100 text-emerald-800"
+                              : "bg-indigo-100 text-indigo-800"
+                      }`}
+                    >
+                      {statusRotulo[c.categoria]}
+                    </span>
+                    <span className="text-slate-500">
+                      {item.situacao?.registrosRealizados ?? 0}/
+                      {item.situacao?.registrosEsperadosAteHoje ?? 0} validados
+                    </span>
+                    {c.faltamHistoricas > 0 && (
+                      <span className="text-slate-500">
+                        {c.faltamHistoricas} semana(s) sem validação
+                      </span>
+                    )}
+                    <button
+                      onClick={() => onOpenAluno(item.matricula.matricula_id)}
+                      className="text-indigo-700 underline"
+                    >
+                      Ficha
+                    </button>
+                  </div>
                 </div>
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className={`px-2 py-1 rounded font-semibold ${c.categoria === 'RECENTE_PENDENTE' ? 'bg-amber-100 text-amber-800' :
-                      c.categoria === 'HISTORICO_INCOMPLETO' ? 'bg-slate-100 text-slate-800' :
-                      c.categoria === 'EM_DIA' ? 'bg-emerald-100 text-emerald-800' : 'bg-indigo-100 text-indigo-800'}`}>
-                    {statusRotulo[c.categoria]}
-                  </span>
-                  <span className="text-slate-500">{item.situacao?.registrosRealizados ?? 0}/{item.situacao?.registrosEsperadosAteHoje ?? 0} validados</span>
-                  {c.faltamHistoricas > 0 && <span className="text-slate-500">{c.faltamHistoricas} semana(s) sem validação</span>}
-                  <button onClick={() => onOpenAluno(item.matricula.matricula_id)} className="text-indigo-700 underline">Ficha</button>
-                </div>
-              </div>;
+              );
             })}
           </div>
         </section>
       )}
 
       {/* CRONOGRAMA DE LEITURAS: 57 itens importados da planilha oficial */}
-      {activeTab === 'leituras' && (
+      {activeTab === "leituras" && (
         <section className="bg-white rounded-xl border border-slate-200 p-4 space-y-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
-              <h3 className="text-sm font-bold text-slate-900">Leituras programadas desta turma</h3>
-              <p className="text-xs text-slate-500">Todos devem ler. O responsável abre a discussão, quando houver estudo dirigido.</p>
+              <h3 className="text-sm font-bold text-slate-900">
+                Leituras programadas desta turma
+              </h3>
+              <p className="text-xs text-slate-500">
+                Todos devem ler. O responsável abre a discussão, quando houver
+                estudo dirigido.
+              </p>
             </div>
-            <a href="https://docs.google.com/document/d/1PTt3kujI3KszP_P6MZAum-u5yQVY8k_R55rxsSRsDjA/edit"
-               target="_blank" rel="noopener noreferrer" className="text-xs text-indigo-700 font-semibold underline">
-               Guia completo de leituras
+            <a
+              href="https://docs.google.com/document/d/1PTt3kujI3KszP_P6MZAum-u5yQVY8k_R55rxsSRsDjA/edit"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs text-indigo-700 font-semibold underline"
+            >
+              Guia completo de leituras
             </a>
           </div>
           <div className="divide-y divide-slate-100">
-            {leiturasTurma.map(l => {
-              const dia = l.data_apresentacao || l.data || '';
+            {leiturasTurma.map((l) => {
+              const dia = l.data_apresentacao || l.data || "";
               const cancelamento = l.reprogramada;
-              return <div className="py-3 text-xs" key={l.leitura_id || dia}>
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="font-mono text-slate-500">{dia ? dia.split('-').reverse().join('/') : 'Data a confirmar'}</span>
-                  <span className={l.tipo === 'LEITURA_RECOMENDADA' ? 'text-slate-500' : 'text-indigo-700'}>{l.tipo === 'LEITURA_RECOMENDADA' ? 'Leitura de apoio' : 'Estudo dirigido'}</span>
-                  {cancelamento && <span className="bg-amber-50 text-amber-800 rounded px-1.5 py-0.5">Transferida da aula cancelada de {l.data_original.split('-').reverse().join('/')}</span>}
+              return (
+                <div className="py-3 text-xs" key={l.leitura_id || dia}>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-mono text-slate-500">
+                      {dia
+                        ? dia.split("-").reverse().join("/")
+                        : "Data a confirmar"}
+                    </span>
+                    <span
+                      className={
+                        l.tipo === "LEITURA_RECOMENDADA"
+                          ? "text-slate-500"
+                          : "text-indigo-700"
+                      }
+                    >
+                      {l.tipo === "LEITURA_RECOMENDADA"
+                        ? "Leitura de apoio"
+                        : "Estudo dirigido"}
+                    </span>
+                    {cancelamento && (
+                      <span className="bg-amber-50 text-amber-800 rounded px-1.5 py-0.5">
+                        Transferida da aula cancelada de{" "}
+                        {l.data_original.split("-").reverse().join("/")}
+                      </span>
+                    )}
+                  </div>
+                  <div className="font-semibold text-slate-900 mt-1">
+                    {l.tema || l.titulo || "Leitura"}
+                  </div>
+                  <div className="text-slate-600 mt-1">
+                    {l.tipo === "LEITURA_RECOMENDADA"
+                      ? "Leitura coletiva, sem apresentação individual"
+                      : `Responsável(is): ${l.responsavel_nome || l.responsaveis_texto || "A confirmar"}`}
+                  </div>
                 </div>
-                <div className="font-semibold text-slate-900 mt-1">{l.tema || l.titulo || 'Leitura'}</div>
-                <div className="text-slate-600 mt-1">
-                  {l.tipo === 'LEITURA_RECOMENDADA' ? 'Leitura coletiva, sem apresentação individual' :
-                   `Responsável(is): ${l.responsavel_nome || l.responsaveis_texto || 'A confirmar'}`}
-                </div>
-              </div>;
+              );
             })}
-            {leiturasTurma.length === 0 && <p className="text-slate-500 py-4">Nenhuma leitura programada na base oficial.</p>}
+            {leiturasTurma.length === 0 && (
+              <p className="text-slate-500 py-4">
+                Nenhuma leitura programada na base oficial.
+              </p>
+            )}
           </div>
         </section>
       )}
 
       {/* 3. ABA: FREQUÊNCIA */}
-      {activeTab === 'frequencia' && (
+      {activeTab === "frequencia" && perfilServidor?.papel !== "MONITORA" && (
         <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs text-xs space-y-4">
           <div className="flex items-center justify-between">
             <h3 className="font-bold text-slate-900">Frequência da Turma</h3>
-            <span className="text-slate-400">Total de estudantes: {alunosTurma.length}</span>
+            <span className="text-slate-400">
+              Total de estudantes: {alunosTurma.length}
+            </span>
           </div>
 
           <div className="divide-y divide-slate-100 border border-slate-200 rounded-xl overflow-hidden">
             {alunosTurma.map(({ matricula, aluno }) => {
-              const freqs = frequencias.filter(f => f.matricula_id === matricula.matricula_id);
-              const injust = freqs.filter(f => f.status === 'FALTA_SEM_JUSTIFICATIVA').length;
+              const freqs = frequencias.filter(
+                (f) => f.matricula_id === matricula.matricula_id,
+              );
+              const injust = freqs.filter(
+                (f) => f.status === "FALTA_SEM_JUSTIFICATIVA",
+              ).length;
 
               return (
-                <div key={matricula.matricula_id} className="p-3.5 flex items-center justify-between">
+                <div
+                  key={matricula.matricula_id}
+                  className="p-3.5 flex items-center justify-between"
+                >
                   <div>
-                    <span className="font-bold text-slate-900">{aluno.nome}</span>
+                    <span className="font-bold text-slate-900">
+                      {aluno.nome}
+                    </span>
                     <div className="text-[11px] text-slate-400">
                       {freqs.length} aulas registradas
                     </div>
@@ -1092,7 +1455,9 @@ export const TurmaDetalheView: React.FC<{
                   <div className="flex items-center gap-3">
                     <span className="font-mono text-slate-600">
                       {injust > 0 ? (
-                        <span className="text-red-600 font-bold">{injust} falta(s)</span>
+                        <span className="text-red-600 font-bold">
+                          {injust} falta(s)
+                        </span>
                       ) : (
                         <span className="text-emerald-600">Sem faltas</span>
                       )}
@@ -1112,11 +1477,12 @@ export const TurmaDetalheView: React.FC<{
       )}
 
       {/* 4. ABA: PENDÊNCIAS */}
-      {activeTab === 'pendencias' && (
+      {activeTab === "pendencias" && (
         <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs text-xs space-y-3">
           <h3 className="font-bold text-slate-900">Pendências Desta Turma</h3>
           <p className="text-slate-500">
-            Alunos desta turma que necessitam de providências (documentos ou orientações).
+            Alunos desta turma que necessitam de providências (documentos ou
+            orientações).
           </p>
 
           <div className="divide-y divide-slate-100">
@@ -1128,14 +1494,17 @@ export const TurmaDetalheView: React.FC<{
               .map(({ matricula, aluno }) => {
                 const resumo = getResumoAlunoSupervisao(matricula.matricula_id);
                 return (
-                  <div key={matricula.matricula_id} className="py-3 flex items-center justify-between">
+                  <div
+                    key={matricula.matricula_id}
+                    className="py-3 flex items-center justify-between"
+                  >
                     <div>
                       <div className="font-bold text-slate-900 flex items-center gap-1.5">
                         <span>{aluno.nome}</span>
                         {resumo?.temAtencao && (
                           <span
                             className="text-amber-500 font-bold cursor-help"
-                            title={`${resumo.motivosAtencao.length} pendências:\n${resumo.motivosAtencao.map(m => `· ${m}`).join('\n')}`}
+                            title={`${resumo.motivosAtencao.length} pendências:\n${resumo.motivosAtencao.map((m) => `· ${m}`).join("\n")}`}
                           >
                             ⚠
                           </span>
@@ -1148,10 +1517,14 @@ export const TurmaDetalheView: React.FC<{
                           </span>
                         ) : null}
                         {resumo?.orientacoesAbertasCount ? (
-                          <span>{resumo.orientacoesAbertasCount} orientação aberta</span>
+                          <span>
+                            {resumo.orientacoesAbertasCount} orientação aberta
+                          </span>
                         ) : null}
                         {resumo?.faltasInjustificadasCount ? (
-                          <span className="text-red-600">{resumo.faltasInjustificadasCount} falta(s)</span>
+                          <span className="text-red-600">
+                            {resumo.faltasInjustificadasCount} falta(s)
+                          </span>
                         ) : null}
                       </div>
                     </div>
@@ -1169,11 +1542,11 @@ export const TurmaDetalheView: React.FC<{
       )}
 
       {/* 5. ABA: AVALIAÇÃO */}
-      {activeTab === 'avaliacao' && (
+      {activeTab === "avaliacao" && perfilServidor?.papel !== "MONITORA" && (
         <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs text-xs space-y-4">
           <h3 className="font-bold text-slate-900">Quadro de Notas da Turma</h3>
           <div className="overflow-x-auto">
-            <table className="w-full text-left">
+            <table className="prisma-table w-full text-left">
               <thead>
                 <tr className="border-b border-slate-200 text-[11px] text-slate-400 uppercase">
                   <th className="py-2">Aluno</th>
@@ -1183,18 +1556,29 @@ export const TurmaDetalheView: React.FC<{
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {alunosTurma.map(({ matricula, aluno }) => {
-                  const studentAvals = avaliacoes.filter(a => a.matricula_id === matricula.matricula_id && a.nota !== null && a.nota !== undefined && String(a.nota).trim() !== '');
+                  const studentAvals = avaliacoes.filter(
+                    (a) =>
+                      a.matricula_id === matricula.matricula_id &&
+                      a.nota !== null &&
+                      a.nota !== undefined &&
+                      String(a.nota).trim() !== "",
+                  );
                   const total = studentAvals.reduce((acc, a) => {
-                    const n = Number(String(a.nota).replace(',', '.'));
+                    const n = Number(String(a.nota).replace(",", "."));
                     return acc + (isNaN(n) ? 0 : n);
                   }, 0);
-                  const totalNum = typeof total === 'number' && !isNaN(total) ? total : 0;
+                  const totalNum =
+                    typeof total === "number" && !isNaN(total) ? total : 0;
 
                   return (
                     <tr key={matricula.matricula_id}>
-                      <td className="py-3 font-semibold text-slate-800">{aluno.nome}</td>
+                      <td className="py-3 font-semibold text-slate-800">
+                        {aluno.nome}
+                      </td>
                       <td className="py-3 text-right font-mono font-bold text-slate-900">
-                        {studentAvals.length > 0 ? `${totalNum.toFixed(1)} / 10.0` : '—'}
+                        {studentAvals.length > 0
+                          ? `${totalNum.toFixed(1)} / 10.0`
+                          : "—"}
                       </td>
                       <td className="py-3 text-center">
                         <button
@@ -1218,7 +1602,7 @@ export const TurmaDetalheView: React.FC<{
         <ModalTurmaForm
           turma={turma}
           onClose={() => setModalEditarOpen(false)}
-          onSave={async dados => {
+          onSave={async (dados) => {
             await updateTurma(turma.turma_id, dados);
             setModalEditarOpen(false);
           }}

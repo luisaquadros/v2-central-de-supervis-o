@@ -1,0 +1,46 @@
+<!doctype html><html lang="pt-BR"><head><title>PRISMA — validação fictícia</title><meta name="viewport" content="width=device-width,initial-scale=1"></head><body><div id="root"></div><script type="module">
+import React from 'react';
+import {definirProvedorIdToken} from '/src/services/escritaCoordenadaService.ts';
+definirProvedorIdToken(async()=> 'identidade-sintetica');
+import {MainContent} from '/src/App.tsx';
+import {HojeView} from '/src/views/HojeView.tsx';
+import {TurmaDetalheView} from '/src/views/TurmasView.tsx';
+import {AlunoFichaView} from '/src/views/AlunoFichaView.tsx';
+import {AcervoView} from '/src/views/AcervoView.tsx';
+import {createRoot} from 'react-dom/client';
+import {SupervisaoProvider,useSupervisao} from '/src/context/SupervisaoContext.tsx';
+import {salvarTabelasNoIndexedDb} from '/src/services/indexedDbService.ts';
+import {ModalNovaOrientacao} from '/src/components/Modals.tsx';
+import {AvaliacaoView} from '/src/views/AvaliacaoView.tsx';
+import {ModoSupervisaoView} from '/src/views/ModoSupervisaoView.tsx';
+import '/src/index.css';
+const today='2026-10-13';
+const fixture={
+ periodos:[{periodo_id:'p-test',nome:'Período sintético',data_inicio:'2026-08-01',data_fim:'2026-12-20',status:'ATIVO'}],
+ disciplinas:[{disciplina_id:'d-test',nome:'Disciplina sintética',tipo:'INDIVIDUAL'}],
+ turmas:[{turma_id:'t-test',periodo_id:'p-test',disciplina_id:'d-test',nome:'Turma sintética',turno:'NOTURNO',status:'ATIVO'}],
+ alunos:[{aluno_id:'a-test',nome:'Estudante sintético',identificador_academico:'RA-SINTETICO',status:'ATIVO'}],
+ matriculas:[{matricula_id:'m-test',aluno_id:'a-test',turma_id:'t-test',periodo_id:'p-test',status:'MATRICULADO'}],
+ horarios_turma:[{horario_id:'h-test',turma_id:'t-test',dia_semana:2,hora_inicio:'18:00',hora_fim:'22:00',data_inicio:'2026-08-01',data_fim:'2026-12-20',ativo:true}],
+ criterios_avaliacao:[{criterio_id:'c-test',turma_id:'t-test',disciplina_id:'d-test',periodo_id:'p-test',nome:'Critério sintético',nota_maxima:10,peso:1,ativo:true}],
+ frequencias:[],avaliacoes:[{avaliacao_id:'av-test',matricula_id:'m-test',criterio_id:'c-test',nota:5,observacao:''}],documentos:[],encontros_turma:[],leituras_responsaveis:[{leitura_id:'l-test',turma_id:'t-test',tema:'Evidência e supervisão',artigo_leitura:'Material fictício',referencia_link:'https://exemplo.invalid/material'}],configuracoes:[]
+};
+const count=Number(new URL(location.href).searchParams.get('count')||1);
+for(let i=1;i<count;i++){fixture.alunos.push({...fixture.alunos[0],aluno_id:'a-test-'+i,nome:'Estudante fictício '+i});fixture.matriculas.push({...fixture.matriculas[0],matricula_id:'m-test-'+i,aluno_id:'a-test-'+i});}
+await salvarTabelasNoIndexedDb(fixture);
+function Probe(){
+const c=useSupervisao();window.auditContext=c;
+const view=new URL(location.href).searchParams.get('view');
+c.perfilServidor={papel:view==='monitora'?'MONITORA':'PROFESSORA_ADMIN',email:'professora@exemplo.com',turmas:['*'],operacoes:['CHAMADA','ENTREGAS','DOCUMENTOS_VER']};
+c.currentUser={uid:'uid-sintetico',email:'professora@exemplo.com'};c.acessoGoogleValidado=true;c.hasLocalCache=true;
+if(view==='shell'||view==='monitora')return React.createElement(MainContent);
+if(view==='turma')return React.createElement(TurmaDetalheView,{turmaId:'t-test',onVoltar:()=>{},onIniciarSupervisao:()=>{},onOpenAluno:()=>{}});
+if(view==='ficha')return React.createElement(AlunoFichaView,{matriculaId:'m-test',onVoltar:()=>{}});
+if(view==='acervo')return React.createElement(AcervoView,{onOpenTurma:()=>{}});
+if(!c.turmas.length)return React.createElement('p',null,'Carregando dados sintéticos');
+if(view==='avaliacao')return React.createElement(AvaliacaoView);
+if(view==='modal')return React.createElement(ModalNovaOrientacao,{matriculaId:'m-test',alunoNome:'Estudante sintético',onClose:()=>window.auditClosed=true});
+return React.createElement(ModoSupervisaoView,{turmaId:'t-test',onEncerrar:()=>{},onOpenFichaAluno:()=>{}});
+}
+createRoot(document.getElementById('root')).render(React.createElement(SupervisaoProvider,null,React.createElement(Probe)));
+</script></body></html>

@@ -1,11 +1,11 @@
 {
-  "name": "Central de Supervisão Acadêmica",
-  "short_name": "Supervisão",
+  "name": "PRISMA — Supervisão Acadêmica",
+  "short_name": "PRISMA",
   "description": "Gestão acadêmica de estágios em Psicologia",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#101c2f",
-  "theme_color": "#15233b",
+  "background_color": "#F6F4EE",
+  "theme_color": "#344E46",
   "icons": [
     {
       "src": "/central-supervisao.svg",

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState } from "react";
 import {
   Award,
   Users,
@@ -18,11 +18,16 @@ import {
   RotateCcw,
   Sparkles,
   Info,
-} from 'lucide-react';
-import { useSupervisao } from '../context/SupervisaoContext';
-import { TipoInstrumento, StatusDevolutiva, AvaliacaoCompleta, CriterioAvaliacao } from '../types';
-import { FeedbackModal } from '../components/FeedbackModal';
-import { NotasParciaisModal } from '../components/NotasParciaisModal';
+} from "lucide-react";
+import { useSupervisao } from "../context/SupervisaoContext";
+import {
+  TipoInstrumento,
+  StatusDevolutiva,
+  AvaliacaoCompleta,
+  CriterioAvaliacao,
+} from "../types";
+import { FeedbackModal } from "../components/FeedbackModal";
+import { NotasParciaisModal } from "../components/NotasParciaisModal";
 
 export const AvaliacaoView: React.FC = () => {
   const {
@@ -47,64 +52,94 @@ export const AvaliacaoView: React.FC = () => {
     getCriteriosDaTurma,
   } = useSupervisao();
 
-  const turmasDoPeriodo=turmas.filter(t=>t.periodo_id===selectedPeriodoId);
-  const dirty=React.useRef(false), formKey=React.useRef('');
+  const turmasDoPeriodo = turmas.filter(
+    (t) => t.periodo_id === selectedPeriodoId,
+  );
+  const dirty = React.useRef(false),
+    formKey = React.useRef("");
   // Seleção de Turma resiliente
   const [selectedTurmaId, setSelectedTurmaId] = useState<string>(() => {
-    return turmasDoPeriodo[0]?.turma_id || '';
+    return turmasDoPeriodo[0]?.turma_id || "";
   });
 
   // Atualiza turma se a lista mudar ou a selecionada não existir mais
   React.useEffect(() => {
-    if (turmasDoPeriodo.length > 0 && (!selectedTurmaId || !turmasDoPeriodo.some(t => t.turma_id === selectedTurmaId))) {
+    if (
+      turmasDoPeriodo.length > 0 &&
+      (!selectedTurmaId ||
+        !turmasDoPeriodo.some((t) => t.turma_id === selectedTurmaId))
+    ) {
       setSelectedTurmaId(turmasDoPeriodo[0].turma_id);
     }
   }, [turmas, selectedTurmaId, selectedPeriodoId]);
 
-  const turmaAtual = turmas.find(t => t.turma_id === selectedTurmaId) || null;
+  const turmaAtual = turmas.find((t) => t.turma_id === selectedTurmaId) || null;
 
   // A base 2026.2 possui oito critérios oficiais por turma, mas não
   // preenche as colunas opcionais 'instrumento' ou 'instrumento_avaliacao'.
   // Exibir uma única rubrica por turma é uma escolha de interface, não
   // uma mudança ou invenção de identificadores na planilha.
   const instrumentosDisponiveis = React.useMemo(() => {
-    const aplicaveis = criterios.filter(c =>
-      (c.ativo !== false) && (!c.periodo_id || c.periodo_id===turmaAtual?.periodo_id) &&
-      (!c.turma_id || c.turma_id === selectedTurmaId) &&
-      (!c.disciplina_id || c.disciplina_id === turmaAtual?.disciplina_id)
+    const aplicaveis = criterios.filter(
+      (c) =>
+        c.ativo !== false &&
+        (!c.periodo_id || c.periodo_id === turmaAtual?.periodo_id) &&
+        (!c.turma_id || c.turma_id === selectedTurmaId) &&
+        (!c.disciplina_id || c.disciplina_id === turmaAtual?.disciplina_id),
     );
-    const explicitos = Array.from(new Set(aplicaveis
-      .map(c => String(c.instrumento_avaliacao || c.instrumento || '').trim())
-      .filter(Boolean)));
-    return explicitos.length ? explicitos : (aplicaveis.length ? ['Avaliação do estágio'] : []);
+    const explicitos = Array.from(
+      new Set(
+        aplicaveis
+          .map((c) =>
+            String(c.instrumento_avaliacao || c.instrumento || "").trim(),
+          )
+          .filter(Boolean),
+      ),
+    );
+    return explicitos.length
+      ? explicitos
+      : aplicaveis.length
+        ? ["Avaliação do estágio"]
+        : [];
   }, [criterios, selectedTurmaId, turmaAtual?.disciplina_id]);
 
-  const [selectedInstrumentoNome, setSelectedInstrumentoNome] = useState<string>(
-    instrumentosDisponiveis[0] || ''
-  );
+  const [selectedInstrumentoNome, setSelectedInstrumentoNome] =
+    useState<string>(instrumentosDisponiveis[0] || "");
 
   React.useEffect(() => {
-    if (instrumentosDisponiveis.length > 0 && (!selectedInstrumentoNome || !instrumentosDisponiveis.includes(selectedInstrumentoNome))) {
+    if (
+      instrumentosDisponiveis.length > 0 &&
+      (!selectedInstrumentoNome ||
+        !instrumentosDisponiveis.includes(selectedInstrumentoNome))
+    ) {
       setSelectedInstrumentoNome(instrumentosDisponiveis[0]);
     }
   }, [instrumentosDisponiveis, selectedInstrumentoNome]);
 
-  const [selectedInstrumentoTipo, setSelectedInstrumentoTipo] = useState<TipoInstrumento>('RUBRICA');
-  const [activeTab, setActiveTab] = useState<'CORRECAO' | 'DEVOLUTIVAS' | 'FECHAMENTO'>('CORRECAO');
+  const [selectedInstrumentoTipo, setSelectedInstrumentoTipo] =
+    useState<TipoInstrumento>("RUBRICA");
+  const [activeTab, setActiveTab] = useState<
+    "CORRECAO" | "DEVOLUTIVAS" | "FECHAMENTO"
+  >("CORRECAO");
 
   // Navegação Aluno a Aluno na Tela de Correção Ampla
   const [currentAlunoIndex, setCurrentAlunoIndex] = useState(0);
 
   // Estados da Tela de Correção Ampla
   const [notaSimplesInput, setNotaSimplesInput] = useState<number>(0);
-  const [notasCriteriosMap, setNotasCriteriosMap] = useState<Record<string, number>>({});
-  const [comentariosCriteriosMap, setComentariosCriteriosMap] = useState<Record<string, string>>({});
-  const [pontosFortes, setPontosFortes] = useState('');
-  const [pontosDesenvolver, setPontosDesenvolver] = useState('');
-  const [comentarioGeral, setComentarioGeral] = useState('');
+  const [notasCriteriosMap, setNotasCriteriosMap] = useState<
+    Record<string, number>
+  >({});
+  const [comentariosCriteriosMap, setComentariosCriteriosMap] = useState<
+    Record<string, string>
+  >({});
+  const [pontosFortes, setPontosFortes] = useState("");
+  const [pontosDesenvolver, setPontosDesenvolver] = useState("");
+  const [comentarioGeral, setComentarioGeral] = useState("");
   const [mostrarEvidencias, setMostrarEvidencias] = useState(false);
   const [mostrarCadernoImportado, setMostrarCadernoImportado] = useState(false);
-  const [modalFeedbackAvaliacao, setModalFeedbackAvaliacao] = useState<AvaliacaoCompleta | null>(null);
+  const [modalFeedbackAvaliacao, setModalFeedbackAvaliacao] =
+    useState<AvaliacaoCompleta | null>(null);
 
   // Alunos da turma selecionada
   const alunosDaTurma = React.useMemo(() => {
@@ -112,34 +147,49 @@ export const AvaliacaoView: React.FC = () => {
     try {
       return getAlunosDaTurma(selectedTurmaId);
     } catch (e) {
-      console.warn('Erro ao carregar alunos da turma na avaliação:', e);
+      console.warn("Erro ao carregar alunos da turma na avaliação:", e);
       return [];
     }
   }, [selectedTurmaId, getAlunosDaTurma]);
 
   // Garante que o índice atual seja válido
-  const safeCurrentIndex = Math.min(Math.max(0, currentAlunoIndex), Math.max(0, alunosDaTurma.length - 1));
+  const safeCurrentIndex = Math.min(
+    Math.max(0, currentAlunoIndex),
+    Math.max(0, alunosDaTurma.length - 1),
+  );
   const currentItem = alunosDaTurma[safeCurrentIndex] || null;
 
   // Critérios oficiais filtrados por turma, disciplina e instrumento da base (sem critérios hardcoded)
   const criteriosAplicaveis = React.useMemo(() => {
     if (!selectedInstrumentoNome) return [];
-    return criterios.filter(c => {
+    return criterios.filter((c) => {
       if (c.ativo === false) return false;
-      if(c.periodo_id && c.periodo_id!==turmaAtual?.periodo_id)return false;
+      if (c.periodo_id && c.periodo_id !== turmaAtual?.periodo_id) return false;
       const matchTurma = !c.turma_id || c.turma_id === selectedTurmaId;
-      const matchDisc = !c.disciplina_id || (turmaAtual && c.disciplina_id === turmaAtual.disciplina_id);
+      const matchDisc =
+        !c.disciplina_id ||
+        (turmaAtual && c.disciplina_id === turmaAtual.disciplina_id);
       const inst = c.instrumento_avaliacao || c.instrumento;
-      const matchInst = selectedInstrumentoNome === 'Avaliação do estágio' ?
-        !String(inst || '').trim() : (inst ? inst.trim() === selectedInstrumentoNome.trim() : true);
+      const matchInst =
+        selectedInstrumentoNome === "Avaliação do estágio"
+          ? !String(inst || "").trim()
+          : inst
+            ? inst.trim() === selectedInstrumentoNome.trim()
+            : true;
       return matchTurma && matchDisc && matchInst;
     });
   }, [criterios, selectedTurmaId, turmaAtual, selectedInstrumentoNome]);
 
   // Nota máxima total do instrumento baseada nos critérios
   const notaMaximaInstrumento = React.useMemo(() => {
-    if (selectedInstrumentoTipo === 'RUBRICA' || selectedInstrumentoTipo === 'HIBRIDA') {
-      const soma = criteriosAplicaveis.reduce((acc, c) => acc + (Number(c.nota_maxima) || 0), 0);
+    if (
+      selectedInstrumentoTipo === "RUBRICA" ||
+      selectedInstrumentoTipo === "HIBRIDA"
+    ) {
+      const soma = criteriosAplicaveis.reduce(
+        (acc, c) => acc + (Number(c.nota_maxima) || 0),
+        0,
+      );
       return soma > 0 ? soma : 10;
     }
     return 10;
@@ -149,52 +199,84 @@ export const AvaliacaoView: React.FC = () => {
   // critério. A tabela 'avaliacoes' é a fonte primária para as 80 notas
   // preexistentes e só o que foi efetivamente lançado aparece como nota.
   const matriculaAtualId = currentItem?.matricula?.matricula_id;
-  const avaliacaoExistente = React.useMemo((): AvaliacaoCompleta | undefined => {
+  const avaliacaoExistente = React.useMemo(():
+    | AvaliacaoCompleta
+    | undefined => {
     if (!matriculaAtualId || !selectedInstrumentoNome) return undefined;
-    const detalhada = avaliacoesCompletas.find((a: AvaliacaoCompleta) =>
-      a.matricula_id === matriculaAtualId && a.instrumento_id === selectedInstrumentoNome
+    const detalhada = avaliacoesCompletas.find(
+      (a: AvaliacaoCompleta) =>
+        a.matricula_id === matriculaAtualId &&
+        a.instrumento_id === selectedInstrumentoNome,
     );
-    const daPlanilha = criteriosAplicaveis.flatMap(c => {
-      const nota = avaliacoes.find(a => a.matricula_id === matriculaAtualId && a.criterio_id === c.criterio_id);
-      return nota && nota.nota !== null && nota.nota !== undefined && Number.isFinite(Number(nota.nota))
-        ? [{ criterio_id: c.criterio_id, criterio_nome: c.nome, nota: Number(nota.nota),
-             nota_maxima: Number(c.nota_maxima) || 0, comentario: nota.observacao || '' }]
+    const daPlanilha = criteriosAplicaveis.flatMap((c) => {
+      const nota = avaliacoes.find(
+        (a) =>
+          a.matricula_id === matriculaAtualId &&
+          a.criterio_id === c.criterio_id,
+      );
+      return nota &&
+        nota.nota !== null &&
+        nota.nota !== undefined &&
+        Number.isFinite(Number(nota.nota))
+        ? [
+            {
+              criterio_id: c.criterio_id,
+              criterio_nome: c.nome,
+              nota: Number(nota.nota),
+              nota_maxima: Number(c.nota_maxima) || 0,
+              comentario: nota.observacao || "",
+            },
+          ]
         : [];
     });
     if (!detalhada && daPlanilha.length === 0) return undefined;
     const notas = new Map<string, any>(
-      (detalhada?.notas_criterios || []).map(n => [n.criterio_id, n])
+      (detalhada?.notas_criterios || []).map((n) => [n.criterio_id, n]),
     );
-    daPlanilha.forEach(n => notas.set(n.criterio_id, n));
+    daPlanilha.forEach((n) => notas.set(n.criterio_id, n));
     const todas = [...notas.values()];
     return {
       ...(detalhada || {}),
-      avaliacao_id: detalhada?.avaliacao_id || `importada-${matriculaAtualId}-${selectedInstrumentoNome}`,
+      avaliacao_id:
+        detalhada?.avaliacao_id ||
+        `importada-${matriculaAtualId}-${selectedInstrumentoNome}`,
       matricula_id: matriculaAtualId,
       turma_id: selectedTurmaId,
       instrumento_id: selectedInstrumentoNome,
-      tipo_instrumento: detalhada?.tipo_instrumento || 'RUBRICA',
+      tipo_instrumento: detalhada?.tipo_instrumento || "RUBRICA",
       nota_final: todas.reduce((acc, n) => acc + n.nota, 0),
-      nota_maxima: criteriosAplicaveis.reduce((acc, c) => acc + (Number(c.nota_maxima) || 0), 0),
-      status: detalhada?.status || 'RASCUNHO',
+      nota_maxima: criteriosAplicaveis.reduce(
+        (acc, c) => acc + (Number(c.nota_maxima) || 0),
+        0,
+      ),
+      status: detalhada?.status || "RASCUNHO",
       notas_criterios: todas,
-      atualizado_em: detalhada?.atualizado_em || '',
+      atualizado_em: detalhada?.atualizado_em || "",
     } as AvaliacaoCompleta;
-  }, [avaliacoesCompletas, avaliacoes, matriculaAtualId, selectedInstrumentoNome, criteriosAplicaveis, selectedTurmaId]);
+  }, [
+    avaliacoesCompletas,
+    avaliacoes,
+    matriculaAtualId,
+    selectedInstrumentoNome,
+    criteriosAplicaveis,
+    selectedTurmaId,
+  ]);
 
-  const totalCriteriosLancados = criteriosAplicaveis.filter(c =>
-    Object.prototype.hasOwnProperty.call(notasCriteriosMap, c.criterio_id)).length;
+  const totalCriteriosLancados = criteriosAplicaveis.filter((c) =>
+    Object.prototype.hasOwnProperty.call(notasCriteriosMap, c.criterio_id),
+  ).length;
   const avaliacaoParcial = totalCriteriosLancados < criteriosAplicaveis.length;
   // Sincroniza campos quando muda de aluno ou instrumento
   React.useEffect(() => {
-    const key=matriculaAtualId+'|'+selectedInstrumentoNome;
-    if(dirty.current && formKey.current===key)return;
-    formKey.current=key;dirty.current=false;
+    const key = matriculaAtualId + "|" + selectedInstrumentoNome;
+    if (dirty.current && formKey.current === key) return;
+    formKey.current = key;
+    dirty.current = false;
     if (avaliacaoExistente) {
       setNotaSimplesInput(Number(avaliacaoExistente.nota_final) || 0);
-      setComentarioGeral(avaliacaoExistente.comentario_geral || '');
-      setPontosFortes(avaliacaoExistente.pontos_fortes || '');
-      setPontosDesenvolver(avaliacaoExistente.pontos_desenvolver || '');
+      setComentarioGeral(avaliacaoExistente.comentario_geral || "");
+      setPontosFortes(avaliacaoExistente.pontos_fortes || "");
+      setPontosDesenvolver(avaliacaoExistente.pontos_desenvolver || "");
 
       const nMap: Record<string, number> = {};
       const cMap: Record<string, string> = {};
@@ -208,77 +290,101 @@ export const AvaliacaoView: React.FC = () => {
       setComentariosCriteriosMap(cMap);
     } else {
       setNotaSimplesInput(0);
-      setComentarioGeral('');
-      setPontosFortes('');
-      setPontosDesenvolver('');
+      setComentarioGeral("");
+      setPontosFortes("");
+      setPontosDesenvolver("");
       setNotasCriteriosMap({});
       setComentariosCriteriosMap({});
     }
   }, [matriculaAtualId, selectedInstrumentoNome, avaliacaoExistente]);
 
   // Soma automática das notas dos critérios
-  const somaNotasCriterios = Object.values(notasCriteriosMap).reduce((acc, val) => acc + (Number(val) || 0), 0);
+  const somaNotasCriterios = Object.values(notasCriteriosMap).reduce(
+    (acc, val) => acc + (Number(val) || 0),
+    0,
+  );
   const notaFinalCalculada =
-    selectedInstrumentoTipo === 'RUBRICA' || selectedInstrumentoTipo === 'HIBRIDA'
+    selectedInstrumentoTipo === "RUBRICA" ||
+    selectedInstrumentoTipo === "HIBRIDA"
       ? somaNotasCriterios
       : notaSimplesInput;
 
   const [salvandoAvaliacao, setSalvandoAvaliacao] = useState(false);
-  const [erroAvaliacao, setErroAvaliacao] = useState('');
-  const handleSalvarAvaliacao = async (status: StatusDevolutiva = 'AVALIADA') => {
+  const [erroAvaliacao, setErroAvaliacao] = useState("");
+  const handleSalvarAvaliacao = async (
+    status: StatusDevolutiva = "AVALIADA",
+  ) => {
     if (!currentItem || !currentItem.matricula || salvandoAvaliacao) return;
     setSalvandoAvaliacao(true);
-    setErroAvaliacao('');
+    setErroAvaliacao("");
     try {
+      const notasCriteriosList = criteriosAplicaveis
+        .filter((c) =>
+          Object.prototype.hasOwnProperty.call(
+            notasCriteriosMap,
+            c.criterio_id,
+          ),
+        )
+        .map((c) => ({
+          criterio_id: c.criterio_id,
+          criterio_nome: c.nome,
+          nota: Number(notasCriteriosMap[c.criterio_id] || 0),
+          nota_maxima: Number(c.nota_maxima || 0),
+          comentario: comentariosCriteriosMap[c.criterio_id] || "",
+        }));
 
-    const notasCriteriosList = criteriosAplicaveis
-      .filter(c => Object.prototype.hasOwnProperty.call(notasCriteriosMap, c.criterio_id))
-      .map(c => ({
-      criterio_id: c.criterio_id,
-      criterio_nome: c.nome,
-      nota: Number(notasCriteriosMap[c.criterio_id] || 0),
-      nota_maxima: Number(c.nota_maxima || 0),
-      comentario: comentariosCriteriosMap[c.criterio_id] || '',
-    }));
-
-    // Grava no modelo oficial cada nota fornecida, sem transformar critérios
-    // ainda não avaliados em zero. O registro de parecer fica em tabela própria.
-    for (const nota of notasCriteriosList) {
-      const anterior = avaliacoes.find(a => a.matricula_id === currentItem.matricula.matricula_id &&
-        a.criterio_id === nota.criterio_id);
-      if (!anterior || Number(anterior.nota) !== nota.nota || String(anterior.observacao || '') !== nota.comentario) {
-        await saveAvaliacao(currentItem.matricula.matricula_id, nota.criterio_id, nota.nota, nota.comentario || '');
+      // Grava no modelo oficial cada nota fornecida, sem transformar critérios
+      // ainda não avaliados em zero. O registro de parecer fica em tabela própria.
+      for (const nota of notasCriteriosList) {
+        const anterior = avaliacoes.find(
+          (a) =>
+            a.matricula_id === currentItem.matricula.matricula_id &&
+            a.criterio_id === nota.criterio_id,
+        );
+        if (
+          !anterior ||
+          Number(anterior.nota) !== nota.nota ||
+          String(anterior.observacao || "") !== nota.comentario
+        ) {
+          await saveAvaliacao(
+            currentItem.matricula.matricula_id,
+            nota.criterio_id,
+            nota.nota,
+            nota.comentario || "",
+          );
+        }
       }
-    }
-    await salvarAvaliacaoCompleta({
-      avaliacao_id: avaliacaoExistente?.avaliacao_id || `av-${Date.now()}-${currentItem.matricula.matricula_id}`,
-      matricula_id: currentItem.matricula.matricula_id,
-      aluno_id: currentItem.aluno.aluno_id,
-      turma_id: selectedTurmaId,
-      instrumento_id: selectedInstrumentoNome,
-      tipo_instrumento: selectedInstrumentoTipo,
-      nota_final: Number(notaFinalCalculada) || 0,
-      nota_maxima: Number(notaMaximaInstrumento) || 10,
-      status: avaliacaoParcial ? 'RASCUNHO' : status,
-      notas_criterios: notasCriteriosList,
-      comentario_geral: comentarioGeral,
-      pontos_fortes: pontosFortes,
-      pontos_desenvolver: pontosDesenvolver,
-      data_avaliacao: new Date().toISOString(),
-      atualizado_em: new Date().toISOString(),
-    });
+      await salvarAvaliacaoCompleta({
+        avaliacao_id:
+          avaliacaoExistente?.avaliacao_id ||
+          `av-${Date.now()}-${currentItem.matricula.matricula_id}`,
+        matricula_id: currentItem.matricula.matricula_id,
+        aluno_id: currentItem.aluno.aluno_id,
+        turma_id: selectedTurmaId,
+        instrumento_id: selectedInstrumentoNome,
+        tipo_instrumento: selectedInstrumentoTipo,
+        nota_final: Number(notaFinalCalculada) || 0,
+        nota_maxima: Number(notaMaximaInstrumento) || 10,
+        status: avaliacaoParcial ? "RASCUNHO" : status,
+        notas_criterios: notasCriteriosList,
+        comentario_geral: comentarioGeral,
+        pontos_fortes: pontosFortes,
+        pontos_desenvolver: pontosDesenvolver,
+        data_avaliacao: new Date().toISOString(),
+        atualizado_em: new Date().toISOString(),
+      });
 
-    dirty.current=false;
-    registrarAuditoria(
-      'GRAVAR_AVALIACAO',
-      'avaliacoes_completas',
-      currentItem.matricula.matricula_id,
-      avaliacaoExistente?.nota_final,
-      notaFinalCalculada,
-      `Avaliação do instrumento ${selectedInstrumentoNome || 'Padrão'}`
-    );
+      dirty.current = false;
+      registrarAuditoria(
+        "GRAVAR_AVALIACAO",
+        "avaliacoes_completas",
+        currentItem.matricula.matricula_id,
+        avaliacaoExistente?.nota_final,
+        notaFinalCalculada,
+        `Avaliação do instrumento ${selectedInstrumentoNome || "Padrão"}`,
+      );
     } catch (err: any) {
-      setErroAvaliacao(err?.message || 'Não foi possível salvar a avaliação.');
+      setErroAvaliacao(err?.message || "Não foi possível salvar a avaliação.");
     } finally {
       setSalvandoAvaliacao(false);
     }
@@ -289,9 +395,12 @@ export const AvaliacaoView: React.FC = () => {
     return (
       <div className="bg-white border border-slate-200 rounded-2xl p-8 max-w-xl mx-auto text-center space-y-3">
         <AlertCircle className="w-8 h-8 text-amber-500 mx-auto" />
-        <h2 className="text-base font-bold text-slate-900">Nenhuma Turma Carregada</h2>
+        <h2 className="text-base font-bold text-slate-900">
+          Nenhuma Turma Carregada
+        </h2>
         <p className="text-xs text-slate-500">
-          Aguardando sincronização da base de dados oficial ou seleção do período acadêmico ativo.
+          Aguardando sincronização da base de dados oficial ou seleção do
+          período acadêmico ativo.
         </p>
       </div>
     );
@@ -299,6 +408,33 @@ export const AvaliacaoView: React.FC = () => {
 
   return (
     <div className="space-y-4 max-w-7xl mx-auto pb-12 min-w-0">
+      <section
+        aria-label="Camadas da avaliação"
+        className="grid gap-3 sm:grid-cols-3"
+      >
+        <details className="prisma-section">
+          <summary>1. Evidências</summary>
+          <p className="prisma-meta">
+            Frequência, documentação, RSS e registros existentes da matrícula.
+            Consulte o painel do estudante selecionado abaixo.
+          </p>
+        </details>
+        <details className="prisma-section">
+          <summary>2. Pareceres</summary>
+          <p className="prisma-meta">
+            Parecer não equivale a nota. O fluxo estruturado de monitoras
+            aguarda autorização e suporte seguros; nenhum parecer é criado nesta
+            tela.
+          </p>
+        </details>
+        <details className="prisma-section">
+          <summary>3. Notas oficiais</summary>
+          <p className="prisma-meta">
+            Lançamento e validação pela professora, segundo os critérios
+            existentes. Alterações visuais não recalculam históricos.
+          </p>
+        </details>
+      </section>
       {/* Top Header */}
       <div className="bg-white border border-slate-200 rounded-2xl p-3 sm:p-5 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
@@ -308,27 +444,31 @@ export const AvaliacaoView: React.FC = () => {
               Central de Avaliação & Devolutivas
             </span>
           </div>
-          <h1 className="text-2xl font-black text-slate-900 tracking-tight mt-1">
-            Gestão Acadêmica & Avaliativa
+          <h1 className="prisma-title text-3xl text-slate-900 mt-1">
+            Avaliações
           </h1>
           <p className="text-xs text-slate-500">
-            Correção por rubrica oficial, nota direta, evidências da base e emissão de feedback
+            Correção por rubrica oficial, nota direta, evidências da base e
+            emissão de feedback
           </p>
         </div>
 
         {/* Filters */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full md:w-auto">
           <div className="min-w-0">
-            <label className="text-[10px] font-bold text-slate-500 block mb-0.5">Turma</label>
-            <select aria-label="Turma ou instrumento de avaliação"
+            <label className="text-[10px] font-bold text-slate-500 block mb-0.5">
+              Turma
+            </label>
+            <select
+              aria-label="Turma ou instrumento de avaliação"
               value={selectedTurmaId}
-              onChange={e => {
+              onChange={(e) => {
                 setSelectedTurmaId(e.target.value);
                 setCurrentAlunoIndex(0);
               }}
               className="w-full sm:w-auto min-h-11 p-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800"
             >
-              {turmasDoPeriodo.map(t => (
+              {turmasDoPeriodo.map((t) => (
                 <option key={t.turma_id} value={t.turma_id}>
                   {t.nome}
                 </option>
@@ -337,21 +477,30 @@ export const AvaliacaoView: React.FC = () => {
           </div>
 
           <div>
-            <label className="text-[10px] font-bold text-slate-500 block mb-0.5">Instrumento</label>
+            <label className="text-[10px] font-bold text-slate-500 block mb-0.5">
+              Instrumento
+            </label>
             {instrumentosDisponiveis.length > 0 ? (
-              <select aria-label="Turma ou instrumento de avaliação"
+              <select
+                aria-label="Turma ou instrumento de avaliação"
                 value={selectedInstrumentoNome}
-                onChange={e => {
+                onChange={(e) => {
                   const val = e.target.value;
                   setSelectedInstrumentoNome(val);
-                  if (val.toLowerCase().includes('prova')) setSelectedInstrumentoTipo('NOTA_SIMPLES');
-                  else if (val.toLowerCase().includes('atividade')) setSelectedInstrumentoTipo('ATIVIDADE_SIMPLES');
-                  else if (val.toLowerCase().includes('apresentação') || val.toLowerCase().includes('caso')) setSelectedInstrumentoTipo('HIBRIDA');
-                  else setSelectedInstrumentoTipo('RUBRICA');
+                  if (val.toLowerCase().includes("prova"))
+                    setSelectedInstrumentoTipo("NOTA_SIMPLES");
+                  else if (val.toLowerCase().includes("atividade"))
+                    setSelectedInstrumentoTipo("ATIVIDADE_SIMPLES");
+                  else if (
+                    val.toLowerCase().includes("apresentação") ||
+                    val.toLowerCase().includes("caso")
+                  )
+                    setSelectedInstrumentoTipo("HIBRIDA");
+                  else setSelectedInstrumentoTipo("RUBRICA");
                 }}
                 className="p-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800"
               >
-                {instrumentosDisponiveis.map(inst => (
+                {instrumentosDisponiveis.map((inst) => (
                   <option key={inst} value={inst}>
                     {inst}
                   </option>
@@ -371,9 +520,16 @@ export const AvaliacaoView: React.FC = () => {
         <div className="bg-amber-50 border border-amber-200 rounded-2xl p-5 text-amber-900 flex items-start gap-3">
           <Info className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
           <div>
-            <h3 className="text-xs font-bold text-amber-950">Aviso da Base Oficial</h3>
+            <h3 className="text-xs font-bold text-amber-950">
+              Aviso da Base Oficial
+            </h3>
             <p className="text-xs text-amber-800 mt-0.5">
-              Não há instrumento de avaliação configurado para esta seleção na tabela <code className="bg-amber-100/80 px-1 py-0.5 rounded font-mono">criterios_avaliacao</code>.
+              Não há instrumento de avaliação configurado para esta seleção na
+              tabela{" "}
+              <code className="bg-amber-100/80 px-1 py-0.5 rounded font-mono">
+                criterios_avaliacao
+              </code>
+              .
             </p>
           </div>
         </div>
@@ -381,22 +537,29 @@ export const AvaliacaoView: React.FC = () => {
 
       {/* Caderno digitalizado: leitura opcional, sem alterar avaliações oficiais */}
       <div className="flex justify-end">
-        <button type="button" onClick={() => setMostrarCadernoImportado(true)}
+        <button
+          type="button"
+          onClick={() => setMostrarCadernoImportado(true)}
           className="flex items-center gap-2 rounded-xl px-3 py-2.5 text-xs font-bold text-teal-900 bg-teal-50 hover:bg-teal-100 border border-teal-200"
         >
-          <FileText className="w-4 h-4" /> Conferir notas e frequência do caderno
+          <FileText className="w-4 h-4" /> Conferir notas e frequência do
+          caderno
         </button>
       </div>
-      {mostrarCadernoImportado && <NotasParciaisModal
-        turmaNome={turmaAtual?.nome || ''}
-        onClose={() => setMostrarCadernoImportado(false)}
-      />}
+      {mostrarCadernoImportado && (
+        <NotasParciaisModal
+          turmaNome={turmaAtual?.nome || ""}
+          onClose={() => setMostrarCadernoImportado(false)}
+        />
+      )}
       {/* Tabs Switch */}
       <div className="flex border-b border-slate-200 bg-white rounded-xl p-1.5 gap-1 shadow-2xs overflow-x-auto max-w-full">
         <button
-          onClick={() => setActiveTab('CORRECAO')}
+          onClick={() => setActiveTab("CORRECAO")}
           className={`flex-1 py-2 px-3 rounded-lg text-xs font-bold transition-colors cursor-pointer flex items-center justify-center gap-2 ${
-            activeTab === 'CORRECAO' ? 'bg-slate-900 text-white shadow-xs' : 'text-slate-600 hover:bg-slate-50'
+            activeTab === "CORRECAO"
+              ? "bg-slate-900 text-white shadow-xs"
+              : "text-slate-600 hover:bg-slate-50"
           }`}
         >
           <FileText className="w-4 h-4" />
@@ -404,9 +567,11 @@ export const AvaliacaoView: React.FC = () => {
         </button>
 
         <button
-          onClick={() => setActiveTab('DEVOLUTIVAS')}
+          onClick={() => setActiveTab("DEVOLUTIVAS")}
           className={`flex-1 py-2 px-3 rounded-lg text-xs font-bold transition-colors cursor-pointer flex items-center justify-center gap-2 ${
-            activeTab === 'DEVOLUTIVAS' ? 'bg-slate-900 text-white shadow-xs' : 'text-slate-600 hover:bg-slate-50'
+            activeTab === "DEVOLUTIVAS"
+              ? "bg-slate-900 text-white shadow-xs"
+              : "text-slate-600 hover:bg-slate-50"
           }`}
         >
           <Award className="w-4 h-4" />
@@ -414,9 +579,11 @@ export const AvaliacaoView: React.FC = () => {
         </button>
 
         <button
-          onClick={() => setActiveTab('FECHAMENTO')}
+          onClick={() => setActiveTab("FECHAMENTO")}
           className={`flex-1 py-2 px-3 rounded-lg text-xs font-bold transition-colors cursor-pointer flex items-center justify-center gap-2 ${
-            activeTab === 'FECHAMENTO' ? 'bg-slate-900 text-white shadow-xs' : 'text-slate-600 hover:bg-slate-50'
+            activeTab === "FECHAMENTO"
+              ? "bg-slate-900 text-white shadow-xs"
+              : "text-slate-600 hover:bg-slate-50"
           }`}
         >
           <ShieldCheck className="w-4 h-4" />
@@ -428,7 +595,9 @@ export const AvaliacaoView: React.FC = () => {
       {alunosDaTurma.length === 0 ? (
         <div className="bg-white border border-slate-200 rounded-2xl p-8 text-center space-y-2">
           <Users className="w-8 h-8 text-slate-400 mx-auto" />
-          <h3 className="text-sm font-bold text-slate-800">Nenhum estudante matriculado</h3>
+          <h3 className="text-sm font-bold text-slate-800">
+            Nenhum estudante matriculado
+          </h3>
           <p className="text-xs text-slate-500">
             Esta turma não possui estudantes matriculados ativos no momento.
           </p>
@@ -436,14 +605,16 @@ export const AvaliacaoView: React.FC = () => {
       ) : (
         <>
           {/* TAB 1: TELA DE CORREÇÃO AMPLA */}
-          {activeTab === 'CORRECAO' && (
+          {activeTab === "CORRECAO" && (
             <div className="space-y-5">
               {/* Sequential Navigation Toolbar */}
               <div className="bg-white border border-slate-200 rounded-xl p-3.5 flex flex-wrap items-center justify-between gap-3 shadow-xs">
                 <div className="flex items-center gap-3">
                   <button
                     disabled={safeCurrentIndex === 0}
-                    onClick={() => setCurrentAlunoIndex(prev => Math.max(0, prev - 1))}
+                    onClick={() =>
+                      setCurrentAlunoIndex((prev) => Math.max(0, prev - 1))
+                    }
                     className="px-3 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 text-xs font-bold flex items-center gap-1 cursor-pointer disabled:opacity-40"
                   >
                     <ChevronLeft className="w-4 h-4" />
@@ -451,13 +622,20 @@ export const AvaliacaoView: React.FC = () => {
                   </button>
 
                   <span className="text-xs font-semibold text-slate-700">
-                    Estudante <strong className="text-slate-900">{safeCurrentIndex + 1}</strong> de{' '}
-                    <strong>{alunosDaTurma.length}</strong>
+                    Estudante{" "}
+                    <strong className="text-slate-900">
+                      {safeCurrentIndex + 1}
+                    </strong>{" "}
+                    de <strong>{alunosDaTurma.length}</strong>
                   </span>
 
                   <button
                     disabled={safeCurrentIndex >= alunosDaTurma.length - 1}
-                    onClick={() => setCurrentAlunoIndex(prev => Math.min(alunosDaTurma.length - 1, prev + 1))}
+                    onClick={() =>
+                      setCurrentAlunoIndex((prev) =>
+                        Math.min(alunosDaTurma.length - 1, prev + 1),
+                      )
+                    }
                     className="px-3 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 text-xs font-bold flex items-center gap-1 cursor-pointer disabled:opacity-40"
                   >
                     <span>Próximo</span>
@@ -469,12 +647,16 @@ export const AvaliacaoView: React.FC = () => {
                 {currentItem && (
                   <div className="flex items-center gap-3">
                     <div className="w-7 h-7 rounded-full bg-slate-900 text-white font-bold text-xs flex items-center justify-center">
-                      {currentItem.aluno?.nome ? currentItem.aluno.nome[0] : 'A'}
+                      {currentItem.aluno?.nome
+                        ? currentItem.aluno.nome[0]
+                        : "A"}
                     </div>
                     <div>
-                      <span className="text-xs font-bold text-slate-900 block">{currentItem.aluno?.nome || 'Estudante'}</span>
+                      <span className="text-xs font-bold text-slate-900 block">
+                        {currentItem.aluno?.nome || "Estudante"}
+                      </span>
                       <span className="text-[10px] text-slate-400 font-mono">
-                        RA: {currentItem.aluno?.identificador_academico || '—'}
+                        RA: {currentItem.aluno?.identificador_academico || "—"}
                       </span>
                     </div>
                   </div>
@@ -486,7 +668,11 @@ export const AvaliacaoView: React.FC = () => {
                   className="px-3 py-1.5 rounded-lg bg-indigo-50 border border-indigo-200 text-indigo-700 hover:bg-indigo-100 text-xs font-semibold flex items-center gap-1.5 cursor-pointer shadow-2xs"
                 >
                   <Sparkles className="w-3.5 h-3.5 text-indigo-500" />
-                  <span>{mostrarEvidencias ? 'Ocultar Evidências' : 'Preparar Avaliação (Evidências)'}</span>
+                  <span>
+                    {mostrarEvidencias
+                      ? "Ocultar Evidências"
+                      : "Preparar Avaliação (Evidências)"}
+                  </span>
                 </button>
               </div>
 
@@ -495,31 +681,73 @@ export const AvaliacaoView: React.FC = () => {
                 <div className="bg-indigo-50/40 border border-indigo-100 rounded-2xl p-5 space-y-3 animate-in fade-in duration-100">
                   <h3 className="text-xs font-bold text-indigo-950 flex items-center gap-2">
                     <Sparkles className="w-4 h-4 text-indigo-600" />
-                    <span>Evidências Consolidadas da Base Oficial (Sem decisão automática de nota):</span>
+                    <span>
+                      Evidências Consolidadas da Base Oficial (Sem decisão
+                      automática de nota):
+                    </span>
                   </h3>
                   <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 text-xs">
                     <div className="p-3 bg-white rounded-xl border border-indigo-100">
-                      <span className="text-slate-400 text-[10px] block uppercase font-bold">Frequência</span>
+                      <span className="text-slate-400 text-[10px] block uppercase font-bold">
+                        Frequência
+                      </span>
                       <span className="font-bold text-slate-800">
-                        {frequencias.filter(f => f.matricula_id === currentItem.matricula.matricula_id && f.status === 'PRESENTE').length} presenças
+                        {
+                          frequencias.filter(
+                            (f) =>
+                              f.matricula_id ===
+                                currentItem.matricula.matricula_id &&
+                              f.status === "PRESENTE",
+                          ).length
+                        }{" "}
+                        presenças
                       </span>
                     </div>
                     <div className="p-3 bg-white rounded-xl border border-indigo-100">
-                      <span className="text-slate-400 text-[10px] block uppercase font-bold">RSS Entregues</span>
+                      <span className="text-slate-400 text-[10px] block uppercase font-bold">
+                        RSS Entregues
+                      </span>
                       <span className="font-bold text-slate-800">
-                        {registrosSemanais.filter(r => r.matricula_id === currentItem.matricula.matricula_id && r.status === 'ENTREGUE').length} entregas
+                        {
+                          registrosSemanais.filter(
+                            (r) =>
+                              r.matricula_id ===
+                                currentItem.matricula.matricula_id &&
+                              r.status === "ENTREGUE",
+                          ).length
+                        }{" "}
+                        entregas
                       </span>
                     </div>
                     <div className="p-3 bg-white rounded-xl border border-indigo-100">
-                      <span className="text-slate-400 text-[10px] block uppercase font-bold">Documentação</span>
+                      <span className="text-slate-400 text-[10px] block uppercase font-bold">
+                        Documentação
+                      </span>
                       <span className="font-bold text-slate-800">
-                        {documentos.filter(d => d.matricula_id === currentItem.matricula.matricula_id && d.status === 'ENTREGUE').length} entregues
+                        {
+                          documentos.filter(
+                            (d) =>
+                              d.matricula_id ===
+                                currentItem.matricula.matricula_id &&
+                              d.status === "ENTREGUE",
+                          ).length
+                        }{" "}
+                        entregues
                       </span>
                     </div>
                     <div className="p-3 bg-white rounded-xl border border-indigo-100">
-                      <span className="text-slate-400 text-[10px] block uppercase font-bold">Ocorrências</span>
+                      <span className="text-slate-400 text-[10px] block uppercase font-bold">
+                        Ocorrências
+                      </span>
                       <span className="font-bold text-slate-800">
-                        {ocorrencias.filter(o => o.matricula_id === currentItem.matricula.matricula_id).length} registros
+                        {
+                          ocorrencias.filter(
+                            (o) =>
+                              o.matricula_id ===
+                              currentItem.matricula.matricula_id,
+                          ).length
+                        }{" "}
+                        registros
                       </span>
                     </div>
                   </div>
@@ -533,56 +761,84 @@ export const AvaliacaoView: React.FC = () => {
                     <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
                       Instrumento: {selectedInstrumentoTipo}
                     </span>
-                    <h2 className="text-base font-bold text-slate-900">{selectedInstrumentoNome || 'Instrumento de Avaliação'}</h2>
+                    <h2 className="text-base font-bold text-slate-900">
+                      {selectedInstrumentoNome || "Instrumento de Avaliação"}
+                    </h2>
                   </div>
 
                   {/* Automatic Total Score Counter */}
                   <div className="text-right">
-                    <span className="text-xs text-slate-400 block font-medium">{avaliacaoParcial ? 'Soma parcial das notas lançadas' : 'Nota Total Calculada'}</span>
+                    <span className="text-xs text-slate-400 block font-medium">
+                      {avaliacaoParcial
+                        ? "Soma parcial das notas lançadas"
+                        : "Nota Total Calculada"}
+                    </span>
                     <span className="text-2xl font-black text-slate-900 font-mono">
-                      {Number(notaFinalCalculada || 0).toFixed(1)}{' '}
-                      <span className="text-sm font-normal text-slate-400">/ {Number(notaMaximaInstrumento || 10).toFixed(1)}</span>
+                      {Number(notaFinalCalculada || 0).toFixed(1)}{" "}
+                      <span className="text-sm font-normal text-slate-400">
+                        / {Number(notaMaximaInstrumento || 10).toFixed(1)}
+                      </span>
                     </span>
                   </div>
                 </div>
 
                 {/* Instrument Type: NOTA SIMPLES */}
-                {selectedInstrumentoTipo === 'NOTA_SIMPLES' && (
+                {selectedInstrumentoTipo === "NOTA_SIMPLES" && (
                   <div className="p-5 rounded-xl border border-slate-200 bg-slate-50/50 space-y-3 max-w-md">
-                    <label className="text-xs font-bold text-slate-800 block">Nota Direta (0 a {Number(notaMaximaInstrumento || 10).toFixed(1)})</label>
-                    <input aria-label="Campo da avaliação"
+                    <label className="text-xs font-bold text-slate-800 block">
+                      Nota Direta (0 a{" "}
+                      {Number(notaMaximaInstrumento || 10).toFixed(1)})
+                    </label>
+                    <input
+                      aria-label="Campo da avaliação"
                       type="number"
                       step="0.1"
                       min="0"
                       max={notaMaximaInstrumento}
                       value={notaSimplesInput}
-                      onChange={e => {dirty.current=true;setNotaSimplesInput(parseFloat(e.target.value)||0);}}
+                      onChange={(e) => {
+                        dirty.current = true;
+                        setNotaSimplesInput(parseFloat(e.target.value) || 0);
+                      }}
                       className="p-3 bg-white border border-slate-200 rounded-xl text-lg font-bold text-slate-900 w-full font-mono"
                     />
                   </div>
                 )}
 
                 {/* Instrument Type: ATIVIDADE SIMPLES */}
-                {selectedInstrumentoTipo === 'ATIVIDADE_SIMPLES' && (
+                {selectedInstrumentoTipo === "ATIVIDADE_SIMPLES" && (
                   <div className="space-y-4 max-w-xl">
                     <div>
-                      <label className="text-xs font-bold text-slate-800 block mb-1">Nota (0 a {Number(notaMaximaInstrumento || 10).toFixed(1)})</label>
-                      <input aria-label="Campo da avaliação"
+                      <label className="text-xs font-bold text-slate-800 block mb-1">
+                        Nota (0 a{" "}
+                        {Number(notaMaximaInstrumento || 10).toFixed(1)})
+                      </label>
+                      <input
+                        aria-label="Campo da avaliação"
                         type="number"
                         step="0.1"
                         min="0"
                         max={notaMaximaInstrumento}
                         value={notaSimplesInput}
-                        onChange={e => {dirty.current=true;setNotaSimplesInput(parseFloat(e.target.value)||0);}}
+                        onChange={(e) => {
+                          dirty.current = true;
+                          setNotaSimplesInput(parseFloat(e.target.value) || 0);
+                        }}
                         className="p-2.5 bg-white border border-slate-200 rounded-xl text-base font-bold text-slate-900 w-48 font-mono"
                       />
                     </div>
                     <div>
-                      <label className="text-xs font-bold text-slate-800 block mb-1">Comentário / Parecer Opcional</label>
-                      <textarea aria-label="Comentário da avaliação"
+                      <label className="text-xs font-bold text-slate-800 block mb-1">
+                        Comentário / Parecer Opcional
+                      </label>
+                      <textarea
+                        aria-label="Comentário da avaliação"
                         rows={3}
                         value={comentarioGeral}
-                        onChange={e => {dirty.current=true;setComentarioGeral(e.target.value);}}
+                        onChange={(e) => {
+                          dirty.current = true;
+                          setComentarioGeral(e.target.value);
+                        }}
                         placeholder="Observações da entrega..."
                         className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs"
                       />
@@ -591,11 +847,14 @@ export const AvaliacaoView: React.FC = () => {
                 )}
 
                 {/* Instrument Type: RUBRICA OU HÍBRIDA */}
-                {(selectedInstrumentoTipo === 'RUBRICA' || selectedInstrumentoTipo === 'HIBRIDA') && (
+                {(selectedInstrumentoTipo === "RUBRICA" ||
+                  selectedInstrumentoTipo === "HIBRIDA") && (
                   <div className="space-y-4">
                     {criteriosAplicaveis.length === 0 ? (
                       <div className="p-6 bg-slate-50 border border-slate-200 rounded-xl text-center text-xs text-slate-500">
-                        Não há critérios cadastrados em <code className="font-mono">criterios_avaliacao</code> para este instrumento.
+                        Não há critérios cadastrados em{" "}
+                        <code className="font-mono">criterios_avaliacao</code>{" "}
+                        para este instrumento.
                       </div>
                     ) : (
                       <>
@@ -608,36 +867,72 @@ export const AvaliacaoView: React.FC = () => {
                         </div>
 
                         <div className="divide-y divide-slate-100 border border-slate-200 rounded-xl overflow-hidden">
-                          {criteriosAplicaveis.map(crit => {
-                            const notaCrit = notasCriteriosMap[crit.criterio_id] ?? '';
-                            const obsCrit = comentariosCriteriosMap[crit.criterio_id] ?? '';
+                          {criteriosAplicaveis.map((crit) => {
+                            const notaCrit =
+                              notasCriteriosMap[crit.criterio_id] ?? "";
+                            const obsCrit =
+                              comentariosCriteriosMap[crit.criterio_id] ?? "";
                             const maxNota = Number(crit.nota_maxima) || 0;
 
                             return (
-                              <div key={crit.criterio_id} className="p-4 bg-white space-y-2">
+                              <div
+                                key={crit.criterio_id}
+                                className="p-4 bg-white space-y-2"
+                              >
                                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                                   <div>
-                                    <span className="font-bold text-xs text-slate-900 block">{crit.nome}</span>
-                                    {crit.descricao && <span className="text-[11px] text-slate-500">{crit.descricao}</span>}
+                                    <span className="font-bold text-xs text-slate-900 block">
+                                      {crit.nome}
+                                    </span>
+                                    <p className="prisma-meta">
+                                      Peso:{" "}
+                                      {crit.peso == null || crit.peso === ""
+                                        ? "não informado"
+                                        : String(crit.peso)}
+                                      {crit.versao
+                                        ? ` · Versão ${crit.versao}`
+                                        : ""}
+                                    </p>
+                                    {crit.descritor && (
+                                      <p className="prisma-meta">
+                                        {String(crit.descritor)}
+                                      </p>
+                                    )}
+                                    {crit.subcriterio && (
+                                      <p className="prisma-meta">
+                                        Subcritério: {String(crit.subcriterio)}
+                                      </p>
+                                    )}
+                                    {crit.descricao && (
+                                      <span className="text-[11px] text-slate-500">
+                                        {crit.descricao}
+                                      </span>
+                                    )}
                                   </div>
 
                                   <div className="flex items-center gap-6 shrink-0">
                                     <span className="font-mono text-xs font-bold text-slate-400">
                                       {maxNota.toFixed(1)}
                                     </span>
-                                    <input aria-label="Campo da avaliação"
+                                    <input
+                                      aria-label={`Nota: ${crit.nome}`}
                                       type="number"
                                       step="0.1"
                                       min="0"
                                       max={maxNota}
                                       value={notaCrit}
-                                      onChange={e => {
-                                        dirty.current=true;
+                                      onChange={(e) => {
+                                        dirty.current = true;
                                         const txt = e.target.value;
-                                        setNotasCriteriosMap(prev => {
+                                        setNotasCriteriosMap((prev) => {
                                           const next = { ...prev };
-                                          if (txt === '') delete next[crit.criterio_id];
-                                          else next[crit.criterio_id] = Math.max(0, Math.min(maxNota, Number(txt)));
+                                          if (txt === "")
+                                            delete next[crit.criterio_id];
+                                          else
+                                            next[crit.criterio_id] = Math.max(
+                                              0,
+                                              Math.min(maxNota, Number(txt)),
+                                            );
                                           return next;
                                         });
                                       }}
@@ -647,13 +942,17 @@ export const AvaliacaoView: React.FC = () => {
                                 </div>
 
                                 <div>
-                                  <input aria-label="Campo da avaliação"
+                                  <input
+                                    aria-label={`Comentário: ${crit.nome}`}
                                     type="text"
                                     value={obsCrit}
-                                    onChange={e => {
-                                      dirty.current=true;
+                                    onChange={(e) => {
+                                      dirty.current = true;
                                       const val = e.target.value;
-                                      setComentariosCriteriosMap(prev => ({ ...prev, [crit.criterio_id]: val }));
+                                      setComentariosCriteriosMap((prev) => ({
+                                        ...prev,
+                                        [crit.criterio_id]: val,
+                                      }));
                                     }}
                                     placeholder="Comentário ou evidência específica deste critério..."
                                     className="w-full p-2 bg-slate-50 border border-slate-100 rounded-lg text-xs text-slate-700 placeholder:text-slate-400"
@@ -671,22 +970,34 @@ export const AvaliacaoView: React.FC = () => {
                 {/* Feedback fields: Pontos Fortes, Pontos a Desenvolver, Parecer Geral */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-3 border-t border-slate-100 text-xs">
                   <div>
-                    <label className="font-bold text-slate-800 block mb-1">Pontos Fortes Demonstrados</label>
-                    <textarea aria-label="Comentário da avaliação"
+                    <label className="font-bold text-slate-800 block mb-1">
+                      Pontos Fortes Demonstrados
+                    </label>
+                    <textarea
+                      aria-label="Comentário da avaliação"
                       rows={2}
                       value={pontosFortes}
-                      onChange={e => {dirty.current=true;setPontosFortes(e.target.value);}}
+                      onChange={(e) => {
+                        dirty.current = true;
+                        setPontosFortes(e.target.value);
+                      }}
                       placeholder="Aspectos em que o estudante se destacou..."
                       className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl"
                     />
                   </div>
 
                   <div>
-                    <label className="font-bold text-slate-800 block mb-1">Aspectos a Desenvolver</label>
-                    <textarea aria-label="Comentário da avaliação"
+                    <label className="font-bold text-slate-800 block mb-1">
+                      Aspectos a Desenvolver
+                    </label>
+                    <textarea
+                      aria-label="Comentário da avaliação"
                       rows={2}
                       value={pontosDesenvolver}
-                      onChange={e => {dirty.current=true;setPontosDesenvolver(e.target.value);}}
+                      onChange={(e) => {
+                        dirty.current = true;
+                        setPontosDesenvolver(e.target.value);
+                      }}
                       placeholder="Sugestões de melhoria e foco pedagógico..."
                       className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl"
                     />
@@ -697,8 +1008,9 @@ export const AvaliacaoView: React.FC = () => {
                 <div className="flex flex-wrap items-center justify-between gap-3 pt-4 border-t border-slate-200">
                   <button
                     type="button"
-                    onClick={() => handleSalvarAvaliacao('RASCUNHO')}
-                    disabled={salvandoAvaliacao} className="px-4 py-2.5 rounded-xl border border-slate-200 text-slate-700 hover:bg-slate-50 text-xs font-bold cursor-pointer disabled:opacity-50"
+                    onClick={() => handleSalvarAvaliacao("RASCUNHO")}
+                    disabled={salvandoAvaliacao}
+                    className="px-4 py-2.5 rounded-xl border border-slate-200 text-slate-700 hover:bg-slate-50 text-xs font-bold cursor-pointer disabled:opacity-50"
                   >
                     Salvar Rascunho
                   </button>
@@ -709,14 +1021,16 @@ export const AvaliacaoView: React.FC = () => {
                       onClick={() => {
                         if (currentItem && turmaAtual) {
                           setModalFeedbackAvaliacao({
-                            avaliacao_id: avaliacaoExistente?.avaliacao_id || `av-${Date.now()}`,
+                            avaliacao_id:
+                              avaliacaoExistente?.avaliacao_id ||
+                              `av-${Date.now()}`,
                             matricula_id: currentItem.matricula.matricula_id,
                             turma_id: selectedTurmaId,
                             instrumento_id: selectedInstrumentoNome,
                             tipo_instrumento: selectedInstrumentoTipo,
                             nota_final: Number(notaFinalCalculada) || 0,
                             nota_maxima: Number(notaMaximaInstrumento) || 10,
-                            status: 'AVALIADA',
+                            status: "AVALIADA",
                             comentario_geral: comentarioGeral,
                             pontos_fortes: pontosFortes,
                             pontos_desenvolver: pontosDesenvolver,
@@ -731,7 +1045,7 @@ export const AvaliacaoView: React.FC = () => {
 
                     <button
                       type="button"
-                      onClick={() => handleSalvarAvaliacao('AVALIADA')}
+                      onClick={() => handleSalvarAvaliacao("AVALIADA")}
                       disabled={salvandoAvaliacao}
                       className="px-5 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold flex items-center gap-2 cursor-pointer shadow-xs"
                     >
@@ -745,13 +1059,16 @@ export const AvaliacaoView: React.FC = () => {
           )}
 
           {/* TAB 2: PAINEL DE DEVOLUTIVAS */}
-          {activeTab === 'DEVOLUTIVAS' && (
+          {activeTab === "DEVOLUTIVAS" && (
             <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs space-y-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <h2 className="text-sm font-bold text-slate-900">Painel Geral de Devolutivas por Estudante</h2>
+                  <h2 className="text-sm font-bold text-slate-900">
+                    Painel Geral de Devolutivas por Estudante
+                  </h2>
                   <p className="text-xs text-slate-500">
-                    Acompanhe o estado de revisão, aprovação individual e envio de cada feedback
+                    Acompanhe o estado de revisão, aprovação individual e envio
+                    de cada feedback
                   </p>
                 </div>
               </div>
@@ -759,14 +1076,23 @@ export const AvaliacaoView: React.FC = () => {
               <div className="divide-y divide-slate-100 border border-slate-200 rounded-xl overflow-hidden">
                 {alunosDaTurma.map(({ matricula, aluno }) => {
                   const av = avaliacoesCompletas.find(
-                    (a: AvaliacaoCompleta) => a.matricula_id === matricula.matricula_id && a.instrumento_id === selectedInstrumentoNome
+                    (a: AvaliacaoCompleta) =>
+                      a.matricula_id === matricula.matricula_id &&
+                      a.instrumento_id === selectedInstrumentoNome,
                   );
-                  const status: StatusDevolutiva = av ? av.status : 'NAO_INICIADA';
+                  const status: StatusDevolutiva = av
+                    ? av.status
+                    : "NAO_INICIADA";
 
                   return (
-                    <div key={matricula.matricula_id} className="p-4 flex items-center justify-between gap-3 bg-white">
+                    <div
+                      key={matricula.matricula_id}
+                      className="p-4 flex items-center justify-between gap-3 bg-white"
+                    >
                       <div>
-                        <span className="font-bold text-xs text-slate-900 block">{aluno.nome}</span>
+                        <span className="font-bold text-xs text-slate-900 block">
+                          {aluno.nome}
+                        </span>
                         <span className="text-[11px] text-slate-400 font-mono">
                           RA: {aluno.identificador_academico}
                         </span>
@@ -775,18 +1101,19 @@ export const AvaliacaoView: React.FC = () => {
                       <div className="flex items-center gap-3">
                         <span
                           className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${
-                            status === 'ENVIADO'
-                              ? 'bg-emerald-100 text-emerald-800'
-                              : status === 'APROVADO_ENVIO'
-                              ? 'bg-indigo-100 text-indigo-800'
-                              : status === 'AVALIADA' || status === 'FEEDBACK_PREPARADO'
-                              ? 'bg-blue-100 text-blue-800'
-                              : status === 'RASCUNHO'
-                              ? 'bg-amber-100 text-amber-800'
-                              : 'bg-slate-100 text-slate-500'
+                            status === "ENVIADO"
+                              ? "bg-emerald-100 text-emerald-800"
+                              : status === "APROVADO_ENVIO"
+                                ? "bg-indigo-100 text-indigo-800"
+                                : status === "AVALIADA" ||
+                                    status === "FEEDBACK_PREPARADO"
+                                  ? "bg-blue-100 text-blue-800"
+                                  : status === "RASCUNHO"
+                                    ? "bg-amber-100 text-amber-800"
+                                    : "bg-slate-100 text-slate-500"
                           }`}
                         >
-                          {status.replace(/_/g, ' ')}
+                          {status.replace(/_/g, " ")}
                         </span>
 
                         <button
@@ -800,10 +1127,11 @@ export const AvaliacaoView: React.FC = () => {
                                   instrumento_id: selectedInstrumentoNome,
                                   tipo_instrumento: selectedInstrumentoTipo,
                                   nota_final: 0,
-                                  nota_maxima: Number(notaMaximaInstrumento) || 10,
-                                  status: 'NAO_INICIADA',
+                                  nota_maxima:
+                                    Number(notaMaximaInstrumento) || 10,
+                                  status: "NAO_INICIADA",
                                   atualizado_em: new Date().toISOString(),
-                                }
+                                },
                               );
                             }
                           }}
@@ -820,26 +1148,46 @@ export const AvaliacaoView: React.FC = () => {
           )}
 
           {/* TAB 3: MODO FECHAMENTO */}
-          {activeTab === 'FECHAMENTO' && (
+          {activeTab === "FECHAMENTO" && (
             <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs space-y-4">
               <div>
-                <h2 className="text-sm font-bold text-slate-900">Modo Fechamento do Semestre</h2>
+                <h2 className="text-sm font-bold text-slate-900">
+                  Modo Fechamento do Semestre
+                </h2>
                 <p className="text-xs text-slate-500">
-                  Checklist acadêmico por estudante: RSS, frequência, documentação e consolidação final
+                  Checklist acadêmico por estudante: RSS, frequência,
+                  documentação e consolidação final
                 </p>
               </div>
 
               <div className="divide-y divide-slate-100 border border-slate-200 rounded-xl overflow-hidden">
                 {alunosDaTurma.map(({ matricula, aluno }) => {
-                  const rssCount = registrosSemanais.filter(r => r.matricula_id === matricula.matricula_id && r.status === 'ENTREGUE').length;
-                  const docsCount = documentos.filter(d => d.matricula_id === matricula.matricula_id && d.status === 'ENTREGUE').length;
-                  const faltasCount = frequencias.filter(f => f.matricula_id === matricula.matricula_id && f.status === 'FALTA_SEM_JUSTIFICATIVA').length;
+                  const rssCount = registrosSemanais.filter(
+                    (r) =>
+                      r.matricula_id === matricula.matricula_id &&
+                      r.status === "ENTREGUE",
+                  ).length;
+                  const docsCount = documentos.filter(
+                    (d) =>
+                      d.matricula_id === matricula.matricula_id &&
+                      d.status === "ENTREGUE",
+                  ).length;
+                  const faltasCount = frequencias.filter(
+                    (f) =>
+                      f.matricula_id === matricula.matricula_id &&
+                      f.status === "FALTA_SEM_JUSTIFICATIVA",
+                  ).length;
                   const pronto = rssCount >= 10 && faltasCount === 0;
 
                   return (
-                    <div key={matricula.matricula_id} className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white">
+                    <div
+                      key={matricula.matricula_id}
+                      className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white"
+                    >
                       <div>
-                        <span className="font-bold text-xs text-slate-900 block">{aluno.nome}</span>
+                        <span className="font-bold text-xs text-slate-900 block">
+                          {aluno.nome}
+                        </span>
                         <div className="flex items-center gap-3 text-[11px] text-slate-500 mt-1">
                           <span>RSS: {rssCount}/12</span>
                           <span>•</span>
@@ -852,10 +1200,14 @@ export const AvaliacaoView: React.FC = () => {
                       <div className="flex items-center gap-2">
                         <span
                           className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${
-                            pronto ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
+                            pronto
+                              ? "bg-emerald-100 text-emerald-800"
+                              : "bg-amber-100 text-amber-800"
                           }`}
                         >
-                          {pronto ? 'Pronto para Fechamento' : 'Revisão Necessária'}
+                          {pronto
+                            ? "Pronto para Fechamento"
+                            : "Revisão Necessária"}
                         </span>
                       </div>
                     </div>
