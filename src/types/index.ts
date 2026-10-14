@@ -29,6 +29,7 @@ export interface Turma {
 export interface Aluno {
   aluno_id: string;
   nome: string;
+  email?: string;
   identificador_academico: string; // Ex: 'RA202601'
   status: 'ATIVO' | 'TRANCADO' | 'CONCLUIDO';
 }
@@ -38,7 +39,7 @@ export interface Matricula {
   aluno_id: string;
   turma_id: string;
   periodo_id: string;
-  status: 'MATRICULADO' | 'TRANCADO' | 'CANCELADO';
+  status: 'PENDENTE' | 'MATRICULADO' | 'TRANCADO' | 'CANCELADO';
   /** Condição na turma (ex.: REPRESENTANTE, SUPERVISAO_HORARIO_ALTERNATIVO). Pode combinar valores separados por ; , ou |. */
   papel_na_turma?: string;
   origem_id?: string; // FK -> TurmaOrigem (Docente Online individual do aluno)
@@ -404,7 +405,10 @@ export interface MarcoAcademico {
   nome: string; // Ex: 'Final dos atendimentos'
   tipo: 'PROVA' | 'ENTREGA' | 'RELATORIO' | 'ENCERRAMENTO_ATENDIMENTOS' | 'DEVOLUTIVA' | 'OUTRO';
   data_prazo: string;
-  status: 'PENDENTE' | 'CONCLUIDO';
+  status: 'PENDENTE' | 'CONCLUIDO' | 'PLANEJADO' | 'CONFIRMADO' | 'ADIADO' | 'CUMPRIDO';
+  origem?:string;
+  escopo_marco?:string;
+  codigo_marco?:string;
   observacao?: string;
 }
 
@@ -433,6 +437,9 @@ export interface AlunoResumoSupervisao {
   totalPrevistoNoPeriodo?: number;
   situacaoRss?: SituacaoRssEstudante;
   docsPendentesCount: number;
+  docsTotalCount:number;
+  rssCategoria:string;
+  orientacoesTotalCount:number;
   faltasInjustificadasCount: number;
   orientacoesAbertasCount: number;
   justificativasPendentesCount: number;

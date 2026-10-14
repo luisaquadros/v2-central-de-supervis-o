@@ -95,6 +95,7 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
     tokenExpiredAviso,
     reconectarESincronizar,
     perfilServidor,
+    periodos,
   } = useSupervisao();
 
   const turma = turmas.find((t) => t.turma_id === turmaId);
@@ -114,6 +115,9 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
   const encontroHoje = encontrosTurma.find(
     (e) => e.turma_id === turmaId && e.data === hojeIso,
   );
+
+  const chamadaConfirmada =
+    String(encontroHoje?.chamada_salva).toUpperCase() === "TRUE";
 
   // 2. Estudo Dirigido de Hoje programado para esta turma
   const leiturasDaAula = useMemo(() => {
@@ -490,6 +494,33 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
         </button>
       </section>
     );
+  const periodoDaTurma = periodos.find(
+    (p) => p.periodo_id === turma?.periodo_id,
+  );
+  if (
+    periodoDaTurma &&
+    (hojeIso < periodoDaTurma.data_inicio || hojeIso > periodoDaTurma.data_fim)
+  )
+    return (
+      <section className="prisma-empty">
+        <h1 className="prisma-title text-xl">Confira a data da supervisão</h1>
+        <p>
+          Hoje ({hojeIso}) está fora da vigência de {periodoDaTurma.nome}.
+          Consulte a agenda e prepare o encontro antes de registrar chamada.
+        </p>
+        <button className="underline p-3" onClick={onEncerrar}>
+          Voltar à turma
+        </button>
+        {onPrepararAula && (
+          <button
+            className="underline p-3"
+            onClick={() => onPrepararAula(turmaId)}
+          >
+            Preparar aula
+          </button>
+        )}
+      </section>
+    );
 
   return (
     <div className="flex flex-col min-h-0 md:h-full bg-slate-100 font-sans max-md:overflow-y-auto md:overflow-hidden">
@@ -538,6 +569,7 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
             </button>
           )}
           <button
+            disabled={chamadaConfirmada}
             onClick={() => setModalType("naoRealizada")}
             className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-amber-300 text-xs font-medium transition-colors cursor-pointer border border-slate-700"
             title="Registrar que esta aula não ocorreu (feriado, cancelamento, etc.)"
@@ -546,6 +578,7 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
           </button>
 
           <button
+            disabled={chamadaConfirmada}
             onClick={() => setModalType("reagendar")}
             className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium transition-colors cursor-pointer border border-slate-700"
             title="Reagendar supervisão para outra data"
@@ -562,6 +595,12 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
         </div>
       </header>
 
+      {chamadaConfirmada && (
+        <p role="status" className="prisma-section m-3 text-sm">
+          Chamada confirmada. Frequência disponível para consulta; retificação
+          formal ainda não está habilitada.
+        </p>
+      )}
       {/* AVISO DE AULA NÃO REALIZADA / FERIADO (SE APLICÁVEL) */}
       {encontroHoje && encontroHoje.status === "NAO_REALIZADO" && (
         <div className="bg-amber-100 border-b border-amber-300 px-4 py-2.5 text-xs text-amber-900 flex items-center justify-between">
@@ -971,7 +1010,8 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
               </button>
             )}
             <button
-              aria-label="Fechar mensagem da chamada" onClick={() => setChamadaSalvaMsg(null)}
+              aria-label="Fechar mensagem da chamada"
+              onClick={() => setChamadaSalvaMsg(null)}
               className="text-white hover:opacity-80"
             >
               <X className="w-3.5 h-3.5" />
@@ -1070,7 +1110,11 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
 
             <button
               onClick={abrirPrevia}
-              disabled={saveStatus === "SALVANDO" || chamadaIncompleta}
+              disabled={
+                saveStatus === "SALVANDO" ||
+                chamadaIncompleta ||
+                chamadaConfirmada
+              }
               className="min-h-[44px] px-4 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 active:scale-98 text-white font-bold text-xs flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer"
               title="Revisar quem será considerado presente e encerrar a chamada"
             >
@@ -1236,6 +1280,7 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
                     <div className="flex items-center gap-1.5 shrink-0">
                       {/* [Faltou] */}
                       <button
+                        disabled={chamadaConfirmada}
                         onClick={() => toggleFaltou(matId)}
                         className={`min-h-[44px] min-w-[52px] px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center justify-center ${
                           exc.faltou
@@ -1249,10 +1294,11 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
 
                       {/* [Atraso] */}
                       <button
+                        disabled={chamadaConfirmada}
                         onClick={() => toggleAtraso(matId)}
                         className={`min-h-[44px] min-w-[44px] p-2 rounded-lg text-xs font-medium transition-all cursor-pointer flex items-center justify-center ${
                           exc.atraso
-                            ? "bg-amber-500 text-white shadow-xs"
+                            ? "bg-amber-400 text-slate-950 shadow-xs"
                             : "bg-slate-100 hover:bg-amber-50 text-slate-500 hover:text-amber-700"
                         }`}
                         title="Registrar atraso"
@@ -1262,10 +1308,11 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
 
                       {/* [Celular] */}
                       <button
+                        disabled={chamadaConfirmada}
                         onClick={() => toggleCelular(matId)}
                         className={`min-h-[44px] min-w-[44px] p-2 rounded-lg text-xs font-medium transition-all cursor-pointer flex items-center justify-center ${
                           exc.celular
-                            ? "bg-amber-500 text-white shadow-xs"
+                            ? "bg-amber-400 text-slate-950 shadow-xs"
                             : "bg-slate-100 hover:bg-amber-50 text-slate-500 hover:text-amber-700"
                         }`}
                         title="Registrar uso de smartphone durante aula"
@@ -1275,6 +1322,7 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
 
                       {/* [+] Mais opções: justificativa, observação */}
                       <button
+                        disabled={chamadaConfirmada}
                         onClick={() => {
                           setMatriculaParaMais(matId);
                           setModalType("maisExcecao");
@@ -1363,14 +1411,24 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
                     </span>
                   </div>
                   <div className="text-[10px] text-slate-500 mt-0.5 flex items-center justify-between">
-                    <span className="text-emerald-600 font-semibold">
-                      {resumoAluno.totalRegistrosEntregues >=
-                      resumoAluno.totalRegistrosEsperados
-                        ? "Em dia"
-                        : "Atrasado"}
+                    <span className="text-slate-600 font-semibold">
+                      {resumoAluno.rssCategoria === "AGUARDANDO_CALENDARIO"
+                        ? "Calendário não verificado"
+                        : resumoAluno.totalRegistrosEsperados === 0
+                          ? "Ainda não exigido"
+                          : (
+                              {
+                                EM_DIA: "Em dia",
+                                RECENTE_PENDENTE: "Semana recente pendente",
+                                HISTORICO_INCOMPLETO: "Histórico incompleto",
+                                EM_REVISAO: "A conferir",
+                              } as Record<string, string>
+                            )[resumoAluno.rssCategoria] || "Não verificado"}
                     </span>
                     <span>
-                      {resumoAluno.totalPrevistoNoPeriodo ?? 12} no semestre
+                      {resumoAluno.rssCategoria === "AGUARDANDO_CALENDARIO"
+                        ? "Previsão não disponível"
+                        : `${resumoAluno.totalPrevistoNoPeriodo} no semestre`}
                     </span>
                   </div>
                 </div>
@@ -1391,7 +1449,7 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
                   <div className="text-[10px] text-slate-500 mt-0.5">
                     {resumoAluno.faltasInjustificadasCount > 0
                       ? "⚠ Injustificada"
-                      : "Sem faltas graves"}
+                      : "Nenhuma falta registrada"}
                   </div>
                 </div>
 
@@ -1404,14 +1462,16 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
                 >
                   <div className="text-[11px] text-slate-500">Documentação</div>
                   <div className="text-base font-bold font-mono text-slate-900 mt-0.5">
-                    {resumoAluno.docsPendentesCount === 0
-                      ? "Regular"
-                      : `${resumoAluno.docsPendentesCount} pend.`}
+                    {resumoAluno.docsTotalCount === 0
+                      ? "Não verificado"
+                      : resumoAluno.docsPendentesCount === 0
+                        ? "Sem pendências"
+                        : `${resumoAluno.docsPendentesCount} pend.`}
                   </div>
                   <div className="text-[10px] text-slate-500 mt-0.5">
                     {resumoAluno.docsPendentesCount > 0
                       ? "TCLE / Termo"
-                      : "Tudo entregue"}
+                      : "Confira os registros documentais"}
                   </div>
                 </div>
 
@@ -1431,7 +1491,9 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
                   <div className="text-[10px] text-slate-500 mt-0.5">
                     {resumoAluno.orientacoesAbertasCount > 0
                       ? "Aguardando retorno"
-                      : "Resolvidas"}
+                      : resumoAluno.orientacoesTotalCount === 0
+                        ? "Sem registros"
+                        : "Resolvidas"}
                   </div>
                 </div>
               </div>

@@ -584,7 +584,7 @@ export const AlunoFichaView: React.FC<AlunoFichaViewProps> = ({
                   {docsPendentes === 0 ? "0" : docsPendentes}
                 </div>
                 <div className="text-[10px] text-slate-500 mt-0.5">
-                  {docsPendentes > 0 ? "⚠ Pendentes" : "Em dia"}
+                  {entregasOficiais.length+studentDocumentos.length===0?"Não verificado":docsPendentes>0?"⚠ Pendentes":"Sem pendência registrada"}
                 </div>
               </button>
 

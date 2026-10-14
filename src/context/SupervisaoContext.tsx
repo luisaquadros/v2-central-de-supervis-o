@@ -1,3 +1,5 @@
+import {revisarEncerramento} from '../services/encerramentoPeriodoService';
+import {planejarPeriodo} from '../services/semestreService';
 import { chaveItemOperacional, prepararRegistroOperacional, combinarOperacionais, contarLegadosLocais, type TipoOperacional } from '../services/operacionaisSheetsService';
 import { resumirDocumentacaoOficial, documentosPendentesOficiais } from '../services/documentacaoAcademicaService';
 import { interpretarStatusEntrega } from '../services/normalizacaoAcademica';
@@ -5,7 +7,7 @@ import { filtrarPendenciasResolvidas } from '../services/pendenciaResolutionServ
 import { selecionarRssDoEstudante } from '../services/rssVinculos';
 import { listarAlunosChamada } from '../services/aulaParticipants';
 import { useDurableLocalState } from '../hooks/useDurableLocalState';
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import {
   Periodo,
   Disciplina,
@@ -266,11 +268,16 @@ interface SupervisaoContextType {
   addFrequencia: (matriculaId: string, dataAula: string, status: Frequencia['status'], justificativa: string, origemId?: string) => Promise<void>;
   updateFrequenciaStatus: (frequenciaId: string, status: Frequencia['status'], justificativa?: string) => Promise<void>;
 
-  saveAvaliacao: (matriculaId: string, criterioId: string, nota: number, observacao?: string) => Promise<void>;
+  saveAvaliacao: (matriculaId: string, criterioId: string, nota: number, observacao?: string,versaoOriginal?:Avaliacao|null) => Promise<Avaliacao>;
   
   // Gestão de períodos e turmas
-  createNovoPeriodo: (nome: string, dataInicio: string, dataFim: string, copiarTurmasDePeriodoId?: string) => Promise<string>;
-  importarAlunosLote: (turmaId: string, novosAlunos: { nome: string; identificador_academico: string }[]) => Promise<{ adicionados: number; duplicados: number }>;
+  vincularGrupo: (turmaId:string,nome:string,matriculaIds:string[],dataInicio:string,grupoExistente?:string)=>Promise<void>;
+  confirmarRubrica: (turmaId:string,conferida:boolean)=>Promise<void>;
+  importarCronograma: (registros:MarcoAcademico[])=>Promise<void>;
+  decidirInscricao: (matriculaId:string,aprovar:boolean)=>Promise<void>;
+  arquivarPeriodo: (periodoId:string, confirmacao:boolean)=>Promise<void>;
+  createNovoPeriodo: (nome: string, dataInicio: string, dataFim: string, copiarTurmasDePeriodoId?: string, inicioAulas?: string) => Promise<string>;
+  importarAlunosLote: (turmaId: string, novosAlunos: { nome: string; identificador_academico: string; email?:string }[], status?:'PENDENTE'|'MATRICULADO') => Promise<{ adicionados: number; duplicados: number }>;
 
   // Consultas e Regras de Negócio da Base
   isTurmaClinicaAmpliada: (turmaId: string) => boolean;
@@ -314,7 +321,7 @@ interface SupervisaoContextType {
   removerItemFilaSupervisao: (id: string) => Promise<void>;
 
   avaliacoesCompletas: AvaliacaoCompleta[];
-  salvarAvaliacaoCompleta: (avaliacao: any) => Promise<void>;
+  salvarAvaliacaoCompleta: (avaliacao: any,versaoOriginal?:AvaliacaoCompleta|null) => Promise<AvaliacaoCompleta>;
   aprovarDevolutiva: (id: string) => Promise<void>;
   registrarEnvioDevolutiva: (id: string, emailDestino?: string) => Promise<void>;
   registrarAuditoria: (acaoOrObj: any, entidade?: string, entidadeId?: string, valorAnterior?: any, valorNovo?: any, motivo?: string) => Promise<void>;
@@ -948,11 +955,15 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     tabela: string,
     tipo: 'INSERT' | 'UPDATE' | 'DELETE',
     registro: Record<string, any>,
-    listaAtualizada: any[]
+    listaAtualizada: any[], versaoOriginal?:Record<string,any>|null
   ): Promise<void> => {
     
+    const matricula=registro.matricula_id?matriculas.find(m=>m.matricula_id===registro.matricula_id):undefined;
+    const turmaId=matricula?.turma_id||registro.turma_id||gruposPratica.find(g=>g.grupo_id===registro.grupo_id)?.turma_id;
+    const periodoId=turmas.find(t=>t.turma_id===turmaId)?.periodo_id||registro.periodo_id;
+    if(periodos.some(p=>p.periodo_id===periodoId&&p.status==='ARQUIVADO'))throw new Error('Período arquivado: registros históricos não recebem edições comuns.');
     try {
-      const resultado = await salvarRegistroResiliente(tabela, tipo, registro, listaAtualizada);
+      const resultado = await salvarRegistroResiliente(tabela, tipo, registro, listaAtualizada,versaoOriginal);
       notifySaveSuccess(resultado.gravadoOnline);
     } catch (erro) {
       handleSaveError(erro);
@@ -1537,15 +1548,15 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     matriculaId: string,
     criterioId: string,
     nota: number,
-    observacao: string = ''
-  ): Promise<void> => {
+    observacao: string = '', versaoOriginal?:Avaliacao|null
+  ): Promise<Avaliacao> => {
     setSaveStatus('SALVANDO');
-    const anterior = avaliacoes.find(a => a.matricula_id === matriculaId && a.criterio_id === criterioId);
+    const anterior = versaoOriginal!==undefined?versaoOriginal:avaliacoes.find(a => a.matricula_id === matriculaId && a.criterio_id === criterioId);
     const registro = anterior ? { ...anterior, nota, observacao } : { avaliacao_id: generateUuid(), matricula_id: matriculaId, criterio_id: criterioId, nota, observacao };
 
     
 
-    await persistirMudancaWeb('avaliacoes', anterior ? 'UPDATE' : 'INSERT', registro, anterior ? avaliacoes.map(a => a.avaliacao_id === anterior.avaliacao_id ? registro : a) : [...avaliacoes, registro]);
+    await persistirMudancaWeb('avaliacoes', anterior ? 'UPDATE' : 'INSERT', registro, anterior ? avaliacoes.map(a => a.avaliacao_id === anterior.avaliacao_id ? registro : a) : [...avaliacoes, registro],versaoOriginal);
     setAvaliacoes(prev => {
       const idx = prev.findIndex(a => a.matricula_id === matriculaId && a.criterio_id === criterioId);
       if (idx >= 0) {
@@ -1565,63 +1576,97 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         ];
       }
     });
+    return registro;
   };
 
   // ==========================================
   // PERÍODOS & IMPORTAÇÃO
   // ==========================================
 
-  const createNovoPeriodo = async (
-    nome: string,
-    dataInicio: string,
-    dataFim: string,
-    copiarTurmasDePeriodoId?: string
-  ): Promise<string> => {
-    setSaveStatus('SALVANDO');
-    const newPeriodoId = `p-${nome.replace('.', '-')}-${Date.now().toString(36)}`;
-    const newPeriodo: Periodo = {
-      periodo_id: newPeriodoId, nome,
-      data_inicio: dataInicio, data_fim: dataFim, status: 'PLANEJADO',
-    };
-    const turmasAntigas = copiarTurmasDePeriodoId
-      ? turmas.filter(t => t.periodo_id === copiarTurmasDePeriodoId) : [];
-    const idsNovos = new Map<string, string>();
-    const novasTurmas = turmasAntigas.map(t => {
-      const id = generateUuid();
-      idsNovos.set(t.turma_id, id);
-      return { ...t, turma_id: id, periodo_id: newPeriodoId, status: 'ATIVO' as const };
-    });
-    // Preserva vínculo de cada critério à turma correspondente no novo período.
-    const novosCriterios = criterios
-      .filter(c => c.periodo_id === copiarTurmasDePeriodoId)
-      .map(c => ({
-        ...c, criterio_id: generateUuid(), periodo_id: newPeriodoId,
-        turma_id: c.turma_id ? (idsNovos.get(c.turma_id) || c.turma_id) : c.turma_id,
-      }));
-    
-    // Não apenas alterar React e indicar sucesso: registrar cada nova entidade
-    // no Sheets ou na fila offline antes de expor o novo período na interface.
-    await persistirMudancaWeb('periodos', 'INSERT', newPeriodo, [...periodos, newPeriodo]);
-    let turmasSnapshot = [...turmas];
-    for (const turma of novasTurmas) {
-      turmasSnapshot = [...turmasSnapshot, turma];
-      await persistirMudancaWeb('turmas', 'INSERT', turma, turmasSnapshot);
+  const criandoPeriodo=useRef(false);
+  const createNovoPeriodo = async (nome:string,dataInicio:string,dataFim:string,modelo?:string,inicioAulas?:string):Promise<string> => {
+    if(criandoPeriodo.current)throw new Error('A criação deste semestre já está em andamento.');
+    const plano=planejarPeriodo({nome,inicio:dataInicio,fim:dataFim,modelo,inicioAulas},{periodos,turmas,criterios,horarios:horariosTurma});
+    criandoPeriodo.current=true;setSaveStatus('SALVANDO');
+    try {
+      await persistirMudancaWeb('periodos','INSERT',plano.periodo,[...periodos,plano.periodo]);
+      setPeriodos(prev=>[...prev,plano.periodo]);
+      let ts=[...turmas],cs=[...criterios],hs=[...horariosTurma];
+      for(const t of plano.turmas){ts=[...ts,t];await persistirMudancaWeb('turmas','INSERT',t,ts);setTurmas([...ts]);}
+      for(const c of plano.criterios){cs=[...cs,c];await persistirMudancaWeb('criterios_avaliacao','INSERT',c,cs);setCriterios([...cs]);}
+      for(const h of plano.horarios){hs=[...hs,h];await persistirMudancaWeb('horarios_turma','INSERT',h,hs);setHorariosTurma([...hs]);}
+      let ms=[...marcosAcademicos];
+      for(const m of plano.marcos){ms=[...ms,m];await persistirMudancaWeb('marcos_academicos','INSERT',m,ms);setMarcosAcademicos([...ms]);}
+      return plano.periodo.periodo_id;
+    }catch(e){setSaveStatus('ERRO_SALVAR');throw new Error('A criação não foi concluída. Confira os registros e a fila antes de repetir; o que já foi persistido permanece preservado.',{cause:e});}
+    finally{criandoPeriodo.current=false;}
+  };
+
+  const arquivarPeriodo = async (periodoId:string,confirmacao:boolean) => {
+    if(!confirmacao || perfilServidor?.papel!=='PROFESSORA_ADMIN')throw new Error('Confirmação da professora necessária.');
+    const periodo=periodos.find(p=>p.periodo_id===periodoId);if(!periodo)throw new Error('Período não encontrado.');
+    const {carregarFilaSincronizacao}=await import('../services/indexedDbService');
+    const fila=await carregarFilaSincronizacao();
+    const revisao=revisarEncerramento(periodo,{turmas,matriculas,criterios,avaliacoes,pendencias:getPendenciasOperacionais(),pendentesSync:fila.length});
+    if(revisao.pendencias.length)throw new Error('Resolva as pendências identificadas antes de arquivar.');
+    const registro={...periodo,status:'ARQUIVADO' as const};
+    await persistirMudancaWeb('periodos','UPDATE',registro,periodos.map(p=>p.periodo_id===periodoId?registro:p));
+    setPeriodos(prev=>prev.map(p=>p.periodo_id===periodoId?registro:p));
+  };
+
+  const vincularGrupo = async (turmaId:string,nome:string,matriculaIds:string[],dataInicio:string,grupoExistente?:string) => {
+    if(perfilServidor?.papel!=='PROFESSORA_ADMIN')throw new Error('Gestão de grupos restrita à professora.');
+    const turma=turmas.find(t=>t.turma_id===turmaId);
+    if(turma && !isTurmaClinicaAmpliada(turmaId))throw new Error('Esta turma utiliza acompanhamento individual; grupos de prática não são aplicáveis.');
+    if(!turma||!nome.trim()||!/^\d{4}-\d{2}-\d{2}$/.test(dataInicio)||Number.isNaN(Date.parse(dataInicio))||new Date(dataInicio).toISOString().slice(0,10)!==dataInicio)throw new Error('Informe grupo, turma e data válida de início do vínculo.');
+    const ids=[...new Set(matriculaIds)];
+    if(!ids.length||ids.some(id=>!matriculas.some(m=>m.matricula_id===id&&m.turma_id===turmaId&&m.status==='MATRICULADO')))throw new Error('Selecione matrículas ativas desta turma.');
+    let grupo=grupoExistente?gruposPratica.find(g=>g.grupo_id===grupoExistente&&g.turma_id===turmaId):undefined;
+    if(grupoExistente&&!grupo)throw new Error('Grupo não pertence à turma.');
+    if(!grupo){
+      if(gruposPratica.some(g=>g.turma_id===turmaId&&String(g.nome_grupo||g.nome).trim().toLowerCase()===nome.trim().toLowerCase()))throw new Error('Grupo já existente. Selecione-o para completar os vínculos.');
+      grupo={grupo_id:generateUuid(),turma_id:turmaId,periodo_id:turma.periodo_id,disciplina_id:turma.disciplina_id,nome_grupo:nome.trim(),status:'ATIVO',origem:'CADASTRO_PROFESSORA',criado_em:new Date().toISOString()};
+      await persistirMudancaWeb('grupos_pratica','INSERT',grupo,[...gruposPratica,grupo]);setGruposPratica(prev=>[...prev,grupo!]);
     }
-    let criteriosSnapshot = [...criterios];
-    for (const criterio of novosCriterios) {
-      criteriosSnapshot = [...criteriosSnapshot, criterio];
-      await persistirMudancaWeb('criterios_avaliacao', 'INSERT', criterio, criteriosSnapshot);
+    let snapshot=[...grupoIntegrantes];
+    for(const id of ids){
+      if(snapshot.some(g=>g.grupo_id===grupo!.grupo_id&&g.matricula_id===id&&String(g.status).toUpperCase()==='ATIVO'&&!g.data_fim))continue;
+      const novo={grupo_integrante_id:generateUuid(),grupo_id:grupo.grupo_id,matricula_id:id,data_inicio:dataInicio,data_fim:'',status:'ATIVO',origem:'CADASTRO_PROFESSORA',atualizado_em:new Date().toISOString()};
+      snapshot=[...snapshot,novo];await persistirMudancaWeb('grupo_integrantes','INSERT',novo,snapshot);setGrupoIntegrantes([...snapshot]);
     }
-    setPeriodos(prev => [...prev, newPeriodo]);
-    if (novasTurmas.length) setTurmas(prev => [...prev, ...novasTurmas]);
-    if (novosCriterios.length) setCriterios(prev => [...prev, ...novosCriterios]);
-    return newPeriodoId;
+  };
+  const confirmarRubrica = async (turmaId:string,conferida:boolean) => {
+    if(!conferida||perfilServidor?.papel!=='PROFESSORA_ADMIN')throw new Error('Conferência explícita da professora necessária.');
+    const lista=criterios.filter(c=>c.turma_id===turmaId&&c.status_validacao==='A_CONFERIR');
+    if(!lista.length)throw new Error('Não há rubrica herdada aguardando conferência.');
+    let snapshot=[...criterios];
+    for(const criterio of lista){const novo={...criterio,status_validacao:'CONFIRMADO'};snapshot=snapshot.map(c=>c.criterio_id===criterio.criterio_id?novo:c);await persistirMudancaWeb('criterios_avaliacao','UPDATE',novo,snapshot);setCriterios([...snapshot]);}
+  };
+  const importarCronograma = async (registros:MarcoAcademico[]) => {
+    if(perfilServidor?.papel!=='PROFESSORA_ADMIN')throw new Error('Importação restrita à professora.');
+    let snapshot=[...marcosAcademicos];
+    for(const registro of registros){
+      if(snapshot.some(m=>m.marco_id===registro.marco_id))continue;
+      snapshot=[...snapshot,registro];
+      await persistirMudancaWeb('marcos_academicos','INSERT',registro,snapshot);
+      setMarcosAcademicos([...snapshot]);
+    }
+  };
+  const decidirInscricao = async (matriculaId:string,aprovar:boolean) => {
+    if(perfilServidor?.papel!=='PROFESSORA_ADMIN')throw new Error('Aprovação restrita à professora.');
+    const matricula=matriculas.find(m=>m.matricula_id===matriculaId);
+    if(!matricula||matricula.status!=='PENDENTE')throw new Error('Selecione uma inscrição pendente.');
+    const registro={...matricula,status:aprovar?'MATRICULADO' as const:'CANCELADO' as const};
+    await persistirMudancaWeb('matriculas','UPDATE',registro,matriculas.map(m=>m.matricula_id===matriculaId?registro:m));
+    setMatriculas(prev=>prev.map(m=>m.matricula_id===matriculaId?registro:m));
   };
 
   const importarAlunosLote = async (
     turmaId: string,
-    novosAlunos: { nome: string; identificador_academico: string }[]
+    novosAlunos: { nome: string; identificador_academico: string; email?:string }[],
+    status: 'PENDENTE'|'MATRICULADO' = 'MATRICULADO'
   ): Promise<{ adicionados: number; duplicados: number }> => {
+    if(status==='PENDENTE' && novosAlunos.some(a=>!a.nome.trim()||!a.identificador_academico.trim()||!a.email||!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(a.email)))throw new Error('Inscrições exigem nome, identificador acadêmico e e-mail válido.');
     let adicionados = 0;
     let duplicados = 0;
 
@@ -1663,6 +1708,7 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           nome: cleanNome,
           identificador_academico: cleanRa || `RA-PENDENTE-${targetAlunoId}`,
           status: 'ATIVO',
+          ...(item.email?{email:item.email.trim()}:{}),
         });
       }
 
@@ -1671,7 +1717,7 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         aluno_id: targetAlunoId,
         turma_id: turmaId,
         periodo_id: turmaAlvo.periodo_id,
-        status: 'MATRICULADO',
+        status,
       });
       adicionados++;
     });
@@ -1682,14 +1728,15 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     for (const aluno of alunosCriados) {
       alunosSnapshot = [...alunosSnapshot, aluno];
       await persistirMudancaWeb('alunos', 'INSERT', aluno, alunosSnapshot);
+      setAlunos([...alunosSnapshot]);
     }
     let matriculasSnapshot = [...matriculas];
     for (const matricula of matriculasCriadas) {
       matriculasSnapshot = [...matriculasSnapshot, matricula];
       await persistirMudancaWeb('matriculas', 'INSERT', matricula, matriculasSnapshot);
+      setMatriculas([...matriculasSnapshot]);
     }
-    if (alunosCriados.length) setAlunos(prev => [...prev, ...alunosCriados]);
-    if (matriculasCriadas.length) setMatriculas(prev => [...prev, ...matriculasCriadas]);
+
     return { adicionados, duplicados };
   };
 
@@ -1957,14 +2004,15 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     setFilaSupervisao(prev => prev.filter(i => i.id !== id));
   };
 
-  const salvarAvaliacaoCompleta = async (avaliacao: AvaliacaoCompleta) => {
-    const anterior = avaliacoesCompletas.find(a => a.matricula_id === avaliacao.matricula_id &&
+  const salvarAvaliacaoCompleta = async (avaliacao: AvaliacaoCompleta,versaoOriginal?:AvaliacaoCompleta|null) => {
+    const anterior = versaoOriginal!==undefined?versaoOriginal:avaliacoesCompletas.find(a => a.matricula_id === avaliacao.matricula_id &&
       a.instrumento_id === avaliacao.instrumento_id);
     const id = anterior?.avaliacao_id || avaliacao.avaliacao_id || gerarIdEstavel('av_c');
     const item: AvaliacaoCompleta = { ...anterior, ...avaliacao, avaliacao_id: id, atualizado_em: new Date().toISOString() };
     const lista = [...avaliacoesCompletas.filter(a => a.avaliacao_id !== id), item];
-    await persistirMudancaWeb('avaliacoes_completas', anterior ? 'UPDATE' : 'INSERT', item, lista);
+    await persistirMudancaWeb('avaliacoes_completas', anterior ? 'UPDATE' : 'INSERT', item, lista,versaoOriginal);
     setAvaliacoesCompletas(lista);
+    return item;
     // NOTA: notas por critério são persistidas na tabela oficial 'avaliacoes'
     // pelo fluxo de correção. Este registro guarda o parecer e a devolutiva.
   };
@@ -2160,6 +2208,9 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       totalPrevistoNoPeriodo,
       situacaoRss: situacaoRss || undefined,
       docsPendentesCount,
+      docsTotalCount:docsResumo.total,
+      rssCategoria:calendarioRss.some(r=>r.turma_id===turma.turma_id)?rssOperacional.categoria:'AGUARDANDO_CALENDARIO',
+      orientacoesTotalCount:orientacoesDoAluno.length,
       faltasInjustificadasCount,
       orientacoesAbertasCount,
       justificativasPendentesCount,
@@ -2829,6 +2880,11 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         updateFrequenciaStatus,
         saveAvaliacao,
         createNovoPeriodo,
+        arquivarPeriodo,
+        importarCronograma,
+        confirmarRubrica,
+        vincularGrupo,
+        decidirInscricao,
         importarAlunosLote,
         // Suporte estrutural e regras canônicas da base
         isTurmaClinicaAmpliada,

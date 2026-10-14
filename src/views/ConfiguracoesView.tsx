@@ -1,3 +1,4 @@
+import {DiagnosticoOperacional} from '../components/DiagnosticoOperacional';
 import { valorConfiguracaoVisivel } from '../services/configuracoesSeguras';
 import { lerCentralControleSomenteLeitura, type DiagnosticoCentralControle } from '../services/centralControleDiagnostico';
 import { BackupPainel } from '../components/BackupPainel';
@@ -21,7 +22,7 @@ import {
 } from 'lucide-react';
 import { useSupervisao } from '../context/SupervisaoContext';
 
-export const ConfiguracoesView: React.FC = () => {
+export const ConfiguracoesView: React.FC<{onOpenSemestres?:()=>void}> = ({onOpenSemestres}) => {
   const {
     criterios,
     configuracoes,
@@ -79,6 +80,8 @@ export const ConfiguracoesView: React.FC = () => {
 
   return (
     <div className="space-y-6">
+      <DiagnosticoOperacional/>
+      {onOpenSemestres && <button className="cs-primary-action p-3" onClick={onOpenSemestres}>Gerenciar semestres</button>}
       {/* Header */}
       <div className="pb-3 border-b border-slate-200">
         <h2 className="text-xl font-bold tracking-tight text-slate-900">Configurações & Conexão Google Sheets</h2>

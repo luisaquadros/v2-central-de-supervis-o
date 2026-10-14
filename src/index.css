@@ -519,3 +519,5 @@ html button:disabled {
     font-weight: 600;
   }
 }
+
+@media (max-width:639px) { input,textarea,select { font-size:16px; } }

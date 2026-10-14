@@ -453,7 +453,7 @@ export const MainContent: React.FC = () => {
 
               {currentView.type === "tab" &&
                 currentView.tab === "configuracoes" &&
-                !ehMonitora && <ConfiguracoesView />}
+                !ehMonitora && <ConfiguracoesView onOpenSemestres={()=>setCurrentView({type:"tab",tab:"semestres"})}/>}
 
               {currentView.type === "turma-detalhe" && (
                 <TurmaDetalheView

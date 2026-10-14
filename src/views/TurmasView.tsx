@@ -1,3 +1,4 @@
+import {GestaoTurma} from '../components/GestaoTurma';
 import { ResumoRssSemEnvio } from "../components/ResumoRssSemEnvio";
 import { ResumoDocumentosTurma } from "../components/ResumoDocumentosTurma";
 import { DocumentosDriveTurma } from "../components/DocumentosDrive";
@@ -862,11 +863,8 @@ export const TurmaDetalheView: React.FC<{
     AGUARDANDO_CALENDARIO: "Aguardando calendário",
   };
 
-  const marcosTurma = marcosAcademicos.filter(
-    (m) =>
-      m.turma_id === turmaId ||
-      (m.disciplina_id === turma?.disciplina_id && !m.turma_id),
-  );
+  const marcosTurma = marcosAcademicos.filter(m => m.turma_id === turmaId || (m.periodo_id === turma?.periodo_id && !m.turma_id && (!m.disciplina_id || m.disciplina_id === turma?.disciplina_id)));
+
 
   const diasSemanaNome = [
     "Domingo",
@@ -1051,7 +1049,7 @@ export const TurmaDetalheView: React.FC<{
           <h3 className="prisma-title text-xl">Grupos de prática</h3>
           {gruposDestaTurma.map((g) => (
             <details key={g.grupo_id} className="prisma-section">
-              <summary>{g.nome || "Grupo de prática"}</summary>
+              <summary>{g.nome_grupo || g.nome || "Grupo de prática"}</summary>
               <p className="prisma-meta">
                 Documento coletivo único; evidências e notas individuais
                 permanecem separadas.
@@ -1081,6 +1079,7 @@ export const TurmaDetalheView: React.FC<{
           ))}
         </section>
       )}
+      {activeTab==='alunos' && <GestaoTurma turmaId={turmaId}/>}
       {/* 1. ABA: VISÃO GERAL */}
       {activeTab === "geral" && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">

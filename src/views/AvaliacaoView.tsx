@@ -55,8 +55,12 @@ export const AvaliacaoView: React.FC = () => {
   const turmasDoPeriodo = turmas.filter(
     (t) => t.periodo_id === selectedPeriodoId,
   );
-  const dirty = React.useRef(false),
-    formKey = React.useRef("");
+  const dirty = React.useRef(false);
+  const baseFormulario = React.useRef<{
+    notas: Record<string, any>;
+    completa: AvaliacaoCompleta | null;
+  }>({ notas: {}, completa: null });
+  const formKey = React.useRef("");
   // Seleção de Turma resiliente
   const [selectedTurmaId, setSelectedTurmaId] = useState<string>(() => {
     return turmasDoPeriodo[0]?.turma_id || "";
@@ -73,7 +77,8 @@ export const AvaliacaoView: React.FC = () => {
     }
   }, [turmas, selectedTurmaId, selectedPeriodoId]);
 
-  const turmaAtual = turmas.find((t) => t.turma_id === selectedTurmaId) || null;
+  const turmaAtual =
+    turmasDoPeriodo.find((t) => t.turma_id === selectedTurmaId) || null;
 
   // A base 2026.2 possui oito critérios oficiais por turma, mas não
   // preenche as colunas opcionais 'instrumento' ou 'instrumento_avaliacao'.
@@ -270,6 +275,22 @@ export const AvaliacaoView: React.FC = () => {
   React.useEffect(() => {
     const key = matriculaAtualId + "|" + selectedInstrumentoNome;
     if (dirty.current && formKey.current === key) return;
+    baseFormulario.current = {
+      notas: Object.fromEntries(
+        avaliacoes
+          .filter((a) => a.matricula_id === matriculaAtualId)
+          .map((a) => [a.criterio_id, JSON.parse(JSON.stringify(a))]),
+      ),
+      completa: JSON.parse(
+        JSON.stringify(
+          avaliacoesCompletas.find(
+            (a) =>
+              a.matricula_id === matriculaAtualId &&
+              a.instrumento_id === selectedInstrumentoNome,
+          ) || null,
+        ),
+      ),
+    };
     formKey.current = key;
     dirty.current = false;
     if (avaliacaoExistente) {
@@ -346,33 +367,40 @@ export const AvaliacaoView: React.FC = () => {
           Number(anterior.nota) !== nota.nota ||
           String(anterior.observacao || "") !== nota.comentario
         ) {
-          await saveAvaliacao(
+          const salvo = await saveAvaliacao(
             currentItem.matricula.matricula_id,
             nota.criterio_id,
             nota.nota,
             nota.comentario || "",
+            baseFormulario.current.notas[nota.criterio_id] ?? null,
           );
+          baseFormulario.current.notas[nota.criterio_id] = salvo;
         }
       }
-      await salvarAvaliacaoCompleta({
-        avaliacao_id:
-          avaliacaoExistente?.avaliacao_id ||
-          `av-${Date.now()}-${currentItem.matricula.matricula_id}`,
-        matricula_id: currentItem.matricula.matricula_id,
-        aluno_id: currentItem.aluno.aluno_id,
-        turma_id: selectedTurmaId,
-        instrumento_id: selectedInstrumentoNome,
-        tipo_instrumento: selectedInstrumentoTipo,
-        nota_final: Number(notaFinalCalculada) || 0,
-        nota_maxima: Number(notaMaximaInstrumento) || 10,
-        status: avaliacaoParcial ? "RASCUNHO" : status,
-        notas_criterios: notasCriteriosList,
-        comentario_geral: comentarioGeral,
-        pontos_fortes: pontosFortes,
-        pontos_desenvolver: pontosDesenvolver,
-        data_avaliacao: new Date().toISOString(),
-        atualizado_em: new Date().toISOString(),
-      });
+      const completaSalva = await salvarAvaliacaoCompleta(
+        {
+          avaliacao_id:
+            avaliacaoExistente?.avaliacao_id ||
+            `av-${Date.now()}-${currentItem.matricula.matricula_id}`,
+          matricula_id: currentItem.matricula.matricula_id,
+          aluno_id: currentItem.aluno.aluno_id,
+          turma_id: selectedTurmaId,
+          instrumento_id: selectedInstrumentoNome,
+          tipo_instrumento: selectedInstrumentoTipo,
+          nota_final: Number(notaFinalCalculada) || 0,
+          nota_maxima: Number(notaMaximaInstrumento) || 10,
+          status: avaliacaoParcial ? "RASCUNHO" : status,
+          notas_criterios: notasCriteriosList,
+          comentario_geral: comentarioGeral,
+          pontos_fortes: pontosFortes,
+          pontos_desenvolver: pontosDesenvolver,
+          data_avaliacao: new Date().toISOString(),
+          atualizado_em: new Date().toISOString(),
+        },
+        baseFormulario.current.completa,
+      );
+      baseFormulario.current.completa = completaSalva;
+      dirty.current = false;
 
       dirty.current = false;
       registrarAuditoria(
@@ -391,6 +419,14 @@ export const AvaliacaoView: React.FC = () => {
   };
 
   // Se não existirem turmas carregadas
+  if (!turmaAtual)
+    return (
+      <section className="prisma-empty">
+        <h1 className="prisma-title text-2xl">Avaliações</h1>
+        <p>Nenhuma turma neste período. Cadastre uma turma antes de avaliar.</p>
+      </section>
+    );
+
   if (turmas.length === 0) {
     return (
       <div className="bg-white border border-slate-200 rounded-2xl p-8 max-w-xl mx-auto text-center space-y-3">
@@ -408,6 +444,14 @@ export const AvaliacaoView: React.FC = () => {
 
   return (
     <div className="space-y-4 max-w-7xl mx-auto pb-12 min-w-0">
+      {erroAvaliacao && (
+        <p role="alert" className="prisma-section text-red-700">
+          {/CONFLITO_VERSAO.*vers[ãa]o/i.test(erroAvaliacao)
+            ? "Encontramos uma versão mais recente. Sua edição permanece preservada; revise o conflito antes de salvar novamente."
+            : erroAvaliacao.replace(/^CONFLITO_VERSAO:\s*/, "")}
+        </p>
+      )}
+
       <section
         aria-label="Camadas da avaliação"
         className="grid gap-3 sm:grid-cols-3"
@@ -903,9 +947,11 @@ export const AvaliacaoView: React.FC = () => {
                                         Subcritério: {String(crit.subcriterio)}
                                       </p>
                                     )}
-                                    {crit.descricao && (
+                                    {(crit.descricao ||
+                                      crit.criterio_descricao) && (
                                       <span className="text-[11px] text-slate-500">
-                                        {crit.descricao}
+                                        {crit.descricao ||
+                                          crit.criterio_descricao}
                                       </span>
                                     )}
                                   </div>

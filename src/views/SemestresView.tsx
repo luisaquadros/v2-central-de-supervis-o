@@ -1,230 +1,259 @@
-import React, { useState } from 'react';
-import { Calendar, Plus, CheckCircle2, Copy, AlertCircle, Archive } from 'lucide-react';
-import { useSupervisao } from '../context/SupervisaoContext';
+import React from "react";
+import { useSupervisao } from "../context/SupervisaoContext";
+import { ModalWrapper } from "../components/Modals";
+import { revisarEncerramento } from "../services/encerramentoPeriodoService";
+import { carregarFilaSincronizacao } from "../services/indexedDbService";
 
-export const SemestresView: React.FC = () => {
-  const { periodos, selectedPeriodoId, setSelectedPeriodoId, turmas, createNovoPeriodo } =
-    useSupervisao();
-
-  const [modalNovoPeriodo, setModalNovoPeriodo] = useState(false);
-  const [novoNome, setNovoNome] = useState('2027.2');
-  const [novaDataInicio, setNovaDataInicio] = useState('2027-08-01');
-  const [novaDataFim, setNovaDataFim] = useState('2027-12-20');
-  const [copiarDePeriodoId, setCopiarDePeriodoId] = useState(selectedPeriodoId);
-
-  const handleCriarSemestre = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!novoNome.trim()) return;
-    const newId = await createNovoPeriodo(
-      novoNome.trim(),
-      novaDataInicio,
-      novaDataFim,
-      copiarDePeriodoId || undefined
-    );
-    setSelectedPeriodoId(newId);
-    setModalNovoPeriodo(false);
-  };
-
+export function SemestresView() {
+  const c = useSupervisao();
+  const [novo, setNovo] = React.useState(false),
+    [nome, setNome] = React.useState(""),
+    [inicio, setInicio] = React.useState(""),
+    [fim, setFim] = React.useState(""),
+    [aulas, setAulas] = React.useState(""),
+    [modelo, setModelo] = React.useState("");
+  const [erro, setErro] = React.useState(""),
+    [ocupado, setOcupado] = React.useState(false),
+    [revisar, setRevisar] = React.useState(""),
+    [pendentes, setPendentes] = React.useState(0),
+    [confirmado, setConfirmado] = React.useState(false);
+  const busy = React.useRef(false);
+  React.useEffect(() => {
+    void carregarFilaSincronizacao().then((f) => setPendentes(f.length));
+  }, [revisar, c.syncStatusState]);
+  const periodo = c.periodos.find((p) => p.periodo_id === revisar);
+  const revisao = periodo
+    ? revisarEncerramento(periodo, {
+        turmas: c.turmas,
+        matriculas: c.matriculas,
+        criterios: c.criterios,
+        avaliacoes: c.avaliacoes,
+        pendencias: c.getPendenciasOperacionais(),
+        pendentesSync: pendentes,
+      })
+    : null;
+  async function executar(fn: () => Promise<void>) {
+    if (busy.current) return;
+    busy.current = true;
+    setOcupado(true);
+    setErro("");
+    try {
+      await fn();
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Não foi possível concluir.");
+    } finally {
+      busy.current = false;
+      setOcupado(false);
+    }
+  }
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-200">
+    <div className="prisma-shell-content space-y-6">
+      <header className="flex flex-wrap justify-between items-center gap-3">
         <div>
-          <h2 className="text-xl font-bold tracking-tight text-slate-900">
-            Gestão Multi-Semestre
-          </h2>
-          <p className="text-xs text-slate-500 mt-0.5">
-            Preservação de histórico e assistente para abertura de novos períodos letivos
+          <h1 className="prisma-title text-3xl">Semestres</h1>
+          <p className="prisma-meta">
+            Estrutura reutilizável, matrículas e históricos independentes.
           </p>
         </div>
-
         <button
-          onClick={() => setModalNovoPeriodo(true)}
-          className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 text-white font-semibold text-xs transition-colors cursor-pointer self-start sm:self-auto"
+          className="cs-primary-action px-4 py-3"
+          onClick={() => {
+            setErro("");
+            setNovo(true);
+          }}
         >
-          <Plus className="w-3.5 h-3.5" />
-          <span>Novo Período Letivo</span>
+          Novo semestre
         </button>
-      </div>
-
-      {/* Regra de Ouro Multi-Semestre */}
-      <div className="p-4 rounded-xl bg-slate-900 text-white text-xs space-y-1.5">
-        <div className="flex items-center gap-2 font-bold text-amber-400">
-          <AlertCircle className="w-4 h-4" />
-          <span>Princípio Fundamental dos Dados Acadêmicos</span>
-        </div>
-        <p className="text-slate-300 leading-relaxed">
-          Ao abrir um novo semestre, o sistema permite copiar a <strong>estrutura</strong> (disciplinas,
-          turmas e critérios de notas), mas <strong>NUNCA</strong> transfere dados individuais de
-          alunos. O novo semestre começa 100% zerado em notas, atrasos, orientações, registros e
-          documentos, mantendo o histórico anterior preservado e intocado.
-        </p>
-      </div>
-
-      {/* Lista de Períodos Letivos */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {periodos.map(periodo => {
-          const isSelected = periodo.periodo_id === selectedPeriodoId;
-          const turmasDoPeriodo = turmas.filter(t => t.periodo_id === periodo.periodo_id);
-
-          return (
-            <div
-              key={periodo.periodo_id}
-              className={`p-5 rounded-xl border transition-all text-xs flex flex-col justify-between ${
-                isSelected
-                  ? 'border-slate-900 bg-white shadow-sm ring-1 ring-slate-900'
-                  : 'border-slate-200 bg-white'
-              }`}
-            >
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <span
-                    className={`font-bold text-base ${
-                      isSelected ? 'text-slate-900' : 'text-slate-800'
-                    }`}
-                  >
-                    Semestre {periodo.nome}
-                  </span>
-                  <span
-                    className={`px-2 py-0.5 rounded font-semibold text-[10px] ${
-                      periodo.status === 'ATIVO'
-                        ? 'bg-emerald-100 text-emerald-900'
-                        : periodo.status === 'PLANEJADO'
-                        ? 'bg-blue-100 text-blue-900'
-                        : 'bg-slate-100 text-slate-700'
-                    }`}
-                  >
-                    {periodo.status}
-                  </span>
-                </div>
-
-                <div className="text-slate-500 space-y-1 mt-3">
-                  <p>
-                    Vigência:{' '}
-                    <span className="font-mono text-slate-800 font-medium">
-                      {periodo.data_inicio} até {periodo.data_fim}
-                    </span>
-                  </p>
-                  <p>
-                    Estrutura:{' '}
-                    <span className="font-semibold text-slate-800">
-                      {turmasDoPeriodo.length} turmas cadastradas
-                    </span>
-                  </p>
-                </div>
-              </div>
-
-              <div className="mt-5 pt-3 border-t border-slate-100 flex items-center justify-between">
-                <span className="text-[11px] text-slate-400">
-                  {isSelected ? '✓ Contexto Atual Ativo' : 'Histórico consultável'}
-                </span>
-
-                <button
-                  onClick={() => setSelectedPeriodoId(periodo.periodo_id)}
-                  disabled={isSelected}
-                  className={`px-3 py-1.5 rounded-lg font-semibold transition-colors cursor-pointer ${
-                    isSelected
-                      ? 'bg-slate-100 text-slate-400 cursor-default'
-                      : 'bg-slate-900 hover:bg-slate-800 text-white'
-                  }`}
-                >
-                  {isSelected ? 'Selecionado' : 'Ativar Este Período'}
-                </button>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Modal Assistente Novo Semestre */}
-      {modalNovoPeriodo && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs">
-          <div className="bg-white rounded-xl shadow-xl border border-slate-200 w-full max-w-md p-5 text-xs space-y-4">
-            <h3 className="text-sm font-bold text-slate-900">
-              Assistente de Novo Período Letivo
-            </h3>
-            <p className="text-slate-500">
-              Configure as datas e escolha se deseja copiar a grade de turmas do semestre anterior.
+      </header>
+      <ul className="grid gap-4 md:grid-cols-2">
+        {c.periodos.map((p) => (
+          <li className="cs-panel p-5 space-y-3" key={p.periodo_id}>
+            <h2 className="prisma-title text-xl">{p.nome}</h2>
+            <p className="prisma-meta">
+              {p.data_inicio} a {p.data_fim} · {p.status}
+              <br />
+              {
+                c.turmas.filter((t) => t.periodo_id === p.periodo_id).length
+              }{" "}
+              turmas
             </p>
-
-            <form onSubmit={handleCriarSemestre} className="space-y-3">
-              <div>
-                <label className="font-semibold text-slate-700 block mb-1">
-                  Nome do Período (Ex: 2027.2)
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={novoNome}
-                  onChange={e => setNovoNome(e.target.value)}
-                  className="w-full border border-slate-200 rounded-lg p-2.5 bg-slate-50 font-semibold"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="font-semibold text-slate-700 block mb-1">Data Início</label>
-                  <input
-                    type="date"
-                    required
-                    value={novaDataInicio}
-                    onChange={e => setNovaDataInicio(e.target.value)}
-                    className="w-full border border-slate-200 rounded-lg p-2 bg-slate-50 font-mono"
-                  />
-                </div>
-                <div>
-                  <label className="font-semibold text-slate-700 block mb-1">Data Término</label>
-                  <input
-                    type="date"
-                    required
-                    value={novaDataFim}
-                    onChange={e => setNovaDataFim(e.target.value)}
-                    className="w-full border border-slate-200 rounded-lg p-2 bg-slate-50 font-mono"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="font-semibold text-slate-700 block mb-1">
-                  Copiar Estrutura de Turmas de:
-                </label>
-                <select
-                  value={copiarDePeriodoId}
-                  onChange={e => setCopiarDePeriodoId(e.target.value)}
-                  className="w-full border border-slate-200 rounded-lg p-2 bg-slate-50 font-medium"
-                >
-                  <option value="">Não copiar estrutura (começar vazio)</option>
-                  {periodos.map(p => (
-                    <option key={p.periodo_id} value={p.periodo_id}>
-                      Copiar turmas e critérios de {p.nome}
-                    </option>
-                  ))}
-                </select>
-                <p className="text-[10px] text-slate-400 mt-1">
-                  Apenas as disciplinas e critérios de avaliação serão duplicados. Os alunos começarão
-                  zerados.
-                </p>
-              </div>
-
-              <div className="pt-2 flex justify-end gap-2 border-t border-slate-100">
+            <div className="flex flex-wrap gap-3">
+              <button
+                className="underline p-2"
+                onClick={() => c.setSelectedPeriodoId(p.periodo_id)}
+              >
+                {p.periodo_id === c.selectedPeriodoId
+                  ? "Período selecionado"
+                  : "Consultar período"}
+              </button>
+              {p.status !== "ARQUIVADO" && (
                 <button
-                  type="button"
-                  onClick={() => setModalNovoPeriodo(false)}
-                  className="px-4 py-2 border border-slate-200 rounded-lg text-slate-600 hover:bg-slate-50"
+                  className="underline p-2"
+                  onClick={() => {
+                    setConfirmado(false);
+                    setErro("");
+                    setRevisar(p.periodo_id);
+                  }}
                 >
-                  Cancelar
+                  Revisar encerramento
                 </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 bg-slate-900 text-white rounded-lg font-medium hover:bg-slate-800"
-                >
-                  Criar Semestre
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
+              )}
+            </div>
+          </li>
+        ))}
+      </ul>
+      {novo && (
+        <ModalWrapper
+          title="Novo semestre"
+          onClose={() => setNovo(false)}
+          busy={ocupado}
+          error={erro}
+        >
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              void executar(async () => {
+                const id = await c.createNovoPeriodo(
+                  nome,
+                  inicio,
+                  fim,
+                  modelo || undefined,
+                  aulas || undefined,
+                );
+                c.setSelectedPeriodoId(id);
+                setNovo(false);
+              });
+            }}
+            className="space-y-3"
+          >
+            <label className="block">
+              Identificação
+              <input
+                required
+                value={nome}
+                onChange={(e) => setNome(e.target.value)}
+                placeholder="2027.1"
+                className="block border border-slate-200 p-3 w-full mt-1"
+              />
+            </label>
+            <label className="block">
+              Início do semestre
+              <input
+                required
+                type="date"
+                value={inicio}
+                onChange={(e) => setInicio(e.target.value)}
+                className="block border border-slate-200 p-3 w-full mt-1"
+              />
+            </label>
+            <label className="block">
+              Término do semestre
+              <input
+                required
+                type="date"
+                min={inicio}
+                value={fim}
+                onChange={(e) => setFim(e.target.value)}
+                className="block border border-slate-200 p-3 w-full mt-1"
+              />
+            </label>
+            <label className="block">
+              Início das aulas (opcional)
+              <input
+                type="date"
+                min={inicio}
+                max={fim}
+                value={aulas}
+                onChange={(e) => setAulas(e.target.value)}
+                className="block border border-slate-200 p-3 w-full mt-1"
+              />
+            </label>
+            <label className="block">
+              Modelo anterior
+              <select
+                value={modelo}
+                onChange={(e) => setModelo(e.target.value)}
+                className="block border border-slate-200 p-3 w-full mt-1"
+              >
+                <option value="">Sem modelo</option>
+                {c.periodos.map((p) => (
+                  <option key={p.periodo_id} value={p.periodo_id}>
+                    {p.nome}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <p className="prisma-meta">
+              Turmas, critérios e horários recebem novos IDs e vigência.
+              Disciplinas continuam no catálogo compartilhado. Matrículas e
+              registros acadêmicos permanecem no período anterior. Rubricas
+              copiadas exigem conferência.
+            </p>
+            <button
+              type="submit"
+              className="cs-primary-action px-4 py-3"
+              disabled={ocupado}
+            >
+              {ocupado ? "Registrando…" : "Criar semestre planejado"}
+            </button>
+          </form>
+        </ModalWrapper>
+      )}
+      {periodo && revisao && (
+        <ModalWrapper
+          title={`Encerramento — ${periodo.nome}`}
+          onClose={() => setRevisar("")}
+          busy={ocupado}
+          error={erro}
+        >
+          <p>
+            {revisao.matriculas} matrículas · {revisao.turmas} turmas
+          </p>
+          <h3 className="font-semibold">Pendências identificadas</h3>
+          {revisao.pendencias.length ? (
+            <ul className="list-disc pl-5 space-y-2">
+              {revisao.pendencias.map((p, i) => (
+                <li key={i}>{p}</li>
+              ))}
+            </ul>
+          ) : (
+            <p>Nenhuma pendência identificada pelos controles disponíveis.</p>
+          )}
+          <h3 className="font-semibold">Conferência da professora</h3>
+          <ul className="list-disc pl-5">
+            {revisao.verificacoesManuais.map((v) => (
+              <li key={v}>{v}</li>
+            ))}
+          </ul>
+          <p className="prisma-meta">
+            Os fluxos estruturados de reposição, pareceres e homologação
+            versionada ainda não são verificados automaticamente. O arquivamento
+            bloqueia edições comuns; não exclui dados nem homologa notas.
+          </p>
+          <label className="flex gap-3 items-start">
+            <input
+              type="checkbox"
+              checked={confirmado}
+              onChange={(e) => setConfirmado(e.target.checked)}
+            />
+            <span>
+              Conferi os itens acima e confirmo o arquivamento deste período.
+            </span>
+          </label>
+          <button
+            disabled={ocupado || !confirmado || revisao.pendencias.length > 0}
+            onClick={() =>
+              void executar(async () => {
+                await c.arquivarPeriodo(periodo.periodo_id, confirmado);
+                setRevisar("");
+              })
+            }
+            className="cs-primary-action p-3"
+          >
+            Confirmar e arquivar
+          </button>
+        </ModalWrapper>
       )}
     </div>
   );
-};
+}
