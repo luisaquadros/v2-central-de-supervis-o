@@ -12,7 +12,13 @@ const browser = await chromium.launch({
   args: ["--no-sandbox"],
 });
 const findings = [];
-for (const scenario of ["navegacao", "chamada", "monitora", "lista-longa"]) {
+for (const scenario of [
+  "navegacao",
+  "chamada",
+  "monitora",
+  "lista-longa",
+  "gestao",
+]) {
   const view =
     scenario === "chamada"
       ? "aula"
@@ -106,12 +112,10 @@ for (const scenario of ["navegacao", "chamada", "monitora", "lista-longa"]) {
       };
       const body = u.pathname.endsWith("values:batchGet")
         ? {
-            valueRanges: u.searchParams
-              .getAll("ranges")
-              .map((range) => ({
-                range,
-                values: data[range.split("!")[0].replaceAll("'", "")] || [],
-              })),
+            valueRanges: u.searchParams.getAll("ranges").map((range) => ({
+              range,
+              values: data[range.split("!")[0].replaceAll("'", "")] || [],
+            })),
           }
         : {
             sheets: Object.keys(data).map((title) => ({
@@ -177,6 +181,13 @@ for (const scenario of ["navegacao", "chamada", "monitora", "lista-longa"]) {
     result.emptySearch = await page
       .getByText("Nenhuma referência encontrada para estes filtros.")
       .isVisible();
+  }
+  if(scenario==='navegacao'){
+    await page.getByRole('navigation',{name:'Navegação rápida'}).getByRole('button',{name:'Avaliações',exact:true}).click();
+    await page.getByText('Estudante sintético',{exact:true}).waitFor();
+    await page.evaluate(async()=>{const s=await import('/src/services/googleSheetsService.ts');s.setMockToken('sintetico');const id=await window.auditContext.createNovoPeriodo('2028.1','2028-02-01','2028-06-30');window.auditContext.setSelectedPeriodoId(id);});
+    await page.getByText('Nenhuma turma neste período. Cadastre uma turma antes de avaliar.',{exact:true}).waitFor();
+    result.periodoVazioIsolado=await page.getByText('Estudante sintético',{exact:true}).count()===0;
   }
   if (scenario === "chamada") {
     const close = page.getByRole("button", {
@@ -248,6 +259,139 @@ for (const scenario of ["navegacao", "chamada", "monitora", "lista-longa"]) {
       );
     }
   }
+  if (scenario === "gestao") {
+    await page.evaluate(async () => {
+      const s = await import("/src/services/googleSheetsService.ts");
+      s.setMockToken("sintetico");
+      await window.auditContext.sincronizarAgora();
+    });
+    await page.waitForTimeout(200);
+    const bottom = page.getByRole("navigation", { name: "Navegação rápida" });
+    await bottom.getByRole("button", { name: "Mais", exact: true }).click();
+    await page.getByText("Mais e administração", { exact: true }).click();
+    await page.getByRole("button", { name: "Semestres", exact: true }).click();
+    await page
+      .getByRole("button", { name: "Novo semestre", exact: true })
+      .click();
+    await page
+      .getByRole("textbox", { name: "Identificação", exact: true })
+      .fill("2027.1");
+    await page
+      .getByLabel("Início do semestre", { exact: true })
+      .fill("2027-02-01");
+    await page
+      .getByLabel("Término do semestre", { exact: true })
+      .fill("2027-06-30");
+    await page
+      .getByLabel("Início das aulas (opcional)", { exact: true })
+      .fill("2027-02-08");
+    await page
+      .getByRole("combobox", { name: "Modelo anterior" })
+      .selectOption("p-test");
+    await page
+      .getByRole("button", { name: "Criar semestre planejado" })
+      .click();
+    await page.getByRole("heading", { name: "2027.1", exact: true }).waitFor();
+    result.semestreCriado = await page.evaluate(() =>
+      window.auditContext.periodos.some((p) => p.nome === "2027.1"),
+    );
+    await bottom.getByRole("button", { name: "Turmas", exact: true }).click();
+    await page.getByRole("button", { name: "Abrir", exact: true }).click();
+    await page.getByRole("button", { name: "Pessoas", exact: true }).click();
+    await page
+      .getByText("Inscrições e matrículas pendentes (0)", { exact: true })
+      .click();
+    await page
+      .getByLabel("Respostas de inscrição", { exact: true })
+      .fill(
+        "nome;email;identificador_academico\nPessoa fictícia nova;pessoa@exemplo.invalid;RA-NOVO\nPessoa fictícia nova;pessoa@exemplo.invalid;RA-NOVO",
+      );
+    await page
+      .getByRole("button", { name: "Conferir inscrições", exact: true })
+      .click();
+    await page
+      .getByRole("checkbox", {
+        name: "Conferi os identificadores e os vínculos com alunos existentes.",
+      })
+      .check();
+    await page
+      .getByRole("button", { name: "Receber como pendentes", exact: true })
+      .click();
+    await page
+      .getByRole("button", { name: "Aprovar matrícula", exact: true })
+      .waitFor();
+    result.inscricaoPendente = await page.evaluate(
+      () =>
+        window.auditContext.matriculas.filter((m) => m.status === "PENDENTE")
+          .length,
+    );
+    result.pendenteEnviado = criticalPayloads.some(
+      (p) => p.tabela === "matriculas" && p.registro.status === "PENDENTE",
+    );
+    await page
+      .getByRole("button", { name: "Aprovar matrícula", exact: true })
+      .click();
+    await page.waitForFunction(() =>
+      window.auditContext.matriculas.some(
+        (m) => m.status === "MATRICULADO" && m.aluno_id !== "a-test",
+      ),
+    );
+    result.matriculaAprovada = true;
+    await page.getByText("Conferir rubrica herdada", { exact: true }).click();
+    await page
+      .getByRole("checkbox", {
+        name: "Conferi estes critérios e pesos com a rubrica oficial para esta turma.",
+      })
+      .check();
+    await page
+      .getByRole("button", {
+        name: "Confirmar rubrica desta turma",
+        exact: true,
+      })
+      .click();
+    await page.waitForFunction(() =>
+      window.auditContext.criterios.some(
+        (c) => c.status_validacao === "CONFIRMADO",
+      ),
+    );
+    result.rubricaConferida = true;
+    await page.getByText("QR Code de inscrição", { exact: true }).click();
+    await page
+      .getByLabel("Link público do Google Forms", { exact: true })
+      .fill("https://docs.google.com/forms/d/e/formulario-ficticio/viewform");
+    await page
+      .getByRole("button", { name: "Gerar QR Code", exact: true })
+      .click();
+    await page.getByRole("img", { name: /QR Code para inscrição/ }).waitFor();
+    result.qrExibido = (
+      await page
+        .getByRole("img", { name: /QR Code para inscrição/ })
+        .getAttribute("src")
+    ).startsWith("data:image/png");
+    await page.getByText("Importar cronograma", { exact: true }).click();
+    await page
+      .getByLabel("Conteúdo do cronograma", { exact: true })
+      .fill(
+        "nome;data;tipo;status;visibilidade\nProva fictícia;2027-05-10;PROVA;CONFIRMADO;DOCENTE",
+      );
+    await page
+      .getByRole("button", { name: "Conferir prévia", exact: true })
+      .click();
+    await page
+      .getByRole("button", { name: "Confirmar importação", exact: true })
+      .click();
+    await page.waitForFunction(() =>
+      window.auditContext.marcosAcademicos.some(
+        (m) => m.nome === "Prova fictícia",
+      ),
+    );
+    result.cronogramaRegistrado = true;
+    await page.setViewportSize({ width: 320, height: 800 });
+    result.gestaoOverflow = await page.evaluate(() => ({
+      width: innerWidth,
+      scrollWidth: document.documentElement.scrollWidth,
+    }));
+  }
   const axe = await new AxeBuilder({ page })
     .withTags(["wcag2a", "wcag2aa", "wcag21aa", "wcag22aa"])
     .analyze();
@@ -274,6 +418,7 @@ for (const f of findings) {
     assert.equal(f.focusTrapped, true);
     assert.equal(f.menuClosed, true);
     assert.equal(f.emptySearch, true);
+    assert.equal(f.periodoVazioIsolado,true);
     for (const label of ["Agenda", "Turmas", "Avaliações", "Hoje"])
       assert.ok(f[label].includes(label));
   }
@@ -288,6 +433,16 @@ for (const f of findings) {
   if (f.scenario === "monitora") {
     assert.equal(f.gradeDestinationAbsent, true);
     assert.equal(f.attendanceDisabled, true);
+  }
+  if (f.scenario === "gestao") {
+    assert.equal(f.semestreCriado, true);
+    assert.equal(f.inscricaoPendente, 1);
+    assert.equal(f.pendenteEnviado, true);
+    assert.equal(f.matriculaAprovada, true);
+    assert.equal(f.qrExibido, true);
+    assert.equal(f.rubricaConferida, true);
+    assert.equal(f.cronogramaRegistrado, true);
+    assert.equal(f.gestaoOverflow.width, f.gestaoOverflow.scrollWidth);
   }
   if (f.scenario === "lista-longa") {
     assert.equal(f.studentCount, 59);

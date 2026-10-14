@@ -29,6 +29,7 @@ for (const view of [
     timezoneId: "America/Sao_Paulo",
   });
   const criticalPayloads = [];
+  let remoteGrade = 5;
   await context.route("**/*", async (route) => {
     const u = new URL(route.request().url());
     if (u.pathname === "/api/acesso")
@@ -46,6 +47,20 @@ for (const view of [
     if (u.pathname === "/api/critical-write") {
       const p = route.request().postDataJSON();
       criticalPayloads.push(p);
+      if (p.tabela === "avaliacoes" && p.tipo === "UPDATE") {
+        if (Number(p.esperado?.nota) !== remoteGrade)
+          return route.fulfill({
+            status: 409,
+            contentType: "application/json",
+            body: JSON.stringify({
+              ok: false,
+              code: "CONFLITO_VERSAO",
+              message: "Versão mais recente encontrada.",
+              campos: ["nota"],
+            }),
+          });
+        remoteGrade = Number(p.registro.nota);
+      }
       return route.fulfill({
         status: 200,
         contentType: "application/json",
@@ -105,17 +120,15 @@ for (const view of [
         ],
         avaliacoes: [
           ["avaliacao_id", "matricula_id", "criterio_id", "nota", "observacao"],
-          ["av-test", "m-test", "c-test", 5, ""],
+          ["av-test", "m-test", "c-test", remoteGrade, ""],
         ],
       };
       const body = u.pathname.endsWith("values:batchGet")
         ? {
-            valueRanges: u.searchParams
-              .getAll("ranges")
-              .map((range) => ({
-                range,
-                values: data[range.split("!")[0].replaceAll("'", "")] || [],
-              })),
+            valueRanges: u.searchParams.getAll("ranges").map((range) => ({
+              range,
+              values: data[range.split("!")[0].replaceAll("'", "")] || [],
+            })),
           }
         : {
             sheets: Object.keys(data).map((title) => ({
@@ -197,6 +210,7 @@ for (const view of [
       .locator("input[type=number]")
       .first()
       .inputValue();
+    remoteGrade = 8;
     await page.evaluate(async () => {
       const sheets = await import("/src/services/googleSheetsService.ts");
       sheets.setMockToken("sintetico");
@@ -208,7 +222,31 @@ for (const view of [
       .first()
       .inputValue();
   }
+  if (view === "avaliacao") {
+    await page
+      .getByRole("button", { name: "Salvar Rascunho", exact: true })
+      .click();
+    await page.waitForTimeout(300);
+    result.originalGradeBase = criticalPayloads.find(
+      (p) => p.tabela === "avaliacoes",
+    )?.esperado?.nota;
+    result.remoteGradePreserved = remoteGrade;
+    result.conflictVisible =
+      (await page
+        .getByText(/CONFLITO_VERSAO|[Cc]onflito de versão|mais recente/)
+        .count()) > 0;
+  }
+
   if (view === "aula") {
+    result.emptyDocumentStatus =
+      (await page.getByText("Não verificado", { exact: true }).count()) > 0;
+    result.noFalseDocumentSuccess =
+      (await page.getByText("Tudo entregue", { exact: true }).count()) === 0;
+    result.noFalseRssSuccess =
+      (await page
+        .getByText("Calendário não verificado", { exact: true })
+        .count()) > 0;
+
     result.chamada = await page.evaluate(async () => {
       const sheets = await import("/src/services/googleSheetsService.ts");
       sheets.setMockToken("sintetico");
@@ -264,6 +302,15 @@ for (const view of [
     viewport: innerWidth,
     document: document.documentElement.scrollWidth,
   }));
+  const desktopAxe = await new AxeBuilder({ page })
+    .withTags(["wcag2a", "wcag2aa", "wcag21aa", "wcag22aa"])
+    .analyze();
+  result.desktopViolations = desktopAxe.violations.map((v) => ({
+    id: v.id,
+    nodes: v.nodes
+      .map((n) => ({ target: n.target, summary: n.failureSummary }))
+      .slice(0, 8),
+  }));
   await page.screenshot({
     path: out + "/" + view + "-desktop.png",
     fullPage: true,
@@ -303,10 +350,25 @@ fs.writeFileSync(
 for (const f of findings) {
   assert.deepEqual(f.errors, [], `${f.view}: erros de execução`);
   assert.deepEqual(f.violations, [], `${f.view}: acessibilidade clara`);
+  assert.deepEqual(
+    f.desktopViolations,
+    [],
+    `${f.view}: acessibilidade desktop`,
+  );
   assert.deepEqual(f.darkViolations, [], `${f.view}: acessibilidade escura`);
   for (const size of [f.horizontalOverflow, f.overflow320, f.overflow1280])
     assert.equal(size.viewport, size.document, `${f.view}: rolagem horizontal`);
-  if (f.view === "avaliacao") assert.equal(f.afterUnrelatedRender, "7");
+  if (f.view === "aula") {
+    assert.equal(f.emptyDocumentStatus, true);
+    assert.equal(f.noFalseDocumentSuccess, true);
+    assert.equal(f.noFalseRssSuccess, true);
+  }
+  if (f.view === "avaliacao") {
+    assert.equal(f.afterUnrelatedRender, "7");
+    assert.equal(Number(f.originalGradeBase), 5);
+    assert.equal(f.remoteGradePreserved, 8);
+    assert.equal(f.conflictVisible, true);
+  }
   if (f.view === "modal") assert.equal(f.closedBeforeSave, false);
 }
 console.log("PRISMA: nove telas nos temas claro e escuro aprovadas.");

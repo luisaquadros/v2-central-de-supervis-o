@@ -4,6 +4,8 @@ on:
   push:
     branches:
       - main
+      - feat/prisma-redesign
+      - feat/gestao-semestres-homologacao
       - fix/backend-persistencia-integridade
       - fix/cloudflare-bun-compat-20261013
       - fix/operacional-20261013-leituras-aulas-mobile
@@ -37,6 +39,10 @@ jobs:
         run: npm run lint
       - name: Testes operacionais
         run: npm test
+      - name: Instalar navegador de testes
+        run: npx --no-install playwright install --with-deps chromium
+      - name: Validar interface com dados fictícios
+        run: npm run test:ui
       - name: Gerar versao de producao
         run: npm run build
       - name: Validar Worker real (workerd) com planilha simulada
