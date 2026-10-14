@@ -95,3 +95,7 @@ try {
   assert.equal((store.get('logs-pendentes') as string[][]).length, 0);
   console.log('Auditoria: log por alteração, sem texto livre, idempotente e com reenvio validado.');
 } finally { globalThis.fetch = velho; }
+
+const resumoPrivado=resumirAlteracaoParaLog('avaliacoes_completas','INSERT',{avaliacao_id:'anonimo',notas_criterios:[{criterio_id:'c',nota:0,comentario:'Conteúdo confidencial fictício'}],nota_final:0},null,['avaliacao_id','notas_criterios_json','nota_final']);
+assert(!JSON.stringify(resumoPrivado).includes('Conteúdo confidencial'));
+assert.equal(resumoPrivado.depois.notas_criterios_json,'(dados estruturados)');

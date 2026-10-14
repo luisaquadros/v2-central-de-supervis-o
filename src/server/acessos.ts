@@ -47,8 +47,8 @@ export function resolverPerfil(email: string, c: ConfiguracaoAcessos): Perfil | 
   return m ? { papel: 'MONITORA', email: e, turmas: m.turmas, operacoes: m.operacoes } : null;
 }
 
-/** Tabelas que cada operação delegada pode GRAVAR. Tudo o que não está aqui é negado à monitora. */
-export const ESCRITA_POR_OPERACAO: Record<Operacao, string[]> = { CHAMADA: ['frequencias', 'encontros_turma'], ENTREGAS: ['entregas'], DOCUMENTOS_VER: [] };
+/** Tabelas que cada operação delegada pode GRAVAR. CHAMADA legada conserva somente leitura filtrada; frequência e encontros são exclusivos da professora. */
+export const ESCRITA_POR_OPERACAO: Record<Operacao, string[]> = { CHAMADA: [], ENTREGAS: ['entregas'], DOCUMENTOS_VER: [] };
 
 export type Decisao = { ok: true } | { ok: false; code: 'OPERACAO_NAO_DELEGADA' | 'FORA_DA_TURMA' | 'TURMA_INDETERMINADA'; message: string };
 const nega = (code: Extract<Decisao, { ok: false }>['code'], message: string): Decisao => ({ ok: false, code, message });

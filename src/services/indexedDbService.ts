@@ -385,7 +385,7 @@ export async function removerItemFilaConfirmado(id: string): Promise<void> {
 
 /** Commit cache and outbox together: a reported local save must survive reload. */
 export async function salvarAlteracaoAtomica(
-  tabela: string, tipo: SyncQueueOpTipo, payload: Record<string, any>
+  tabela: string, tipo: SyncQueueOpTipo, payload: Record<string, any>, versaoOriginal?:Record<string,any>|null
 ): Promise<SyncQueueItem> {
   const db = await openDatabase();
   const identity = recordIdentity(tabela, payload);
@@ -410,7 +410,7 @@ export async function salvarAlteracaoAtomica(
       const old = rows.find(matches);
       // Snapshot anterior ao primeiro ajuste; necessário para detectar edição obsoleta
       // quando outro dispositivo já alterou a versão na base oficial.
-      item.versao_base = old ? JSON.parse(JSON.stringify(old)) : null;
+      item.versao_base = versaoOriginal!==undefined ? (versaoOriginal===null?null:JSON.parse(JSON.stringify(versaoOriginal))) : old ? JSON.parse(JSON.stringify(old)) : null;
       tables.put(tipo === 'DELETE' ? rows.filter(r => !matches(r)) :
         [...rows.filter(r => !matches(r)), { ...old, ...payload }], tabela);
       // Coalesce pending versions of this record while holding the sync lock.

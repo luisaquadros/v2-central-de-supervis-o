@@ -1,3 +1,5 @@
+import {validarAvaliacaoCompleta} from './validacaoAvaliacaoCompleta';
+import {conferirIntegridadeSemestre,IntegridadeSemestreError} from './integridadeSemestre';
 import {numeroAcademico} from '../services/valoresAcademicos';
 import {conferirFechamento} from './fechamentoChamada';
 import {PRIMARY_KEYS} from '../services/recordIdentity';
@@ -143,15 +145,6 @@ export class WriteCoordinator {
       if(!perfil)return fail('Perfil verificado ausente.',401,'TOKEN_AUSENTE');
       // Administradora grava com o próprio acesso Google. Monitora NÃO usa credencial Google própria:
       // o servidor grava com a conta de serviço, depois de validar permissão e turma.
-      let token:string;
-      if(perfil.papel==='MONITORA'){
-        try{token=await tokenContaServico(this.env,[ESCOPO_SHEETS])}
-        catch(e){return fail(e instanceof ContaServicoIndisponivel?e.message:'Conta de serviço indisponível.',503,'CONTA_SERVICO_INDISPONIVEL')}
-      }else{
-        const bearer=request.headers.get('Authorization')||'';
-        if(!/^Bearer \S+$/.test(bearer))return fail('Autenticação Google necessária.',401);
-        token=bearer.slice(7);
-      }
       // O DO só é alcançável pelo handler externo, que já verificou a identidade. Defesa em profundidade:
       const usuarioVerificado=request.headers.get('X-Usuario-Verificado')||'';
       if(!usuarioVerificado)return fail('Identidade verificada ausente.',401,'TOKEN_AUSENTE');
@@ -162,6 +155,15 @@ export class WriteCoordinator {
         return fail('Operação crítica inválida.',400);
       const liberada=podeEscreverTabela(perfil,payload.tabela,payload.tipo);
       if(!liberada.ok)return fail(liberada.message,403,liberada.code);
+      let token:string;
+      if(perfil.papel==='MONITORA'){
+        try{token=await tokenContaServico(this.env,[ESCOPO_SHEETS])}
+        catch(e){return fail(e instanceof ContaServicoIndisponivel?e.message:'Conta de serviço indisponível.',503,'CONTA_SERVICO_INDISPONIVEL')}
+      }else{
+        const bearer=request.headers.get('Authorization')||'';
+        if(!/^Bearer \S+$/.test(bearer))return fail('Autenticação Google necessária.',401);
+        token=bearer.slice(7);
+      }
       await this.reenviarLogsPendentes(token);
       try { validarRegistro(payload); } catch { return fail('Registro inválido: confira chave, datas e valores numéricos.',400,'INVALID_RECORD'); }
       const fingerprint=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify([usuarioVerificado,payload]))))).map(b=>b.toString(16).padStart(2,'0')).join('');
@@ -215,12 +217,26 @@ export class WriteCoordinator {
             return fail('Referência ausente ou duplicada na base oficial. Confira os vínculos do registro.',400,'INVALID_REFERENCE');
         }
       }
+      try {
+        const converter=(rr:unknown[][])=>{const h=(rr[0]||[]).map(x=>String(x).trim());return rr.slice(1).map(row=>Object.fromEntries(h.map((k,i)=>[k,row[i]??''])));};
+        await conferirIntegridadeSemestre(table,payload.tipo,payload.registro,remote,converter(rows),async aba=>{
+          const resposta=await googleFetch(this.base+SPREADSHEET_ID+'/values/'+encodeURIComponent(quoted(aba)+'!A1:ZZ'),token);
+          return converter(resposta.values||[]);
+        });
+      }catch(e){if(e instanceof IntegridadeSemestreError)return fail(e.message,409,e.code);throw e;}
+      if(table==='avaliacoes_completas' && payload.tipo!=='DELETE'){
+        try {await validarAvaliacaoCompleta({...remote,...payload.registro},async aba=>{
+          const resposta=await googleFetch(this.base+SPREADSHEET_ID+'/values/'+encodeURIComponent(quoted(aba)+'!A1:ZZ'),token);
+          const linhas=(resposta.values||[]) as unknown[][],h=(linhas[0]||[]).map(x=>String(x).trim());return linhas.slice(1).map(r=>Object.fromEntries(h.map((k,i)=>[k,r[i]??''])));
+        });}catch(e){if(e instanceof IntegridadeSemestreError)return fail(e.message,409,e.code);throw e;}
+      }
       if(table==='avaliacoes' && payload.registro.nota!=null && valorComparavelCampo(table,'nota',payload.registro.nota)!==valorComparavelCampo(table,'nota',remote?.nota)){
         const criterio=payload.registro.criterio_id ?? remote?.criterio_id;
         if(criterio){
           const dados=await googleFetch(this.base+SPREADSHEET_ID+'/values/'+encodeURIComponent(quoted('criterios_avaliacao')+'!A1:ZZ'),token);
           const v=(dados.values||[]) as unknown[][], h=(v[0]||[]).map(x=>String(x).trim());
           const c=v.slice(1).filter(r=>String(r[h.indexOf('criterio_id')])===String(criterio));
+          if(c.length===1 && h.includes('status_validacao') && String(c[0][h.indexOf('status_validacao')])==='A_CONFERIR')return fail('Confira a rubrica copiada antes de lançar notas.',409,'RUBRICA_NAO_CONFIRMADA');
           const max=c.length===1 && h.includes('nota_maxima') ? numeroAcademico(c[0][h.indexOf('nota_maxima')]) : null;
           if(c.length!==1 || max==null || (numeroAcademico(payload.registro.nota)??0)>max)return fail('Nota incompatível com o critério oficial. Confira a rubrica.',400,'INVALID_GRADE');
         }
@@ -287,7 +303,7 @@ export class WriteCoordinator {
   }
 }
 
-const ROTAS_API=new Set(['/api/critical-write','/api/acesso','/api/leitura','/api/documentos/sincronizar','/api/documentos/estado']);
+const ROTAS_API=new Set(['/api/diagnostico','/api/critical-write','/api/acesso','/api/leitura','/api/documentos/sincronizar','/api/documentos/estado']);
 const coordenador=(env:Env)=>env[WRITE_BINDING].get(env[WRITE_BINDING].idFromName(SPREADSHEET_ID));
 const perfilPublico=(p:Perfil)=>({papel:p.papel,email:p.email,turmas:p.turmas,operacoes:p.operacoes});
 
@@ -314,6 +330,15 @@ export default {
     if(url.pathname==='/api/acesso'){
       if(request.method!=='GET')return fail('Método não permitido.',405);
       return json({ok:true,...perfilPublico(perfil),avisos:perfil.papel==='PROFESSORA_ADMIN'?auth.config.avisos:[]});
+    }
+
+    if(url.pathname==='/api/diagnostico'){
+      if(request.method!=='GET')return fail('Método não permitido.',405);
+      if(perfil.papel!=='PROFESSORA_ADMIN')return fail('Diagnóstico restrito à professora.',403,'NAO_AUTORIZADO');
+      return json({ok:true,verificado_em:new Date().toISOString(),autenticacao:'VERIFICADA',
+        coordenador_configurado:!!env[WRITE_BINDING],ativos_configurados:!!env[ASSET_BINDING],
+        conta_servico_configurada:!!env.GOOGLE_SERVICE_ACCOUNT_JSON,
+        aviso:'Configuração não comprova acesso às APIs Google. Confira a última leitura e a verificação de documentos.'});
     }
 
     if(url.pathname==='/api/leitura'){

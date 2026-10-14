@@ -35,11 +35,11 @@ resultado['duas gravações simultâneas'] = par.map(x => x.status).sort(); asse
 // ---------- monitora: conta de serviço + turma + tabelas ----------
 const usosAntes = estado().__usos.length;
 const f1 = { frequencia_id: 'f1', matricula_id: 'mA', data_aula: '2026-10-13', status: 'PRESENTE' };
-r = await escrever(idMon, '0101', 'frequencias', 'UPDATE', { ...f1, status: 'FALTA_SEM_JUSTIFICATIVA' }, f1); resultado['monitora grava chamada da própria turma'] = r.status; if (r.status !== 200) console.log('DEBUG', await r.text()); assert.equal(r.status, 200);
-const usados = estado().__usos.slice(usosAntes); assert(usados.length > 0 && usados.every((a: string) => a === 'token-conta-servico'), 'o Sheets só viu a conta de serviço: ' + usados.join(','));
-resultado['credencial vista pela planilha (monitora)'] = [...new Set(usados)];
-assert.equal(estado().frequencias[1][3], 'FALTA_SEM_JUSTIFICATIVA'); assert.equal(estado().log_alteracoes.at(-1)[2], 'monitora@exemplo.com');
-const f2 = { frequencia_id: 'f2', matricula_id: 'mC', data_aula: '2026-10-13', status: 'PRESENTE' };
+r = await escrever(idMon, '0101', 'frequencias', 'UPDATE', { ...f1, status: 'FALTA_SEM_JUSTIFICATIVA' }, f1);
+resultado['monitora não altera chamada nem na própria turma'] = r.status;
+assert.equal(r.status, 403);
+assert.equal(estado().frequencias[1][3], 'PRESENTE');
+const f2={frequencia_id:'f2',matricula_id:'mB',data_aula:'2026-10-13',status:'PRESENTE'};
 r = await escrever(idMon, '0102', 'frequencias', 'UPDATE', { ...f2, status: 'FALTA_SEM_JUSTIFICATIVA' }, f2); resultado['monitora, matrícula de outra turma'] = `${r.status} ${(await r.json()).code}`; assert.equal(r.status, 403); assert.equal(estado().frequencias[2][3], 'PRESENTE');
 r = await escrever(idMon, '0103', 'avaliacoes', 'UPDATE', { avaliacao_id: 'v1', nota: 10 }, { avaliacao_id: 'v1', nota: 8 }); resultado['monitora grava nota'] = r.status; assert.equal(r.status, 403); assert.equal(estado().avaliacoes[1][2], 8, 'nota intacta');
 r = await escrever(idMon, '0104', 'frequencias', 'DELETE', f1, { ...f1, status: 'FALTA_SEM_JUSTIFICATIVA' }); assert.equal(r.status, 403);

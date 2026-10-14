@@ -40,7 +40,7 @@ const alvo = process.argv[2]; // permite validar uma tabela de cada vez
 const pendentes = casos.filter(x => !TABELAS_CRITICAS.has(x.tabela)).map(x => x.tabela);
 if (alvo) assert(TABELAS_CRITICAS.has(alvo), `${alvo} deve passar pelo coordenador`);
 for (const c of casos.filter(x => TABELAS_CRITICAS.has(x.tabela) && (!alvo || x.tabela === alvo))) {
-  const amb = await criarAmbiente({ abas: { [c.tabela]: [c.cab, c.linha] } });
+  const amb = await criarAmbiente({ abas: { turmas:[['turma_id','periodo_id'],['t1','p1']], matriculas:[['matricula_id','aluno_id','turma_id','periodo_id'],['m1','a1','t1','p1']],grupos_pratica:[['grupo_id','turma_id'],['g1','t1']], periodos:[['periodo_id','nome','data_inicio','data_fim','status'],['p1','2027.1','2027-02-01','2027-06-30','ATIVO']], [c.tabela]: [c.cab, c.linha] } });
   setMockToken('ficticio');
   await salvarTabelasNoIndexedDb({ [c.tabela]: [c.local] });
   const idx = c.cab.indexOf(c.campo);

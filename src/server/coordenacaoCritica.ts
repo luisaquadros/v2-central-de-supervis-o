@@ -130,7 +130,14 @@ export interface AlteracaoParaLog {
   antes:Record<string,string>;
   depois:Record<string,string>;
 }
-const valorSeguro=(campo:string,valor:unknown)=>CAMPO_TEXTO_LIVRE.test(campo)?'(texto)':valorComparavel(valor).slice(0,LIMITE_VALOR_LOG);
+const valorSeguro=(campo:string,valor:unknown)=>{
+  if(CAMPO_TEXTO_LIVRE.test(campo)||campo==='valor')return '(texto)';
+  if(valor!==null&&typeof valor==='object'||/_json$/.test(campo))return '(dados estruturados)';
+  if(typeof valor==='string'&&/^[\s]*[\[{]/.test(valor)){
+    try{const parsed=JSON.parse(valor);if(parsed&&typeof parsed==='object')return '(dados estruturados)';}catch{}
+  }
+  return valorComparavel(valor).slice(0,LIMITE_VALOR_LOG);
+};
 
 /**
  * Resumo auditável da operação: campos realmente alterados, com antes/depois só de valores curtos

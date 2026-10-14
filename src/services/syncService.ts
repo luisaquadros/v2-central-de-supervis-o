@@ -384,13 +384,13 @@ async function sincronizarDaBaseOficialInterna(): Promise<{
  */
 export function salvarRegistroResiliente(
   tabela: string, tipo: SyncQueueOpTipo, registro: Record<string, any>,
-  _tabelaAtualizadaCompleta?: any[]
+  _tabelaAtualizadaCompleta?: any[], versaoOriginal?:Record<string,any>|null
 ): Promise<{ gravadoOnline: boolean; enfileiradoOffline: boolean; queueItem?: SyncQueueItem }> {
   return exclusively(async () => {
     await conferirProprietario();
     const validacao = validarEscritaTabela(tabela, registro);
     if (!validacao.valido) throw new Error(validacao.motivo);
-    const item = await salvarAlteracaoAtomica(tabela, tipo, registro);
+    const item = await salvarAlteracaoAtomica(tabela, tipo, registro,versaoOriginal);
     await processarFilaInterna();
     const filaAposGravar = await carregarFilaSincronizacao();
     const itemRestante = filaAposGravar.find(i => i.id === item.id);

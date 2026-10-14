@@ -32,7 +32,7 @@ import { criarAmbiente } from './ajudaAmbiente';
 // ---------- escrita: o que uma monitora NUNCA grava ----------
 {
   const m = { papel: 'MONITORA' as const, email: 'm@x.com', turmas: ['t2b'], operacoes: ['CHAMADA' as const] };
-  for (const t of ['frequencias', 'encontros_turma']) assert.equal(podeEscreverTabela(m, t, 'UPDATE').ok, true, t);
+  for (const t of ['frequencias', 'encontros_turma']) assert.equal(podeEscreverTabela(m, t, 'UPDATE').ok, false, t);
   for (const t of ['entregas', 'avaliacoes', 'avaliacoes_completas', 'criterios_avaliacao', 'ocorrencias', 'feedbacks', 'feedback_alunos', 'registros_supervisao', 'orientacoes',
     'pontos_acompanhamento', 'preparacoes_aula', 'alunos', 'matriculas', 'turmas', 'horarios_turma', 'configuracoes', 'log_alteracoes', 'monitoramento_documentos', 'sincronizacao', 'documentos'])
     assert.equal(podeEscreverTabela(m, t, 'UPDATE').ok, false, `${t} não é delegável`);
@@ -141,25 +141,18 @@ const ctx = (d = dados) => ({
   const ac = (await chamar(M, '/api/acesso')).corpo; assert.equal(ac.papel, 'MONITORA'); assert.deepEqual(ac.turmas, ['t2b']); assert.deepEqual(ac.operacoes, ['CHAMADA']);
   assert.deepEqual(ac.avisos, [], 'avisos de configuração só para a administradora');
 
-  // monitora grava chamada da própria turma — com a CONTA DE SERVIÇO, nunca com o token Google dela
-  const antes = amb.chamadas.length;
-  let r = await escrever(M, 'mon-op-0001', 'frequencias', 'UPDATE', { frequencia_id: 'f1', matricula_id: 'mA', data_aula: '2026-10-13', status: 'FALTA_SEM_JUSTIFICATIVA' },
-    { frequencia_id: 'f1', matricula_id: 'mA', data_aula: '2026-10-13', status: 'PRESENTE' });
-  assert.equal(r.status, 200, JSON.stringify(r.corpo));
-  const usadas = amb.chamadas.slice(antes).filter(c => c.url.includes('/v4/spreadsheets')).map(c => c.auth);
-  assert(usadas.length > 0 && usadas.every(a => a === 'Bearer token-conta-servico'), 'o Sheets só viu a conta de serviço: ' + usadas.join('|'));
-  assert.equal(abas.frequencias[1][3], 'FALTA_SEM_JUSTIFICATIVA');
-  assert.equal(abas.log_alteracoes.at(-1)![2], 'monitora@exemplo.com', 'log com a identidade da monitora');
-
-  // fora da turma / tabela não delegada / exclusão / turma indeterminada
+  // Uma configuração antiga CHAMADA nunca autoriza alterações acadêmicas.
+  let r = await escrever(M, 'mon-op-0001', 'frequencias', 'UPDATE', { frequencia_id:'f1', matricula_id:'mA',data_aula:'2026-10-13',status:'FALTA_SEM_JUSTIFICATIVA' }, {frequencia_id:'f1',matricula_id:'mA',data_aula:'2026-10-13',status:'PRESENTE'});
+  assert.equal(r.status,403);
+  assert.equal(abas.frequencias[1][3],'PRESENTE');
   r = await escrever(M, 'mon-op-0002', 'frequencias', 'UPDATE', { frequencia_id: 'f2', matricula_id: 'mC', data_aula: '2026-10-13', status: 'FALTA_SEM_JUSTIFICATIVA' }, { frequencia_id: 'f2', matricula_id: 'mC', data_aula: '2026-10-13', status: 'PRESENTE' });
-  assert.equal(r.status, 403); assert.equal(r.corpo.code, 'FORA_DA_TURMA'); assert.equal(abas.frequencias[2][3], 'PRESENTE');
+  assert.equal(r.status, 403); assert.equal(r.corpo.code, 'OPERACAO_NAO_DELEGADA'); assert.equal(abas.frequencias[2][3], 'PRESENTE');
   r = await escrever(M, 'mon-op-0003', 'frequencias', 'UPDATE', { frequencia_id: 'f3', matricula_id: 'mB', data_aula: '2026-10-14', status: 'FALTA_SEM_JUSTIFICATIVA' }, { frequencia_id: 'f3', matricula_id: 'mB', data_aula: '2026-10-14', status: 'PRESENTE' });
-  assert.equal(r.corpo.code, 'FORA_DA_TURMA', 'a matrícula 3B do mesmo aluno é de outra turma');
+  assert.equal(r.corpo.code, 'OPERACAO_NAO_DELEGADA', 'a matrícula 3B do mesmo aluno é de outra turma');
   r = await escrever(M, 'mon-op-0004', 'encontros_turma', 'UPDATE', { encontro_id: 'e2', turma_id: 't2b', status: 'REALIZADO' }, { encontro_id: 'e2', turma_id: 't3b', status: 'PREVISTO' });
   assert.equal(r.status, 403, 'não pode "mover" encontro de outra turma para a sua'); assert.equal(abas.encontros_turma[2][3], 'PREVISTO');
   r = await escrever(M, 'mon-op-0005', 'encontros_turma', 'UPDATE', { encontro_id: 'e1', turma_id: 't2b', status: 'REALIZADO' }, { encontro_id: 'e1', turma_id: 't2b', status: 'PREVISTO' });
-  assert.equal(r.status, 200, 'encontro da própria turma');
+  assert.equal(r.status, 403, 'encontro da própria turma também é protegido');
   r = await escrever(M, 'mon-op-0006', 'avaliacoes', 'UPDATE', { avaliacao_id: 'v1', nota: 10 }, { avaliacao_id: 'v1', nota: 8 });
   assert.equal(r.status, 403); assert.equal(r.corpo.code, 'OPERACAO_NAO_DELEGADA'); assert.equal(abas.avaliacoes[1][2], 8, 'nota intacta');
   r = await escrever(M, 'mon-op-0007', 'ocorrencias', 'UPDATE', { ocorrencia_id: 'o1', descricao: 'x' }, { ocorrencia_id: 'o1', descricao: 'confidencial' });
@@ -167,8 +160,12 @@ const ctx = (d = dados) => ({
   r = await escrever(M, 'mon-op-0008', 'frequencias', 'DELETE', { frequencia_id: 'f1', matricula_id: 'mA', data_aula: '2026-10-13' }, { frequencia_id: 'f1', matricula_id: 'mA', data_aula: '2026-10-13', status: 'FALTA_SEM_JUSTIFICATIVA' });
   assert.equal(r.status, 403);
   r = await escrever(M, 'mon-op-0009', 'frequencias', 'INSERT', { frequencia_id: 'f9', data_aula: '2026-10-13', status: 'PRESENTE' });
-  assert.equal(r.corpo.code, 'TURMA_INDETERMINADA', 'sem matrícula nem turma: negado');
+  assert.equal(r.corpo.code, 'OPERACAO_NAO_DELEGADA', 'chamada nunca é delegada para escrita');
 
+  assert.equal((await chamar(M,'/api/diagnostico')).status,403);
+  const diagnostico=await chamar(A,'/api/diagnostico');assert.equal(diagnostico.status,200);
+  assert.equal(diagnostico.corpo.autenticacao,'VERIFICADA');
+  assert(!JSON.stringify(diagnostico.corpo).includes('private_key'));
   // leitura filtrada pelo servidor
   r = await chamar(M, '/api/leitura?tabelas=avaliacoes'); assert.equal(r.status, 403); assert.equal(r.corpo.code, 'TABELA_NAO_DELEGADA');
   r = await chamar(M, '/api/leitura?tabelas=turmas,matriculas,alunos,frequencias,encontros_turma'); assert.equal(r.status, 200, JSON.stringify(r.corpo).slice(0, 200));
@@ -203,7 +200,7 @@ const ctx = (d = dados) => ({
   const h = async (email: string) => ({ 'X-Firebase-Id-Token': await amb2.emissor.token(email), Authorization: 'Bearer x', 'Content-Type': 'application/json' });
   const l2 = await fetch('/api/leitura?tabelas=turmas', { headers: await h(M) }); assert.equal(l2.status, 503); assert.equal((await l2.json() as any).code, 'CONTA_SERVICO_INDISPONIVEL');
   const w2 = await fetch('/api/critical-write', { method: 'POST', headers: await h(M), body: JSON.stringify({ tabela: 'frequencias', tipo: 'UPDATE', operacaoId: 'mon-sem-sa-1', registro: { frequencia_id: 'f1', matricula_id: 'mA', data_aula: '2026-10-13', status: 'X' }, esperado: {} }) });
-  assert.equal(w2.status, 503);
+  assert.equal(w2.status, 403, 'escrita proibida é recusada antes de solicitar credencial Google');
   amb2.restaurar();
   amb.restaurar();
 }

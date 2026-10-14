@@ -23,7 +23,7 @@ const ok = (d: unknown, status = 200) => ({ ok: status < 400, status, json: asyn
 export async function criarAmbiente(op: OpcoesAmbiente) {
   limparCacheJwks(); // cada ambiente tem o seu par de chaves
   const emissor = await criarEmissor();
-  const abas = op.abas;
+  const abas:Abas = {encontros_turma:[['encontro_id','turma_id','data','chamada_salva']],...op.abas};
   const store = new Map<string, unknown>();
   const coord = new WriteCoordinator({ storage: { get: async (k: string) => store.get(k), put: async (k: string, v: unknown) => { store.set(k, v); } } } as any,
     { ...(op.env ?? {}) } as any);
