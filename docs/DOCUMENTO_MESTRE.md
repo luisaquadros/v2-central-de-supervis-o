@@ -60,7 +60,8 @@ Google Sheets (planilha 1DwhmASMStNtT_L2YinG-jkP9vYVv5ETdc-azYqSSIc4) · Drive A
 | Resultado da sincronização | `sincronizacao` (linhas `DRIVE_METADADOS`) + histórico no Durable Object | Worker | painel | |
 | Trilha de auditoria | `log_alteracoes` (criada na 1ª gravação) | Worker | administradora | identidade verificada; **sem texto livre** |
 | RSS | `registros_semanais` (fórmula, somente leitura) | formulário/planilha | app | original imutável ainda não preservado (E4) |
-| Avaliações e rubricas | `avaliacoes`, `avaliacoes_completas`, `criterios_avaliacao` | app (coordenador) | só administradora | rubrica versionada: ❌ (E5) |
+| Avaliações oficiais | `avaliacoes`, `avaliacoes_completas`, `criterios_avaliacao` | app (coordenador) | só administradora | **fonte oficial de critérios e notas** (§4.1) |
+| Rubricas, configuração, rascunhos, evidências | `config_avaliacao`, `rubricas_avaliacao`, `avaliacao_rascunhos`, `evidencias_avaliacao` | app (coordenador); monitora só `evidencias_avaliacao` (preliminar, própria) | administradora; monitora: rubrica + as próprias contribuições | aditivas e versionadas (§4.4); abas ainda **não criadas** na planilha |
 | Ainda no caminho direto (4) | `configuracoes`, `marcos_academicos`, `criterios_avaliacao`, `registros_semanais` | navegador da administradora | todos | `registros_semanais` e `marcos_academicos` parecem derivados por fórmula/origem (escrever pode sobrescrever fórmulas); `criterios_avaliacao` aguarda D3; `configuracoes` mistura itens operacionais. Migrar só após conferir |
 
 Colunas escritas pela sincronização: `data_modificacao_drive`, `consultado_em`, `status`, `erro_codigo`. **Nunca** `validacao_manual`, observações, `origem_metadado` ou qualquer outra. Não cria nem remove linhas.
@@ -86,15 +87,39 @@ Colunas escritas pela sincronização: `data_modificacao_drive`, `consultado_em`
 
 ---
 
-### 4.1 Engine de avaliação (acumulado até o prazo)
+### 4.1 Avaliação: estrutura real encontrada (auditoria na cópia anonimizada da planilha de desenvolvimento)
 
-- **Onde:** `src/services/avaliacaoEngine.ts` (cálculo puro) + `avaliacaoAdaptador.ts` (liga `criterios_avaliacao`/`avaliacoes`/`ocorrencias`, somente leitura) + `QuadroAvaliacaoPrazo.tsx` (aba Avaliação da ficha; oculta para monitora).
-- **Estrutura encontrada:** plana, 8 critérios por turma (`nota_maxima`, `peso`, `ordem`, `ativo`), 1 nota por matrícula×critério (`avaliacoes`), comentários/pontos por critério em `avaliacoes_completas.notas_criterios_json`. **Não há subcritérios nem descritores implementados.** Nada foi removido, renomeado ou migrado; nenhuma coluna criada na planilha.
-- **Sem configuração, todo critério é `manual`** (usa a nota já lançada, como antes). Configuração opcional por critério: colunas `tipo_calculo`, `config_calculo_json`, `subcriterios_json` (ainda inexistentes; só lidas se aparecerem). Rubrica/híbrido sem fórmula declarada → `aguardando_decisao` (não inventa).
-- **Regras implementadas (parâmetros informados pela professora, configuráveis):** prova = nota/10×máx; relatório: antecipado/no prazo = máx, após prazo = máx−0,10 (dedução auditável, `latePenalty`), desconhecido = `a_conferir`; RSS = concluídos/**total do semestre**×máx (nunca /esperados até o prazo); contínuo = máx×`progressRatio` (só em `calculationMode: 'progress'`).
-- **Invariantes:** null ≠ zero; `a_conferir`/`nao_avaliado`/`aguardando_decisao` fora do acumulado; sem média parcial, nota convertida para 10 ou projeção; ocorrência sem regra cadastrada nunca desconta (fica pendente); fora do limite → `a_conferir`. `auditarAvaliacao` confere esses invariantes.
-- **Pendente (D3):** confirmar pesos/regras por turma e onde vive a configuração (hoje só em código/colunas opcionais); progresso do período (`progressRatio`) e total de registros por turma ainda não alimentados pela interface; histórico de alterações de nota usa o `log_alteracoes` existente.
-- **Validado só em simulação** (`testAvaliacaoEngine`, `testQuadroAvaliacaoPrazo`); a ficha de exemplo reproduz 4,29.
+- **6 turmas × 8 critérios = 10,0** em todas: Prova 2,0 · Parte 1 do relatório 1,0 · Relatório final 2,0 · Documentação 2,5 · Seminário/Atividade avaliativa 0,5 · Participação nas supervisões 0,8 · Desempenho técnico e profissional 1,0 · Assiduidade e pontualidade 0,2. Pesos iguais; **nomes variam por turma**; `codigo_criterio` é estável (ex.: `DOCUMENTACAO_CLINICA` × `DOCUMENTACAO_PRATICA`). `peso` = 1 em todas as linhas (não é peso de cálculo).
+- `avaliacoes`: uma nota **em pontos** por matrícula×critério, com `valor_original` (nota bruta da fonte, ex. prova "5,0" → 1,0), `origem`, `status_revisao`. `avaliacoes_completas`: comentários e pontos por critério (JSON).
+- **Não existem subcritérios, descritores nem rubricas internas implementados.** A rubrica de Documentação é nova e aditiva.
+- ⚠️ **Divergência ficha × planilha (decisão sua):** a ficha de feedback parcial lista "Registros semanais 0,5" onde a planilha tem "Seminário/Atividade avaliativa 0,5". Nenhum critério de registros semanais foi criado; a associação acadêmica está **pendente**.
+- ⚠️ **Valores "provisórios" da ficha** (Documentação 1,25, Participação 0,40, Desempenho 0,50, Assiduidade 0,10 = 50% do peso): o app **não** os trata como nota; só a nota lançada em `avaliacoes` é oficial.
+- **Cálculo duplicado corrigido:** `AvaliacaoView` e `AlunoFichaView` somavam por conta própria (filtros de critério diferentes; nota inválida virava 0). Agora usam `avaliacaoResumo.ts`. Soma idêntica à legada em dados válidos (teste); nota inválida passa a ser **sinalizada e excluída**, nunca zero silencioso. `FeedbackModal` também não mostra 0,0 para nota ausente/inválida.
+
+### 4.2 Engine de cálculo (`avaliacaoEngine.ts`, `avaliacaoAdaptador.ts`, `avaliacaoResumo.ts`)
+
+- **Quatro coisas separadas:** **oficial** (nota lançada; a engine nunca a altera) · **prévia** (proporção/rubrica; diagnóstico, nunca gravada sozinha) · **prazo** (cumprimento de entrega; não gera nota nem desconto sem regra expressa) · **divergência** (oficial × prévia, só sinalizada).
+- **Sem configuração, todo critério é `manual`.** Nenhuma fórmula é inferida pelo nome. Classificação inicial **sugerida** (D3) por `codigo_criterio`: prova=proportional; relatórios/seminário=rubric; documentação/desempenho/assiduidade=hybrid; participação=continuous.
+- Prova proporcional: bruto ÷ 10 × valor (`valor_original`); RSS **não** é critério. Participação/desempenho **não** vêm do tempo decorrido (`progressRatio` removido). Rubrica/híbrido só calculam prévia com fórmula declarada e versão **aprovada**.
+- Invariantes: ausente = `null`; inválido/fora do limite → `a_conferir`, fora da soma; sem média parcial, nota convertida para 10 ou projeção; ocorrência sem regra cadastrada nunca desconta (ética relevante gera sinalização separada); o mesmo fato não penaliza dois critérios.
+
+### 4.3 Rubrica de Documentação, níveis e rascunhos (`rubricasAvaliacao.ts`)
+
+- 6 subcritérios (0,65 · 0,50 · 0,45 · 0,40 · 0,30 · 0,20 = 2,5), com foco e **descritores específicos por nível** e por tipo de estágio (Clínica Adulto, Clínica Ampliada; Consultoria Organizacional preparada, sem descritores clínicos e em rascunho).
+- Níveis: Excelente 100% · Adequado 75% · Parcial 50% · Insuficiente 25% · Não atendido 0% · **Não avaliado = null**. Ajuste manual exige justificativa e entra no histórico.
+- Versões imutáveis: editar pesos cria nova versão (rascunho até aprovar); rascunhos guardam a versão e os pesos usados. Documento **coletivo** só gera sugestão; a professora adota item a item na avaliação individual.
+- A nota só vira oficial por **confirmação explícita** (diálogo com valor proposto × oficial atual e diferença), pelo caminho de gravação existente (`saveAvaliacao`: fila, coordenador, log).
+
+### 4.4 Estrutura aditiva e versionada (4 abas novas; nenhuma existente alterada)
+
+`config_avaliacao` (configuração por turma+período+critério) · `rubricas_avaliacao` (uma linha por versão) · `avaliacao_rascunhos` (níveis, ajustes, histórico) · `evidencias_avaliacao` (por referência a registros existentes; origem, polaridade, preliminar). Todas passam pelo coordenador (versão, idempotência, log sem texto livre/JSON). Abas únicas (não se cria aba por semestre).
+
+- **Criação:** Configurações → "Estrutura da avaliação" → `GET/POST /api/estrutura/avaliacao`. POST só adiciona abas ausentes + cabeçalho, é idempotente, **desligada por padrão** (`ESTRUTURA_AVALIACAO=ligada`), exige confirmação e checksum de backup (o backup é gerado pelo app; o servidor só confere o formato). Aba existente com cabeçalho diferente é apenas relatada.
+- Leitura do servidor tolera abas ainda inexistentes (leem vazias).
+
+### 4.5 Devolutiva (`devolutivaAvaliacao.ts`, aba Devolutiva da ficha)
+
+Rascunho **determinístico**, sem IA, nunca enviado sozinho: notas oficiais lançadas, pontos fortes/em desenvolvimento/aprimoramento a partir do nível+descritor da rubrica, evidências (monitora só se aproveitada), atraso de registros semanais (fato mensurável, impacto "conforme os critérios da disciplina"), documentos pendentes (A conferir ≠ pendente), participação ("não constam registros" ≠ conduta). Cada item tem fonte; falta de dado vira "informação insuficiente" + lista de complementação. A revisão/aprovação/envio usa o `FeedbackModal` existente.
 
 ## 5. Permissões e segurança
 
@@ -114,6 +139,7 @@ Entradas inválidas (sem turma, sem operação, `"*"`, e-mail ruim) são **ignor
 | `CHAMADA` | `frequencias`, `encontros_turma` | `encontros_turma`, `frequencias` (sem `justificativa`/`observacao`) |
 | `ENTREGAS` | `entregas` | `entregas` |
 | `DOCUMENTOS_VER` | — | `monitoramento_documentos` (sem observações manuais) e estado da sincronização |
+| `CONTRIBUICAO_AVALIATIVA` | `evidencias_avaliacao`, **somente** contribuição **preliminar** e **própria** (origem `CONTRIBUICAO_MONITORA`, autoria = a conta, até 600 caracteres; sem alterar autoria/turma/origem; sem exclusão; sem editar o que a professora já aproveitou) | `rubricas_avaliacao` (sem motivos/autoria) e as **próprias** contribuições. **Nunca** notas, rascunhos, configuração nem evidências da professora |
 | (sempre) | — | períodos, disciplinas, turmas, horários, matrículas, alunos (sem e-mail), grupos |
 
 **Nunca para monitora:** avaliações, ocorrências, devolutivas/feedbacks, registros de supervisão, orientações, pontos de acompanhamento, RSS, critérios, configurações, log, backup, cadastro; exclusões; sincronização manual. Turma indeterminada = negado; o servidor confere a turma do registro novo **e** a do registro existente.
@@ -151,7 +177,13 @@ Entradas inválidas (sem turma, sem operação, `"*"`, e-mail ruim) são **ignor
 | Cron 08:00 e 18:00 (Brasília) | ⏸ | lógica e horários testados; **não declarados** em `wrangler.jsonc` |
 | Chamada: `NAO_REGISTRADO` até encerrar, prévia e confirmação explícita (D1) | ✅ local/simulado | modal "Encerrar chamada"; nada é gravado antes de confirmar; clique duplo não duplica. Retificação com justificativa de chamada já encerrada: ❌ |
 | Cache local limpo na troca de usuária | ✅ | preserva e sinaliza pendências de outra conta |
-| Participação, diário, marcos, rubricas, competências, devolutiva com evidência | ❌ | E3–E5 |
+| Engine de avaliação: oficial × prévia × prazo × divergência; nota inválida sinalizada; cálculo unificado entre telas | ✅ simulado | §4.1–4.2 |
+| Rubrica de Documentação (6 subcritérios, níveis, descritores por estágio, versões, ajuste justificado, confirmação explícita) | ✅ simulado | §4.3; Consultoria Organizacional preparada, descritores a definir |
+| Estrutura aditiva (4 abas) e painel "Estrutura da avaliação" | ✅ simulado e workerd · ⏸ **abas não criadas na planilha** | §4.4; criação desligada por padrão |
+| Evidências (linha do tempo) e contribuição preliminar da monitora | ✅ simulado | §5 |
+| Avaliação parcial e final (resumo/conferência) | ✅ simulado | sem nota final, média parcial nem projeção |
+| Devolutiva: rascunho determinístico com fonte por frase | ✅ simulado | §4.5; aprovação/envio no modal existente |
+| Participação (registro estruturado), diário, marcos, competências | ❌ | E3–E5 restante |
 | RSS original imutável e conferência de vínculos | ❌ | E4 |
 | Resumos por turma (RSS 7 dias, documentos) e quadro "Marcar entregas" | ✅ | consulta, sem notificação |
 
@@ -159,7 +191,7 @@ Entradas inválidas (sem turma, sem operação, `"*"`, e-mail ruim) são **ignor
 
 ## 7. Testes e evidências
 
-Comandos: `npm run lint` · `npm test` (32 arquivos) · `npm run build` · `npm run test:worker-real` (também no CI).
+Comandos: `npm run lint` · `npm test` (41 arquivos) · `npm run build` · `npm run test:worker-real` (também no CI).
 
 | Prova | Cobertura | Resultado |
 |---|---|---|
@@ -170,6 +202,7 @@ Comandos: `npm run lint` · `npm test` (32 arquivos) · `npm run build` · `npm 
 | `testMonitoramentoDocumentos` | recência por data, Olyver (duas matrículas, documentos separados), grupo coletivo uma vez, condição de horário alternativo | ✅ |
 | `testSincronizacaoDocumentos` | só metadados, 4 colunas, sem duplicar, uma por vez, 08:00/18:00, falhas, histórico; mutação deliberada foi detectada | ✅ |
 | **`test:worker-real`** (workerd + planilha, Drive e Google simulados em loopback, conta de serviço falsa) | sem identidade 401; conta sem papel 403; administradora 200 + log; reenvio idempotente; versão antiga 409; simultâneas 200+409; **monitora**: grava só com a conta de serviço, outra turma 403 `FORA_DA_TURMA`, nota 403, leitura de avaliações 403, leitura filtrada (sem e-mail/justificativa/observação); **sincronização** manual (403 monitora), duas simultâneas 200+409, **cron `0 11 * * *` e `0 21 * * *` executam, outro cron é ignorado**, histórico `AGENDADO`; corpo > 128 KB 413 | ✅ |
+| `testAvaliacaoEngine`, `testAvaliacaoUnificacao`, `testAvaliacaoEstruturaReal`, `testRubricasAvaliacao`, `testEstruturaAvaliacao`, `testContribuicaoMonitora`, `testDevolutivaAvaliacao`, `testQuadroAvaliacaoPrazo` | oficial×prévia×prazo; ficha 4,29 preservada; unificação (soma idêntica à legada, inválido sinalizado); estrutura real 6×8=10,0; rubrica/níveis/versões/grupo; persistência pelo coordenador e criação idempotente de abas; permissões da monitora no handler do Worker; devolutiva | ✅ |
 | Navegador (planilha simulada, dados anonimizados) | painel de documentos na turma e na ficha (grupo uma vez; individual por matrícula); selo de horário alternativo; chamada enviou 13 de 14 matrículas (a alternativa ficou de fora); backup baixar/conferir/restaurar; botão "Sincronizar agora" | ✅ |
 
 **Defeito encontrado pelo runtime real:** `worker.ts` exportava auxiliares e o Cloudflare não inicia Worker assim; o CI anterior (`build` + `--dry-run`) não detectava. Corrigido e coberto por teste.
@@ -195,6 +228,10 @@ O teste `testSincronizacaoDocumentos` recusa qualquer outro valor. **Desligar:**
 
 ---
 
+### 8.1 Criar a estrutura da avaliação (somente numa CÓPIA primeiro)
+
+1. Configurações → Backup → baixar e conferir o backup. 2. No Worker: `ESTRUTURA_AVALIACAO=ligada`. 3. Configurações → "Estrutura da avaliação" → Verificar → baixar backup verificado → confirmar → criar. 4. Conferir na planilha: 4 abas só com cabeçalho; nenhuma aba existente alterada. 5. Só então configurar a rubrica por turma. **Reversão:** apagar as 4 abas novas (nenhum dado existente depende delas) e desligar a variável.
+
 ## 9. Plano de reversão
 
 | Mudança | Como reverter |
@@ -214,5 +251,5 @@ O teste `testSincronizacaoDocumentos` recusa qualquer outro valor. **Desligar:**
 2. **E2 restante:** conferir e migrar as 4 tabelas restantes; decidir D5.
 3. **E3 restante:** retificação de chamada encerrada; falta/atraso/justificativa/dispensa separados (D2, depende do regulamento); diário e participação.
 4. **E4:** RSS original imutável, tela de conferência de vínculos, janela operacional de 7 dias sem cortar histórico.
-5. **E5:** rubricas versionadas, competências, devolutiva com evidência (D3).
+5. **E5 restante:** descritores da Consultoria Organizacional; competências; rubricas de Participação e Desempenho (pesos internos aguardam sua aprovação — hoje seguem manuais); registro estruturado de participação; decidir a associação de "Registros semanais" × "Seminário/Atividade avaliativa".
 6. **E6:** menu (Agenda/Acervo), pendências tipadas, fechamento semestral.
