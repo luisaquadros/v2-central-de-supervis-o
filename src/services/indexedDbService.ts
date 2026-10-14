@@ -502,3 +502,13 @@ export async function restaurarCacheAposConflito(item:SyncQueueItem):Promise<voi
   tx.oncomplete=()=>resolve();tx.onerror=tx.onabort=()=>reject(tx.error);
  });db.close();
 }
+
+/** Checkpoints operacionais no store existente; não muda o esquema nem cria abas acadêmicas. */
+export async function salvarRoteiroPeriodo(roteiro:import('./roteiroPeriodoService').RoteiroPeriodo):Promise<void>{
+ const db=await openDatabase();
+ try {await new Promise<void>((resolve,reject)=>{const tx=db.transaction(STORE_META,'readwrite');tx.objectStore(STORE_META).put(roteiro,'criacao-periodo:'+roteiro.usuario_uid+':'+roteiro.periodo_id);tx.oncomplete=()=>resolve();tx.onerror=tx.onabort=()=>reject(tx.error);});}finally{db.close();}
+}
+export async function carregarRoteirosPeriodo(usuario:string):Promise<import('./roteiroPeriodoService').RoteiroPeriodo[]>{
+ const db=await openDatabase();
+ try{return await new Promise((resolve,reject)=>{const tx=db.transaction(STORE_META,'readonly'),req=tx.objectStore(STORE_META).getAll();req.onsuccess=()=>resolve(req.result.filter(r=>r?.tipo==='CRIACAO_PERIODO'&&r.usuario_uid===usuario));req.onerror=()=>reject(req.error);});}finally{db.close();}
+}

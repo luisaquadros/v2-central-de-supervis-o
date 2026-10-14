@@ -1,3 +1,4 @@
+import {numeroAcademico} from "./valoresAcademicos";
 import type {
   Periodo,
   Turma,
@@ -6,6 +7,9 @@ import type {
   Avaliacao,
   ItemPendenciaOperacional,
 } from "../types";
+export function notaValidaParaEncerramento(nota:unknown,maximo:unknown):boolean {
+  try {const n=numeroAcademico(nota),max=numeroAcademico(maximo);return n!==null&&max!==null&&max>=0&&n>=0&&n<=max;}catch{return false;}
+}
 /** Diagnóstico de completude; não calcula notas, faltas ou abonos. */
 export function revisarEncerramento(
   periodo: Periodo,
@@ -47,13 +51,12 @@ export function revisarEncerramento(
       avisos.push("Matrícula sem critérios de avaliação configurados.");
     if (
       criterios.some(
-        (c) =>
+        (c) => c.status_validacao === "A_CONFERIR" ||
           !base.avaliacoes.some(
             (a) =>
               a.matricula_id === m.matricula_id &&
               a.criterio_id === c.criterio_id &&
-              a.nota != null &&
-              String(a.nota).trim() !== "",
+              notaValidaParaEncerramento(a.nota,c.nota_maxima),
           ),
       )
     )

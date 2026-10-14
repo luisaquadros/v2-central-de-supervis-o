@@ -1,3 +1,4 @@
+import {notaValidaParaEncerramento} from "../services/encerramentoPeriodoService";
 import { dataAcademica } from "../services/valoresAcademicos";
 type Row = Record<string, unknown>;
 export type CarregarRegistros = (tabela: string) => Promise<Row[]>;
@@ -325,8 +326,7 @@ export async function conferirIntegridadeSemestre(
               (a) =>
                 a.matricula_id === m.matricula_id &&
                 a.criterio_id === c.criterio_id &&
-                a.nota != null &&
-                String(a.nota).trim() !== "",
+                notaValidaParaEncerramento(a.nota,c.nota_maxima),
             ),
         )
       )

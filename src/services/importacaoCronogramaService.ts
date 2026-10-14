@@ -44,6 +44,7 @@ const TIPOS = new Set([
   "DEVOLUTIVA",
   "OUTRO",
 ]);
+const CATEGORIAS = new Set(['INICIO_SEMESTRE','INICIO_AULAS','ENCONTRO','ATIVIDADE','SEMINARIO','LEITURA_DIRIGIDA','ENTREGA_PARCIAL_RELATORIO','ENTREGA_FINAL','INICIO_PRATICAS','ENCERRAMENTO_PRATICAS','FERIADO','REPOSICAO','ENCERRAMENTO_DISCIPLINA','LANCAMENTO_NOTAS']);
 export function prepararCronograma(
   texto: string,
   turma: { turma_id: string; periodo_id: string; disciplina_id: string },
@@ -60,7 +61,8 @@ export function prepararCronograma(
   return itens.map((r, i) => {
     const data = r.data_prazo || r.data,
       nome = r.nome || r.titulo,
-      tipo = (r.tipo || "OUTRO").toUpperCase();
+      categoria = (r.tipo || "OUTRO").toUpperCase(),
+      tipo = CATEGORIAS.has(categoria) ? "OUTRO" : categoria;
     if (
       !nome ||
       !/^\d{4}-\d{2}-\d{2}$/.test(data) ||
@@ -80,7 +82,10 @@ export function prepararCronograma(
         `Linha ${i + 2}: marco já existente ou repetido. Nenhum registro será substituído.`,
       );
     vistos.add(chave);
-    const escopo = (r.escopo_marco || r.visibilidade || "TURMA").toUpperCase();
+    const codigo = r.codigo_marco || (CATEGORIAS.has(categoria) ? categoria : "");
+    if(existentes.some(m=>m.turma_id===turma.turma_id&&!m.data_prazo&&((codigo&&m.codigo_marco===codigo)||m.nome===nome)))throw new Error("Há um marco modelo sem data. Edite esse registro em vez de duplicá-lo.");
+    const escopo = (r.escopo_marco || r.visibilidade || (codigo === "LANCAMENTO_NOTAS" ? "DOCENTE" : "TURMA")).toUpperCase();
+    if(codigo === "LANCAMENTO_NOTAS" && escopo !== "DOCENTE")throw new Error("Lançamento de notas deve permanecer visível apenas à docente.");
     if (!["TURMA", "DOCENTE", "DISCIPLINA"].includes(escopo))
       throw new Error("Visibilidade inválida: TURMA, DOCENTE ou DISCIPLINA.");
     const status = (r.status || "PLANEJADO").toUpperCase();
@@ -95,7 +100,7 @@ export function prepararCronograma(
       status: status as MarcoAcademico["status"],
       origem: r.origem || "IMPORTACAO_MANUAL",
       escopo_marco: escopo,
-      codigo_marco: r.codigo_marco || "",
+      codigo_marco: codigo,
       observacao: r.observacao || "",
     };
   });

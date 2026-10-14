@@ -11,7 +11,8 @@ export function SemestresView() {
     [inicio, setInicio] = React.useState(""),
     [fim, setFim] = React.useState(""),
     [aulas, setAulas] = React.useState(""),
-    [modelo, setModelo] = React.useState("");
+    [modelo, setModelo] = React.useState(""),
+    [statusNovo,setStatusNovo] = React.useState<"PLANEJADO"|"ATIVO">("PLANEJADO");
   const [erro, setErro] = React.useState(""),
     [ocupado, setOcupado] = React.useState(false),
     [revisar, setRevisar] = React.useState(""),
@@ -65,6 +66,11 @@ export function SemestresView() {
           Novo semestre
         </button>
       </header>
+      {c.roteirosPeriodo.filter(r=>r.estado==='PENDENTE').map(r=><section key={r.periodo_id} className="prisma-section space-y-2" aria-label={`Criação pendente de ${r.nome}`}>
+        <h2 className="font-semibold">Criação pendente: {r.nome}</h2>
+        <p className="prisma-meta">{r.passos.filter(p=>p.estado==='CONFIRMADO').length} de {r.passos.length} etapas confirmadas. Nenhum novo ID será gerado na retomada.</p>
+        <button disabled={ocupado} className="underline p-2" onClick={()=>void executar(()=>c.retomarCriacaoPeriodo(r.periodo_id))}>Retomar criação</button>
+      </section>)}
       <ul className="grid gap-4 md:grid-cols-2">
         {c.periodos.map((p) => (
           <li className="cs-panel p-5 space-y-3" key={p.periodo_id}>
@@ -119,6 +125,7 @@ export function SemestresView() {
                   fim,
                   modelo || undefined,
                   aulas || undefined,
+                  statusNovo,
                 );
                 c.setSelectedPeriodoId(id);
                 setNovo(false);
@@ -168,6 +175,11 @@ export function SemestresView() {
                 className="block border border-slate-200 p-3 w-full mt-1"
               />
             </label>
+            <label className="block">Status inicial
+              <select value={statusNovo} onChange={e=>setStatusNovo(e.target.value as 'PLANEJADO'|'ATIVO')} className="block border border-slate-200 p-3 w-full mt-1">
+                <option value="PLANEJADO">Planejado</option><option value="ATIVO">Ativo</option>
+              </select>
+            </label>
             <label className="block">
               Modelo anterior
               <select
@@ -184,10 +196,11 @@ export function SemestresView() {
               </select>
             </label>
             <p className="prisma-meta">
-              Turmas, critérios e horários recebem novos IDs e vigência.
+              Turmas, critérios, configurações e rubricas recebem novos IDs.
+              O cronograma herdado fica sem datas para conferência.
               Disciplinas continuam no catálogo compartilhado. Matrículas e
               registros acadêmicos permanecem no período anterior. Rubricas
-              copiadas exigem conferência.
+              copiadas ficam em rascunho e exigem conferência.
             </p>
             <button
               type="submit"

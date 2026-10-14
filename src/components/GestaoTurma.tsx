@@ -26,6 +26,7 @@ export function GestaoTurma({ turmaId }: { turmaId: string }) {
     [dataGrupo, setDataGrupo] = React.useState(""),
     [grupoExistente, setGrupoExistente] = React.useState(""),
     [integrantes, setIntegrantes] = React.useState<string[]>([]);
+  const [marcoEditar,setMarcoEditar]=React.useState<MarcoAcademico|null>(null), [dataMarco,setDataMarco]=React.useState("");
   const busy = React.useRef(false);
   const [rubricaConferida, setRubricaConferida] = React.useState(false);
   if (!turma || c.perfilServidor?.papel !== "PROFESSORA_ADMIN") return null;
@@ -104,11 +105,22 @@ export function GestaoTurma({ turmaId }: { turmaId: string }) {
         </details>
       )}
       <details className="prisma-section">
+        <summary>Editar datas do cronograma</summary>
+        <ul className="space-y-2 mt-3">{c.marcosAcademicos.filter(m=>m.turma_id===turmaId).map(m=><li key={m.marco_id} className="flex flex-wrap items-center gap-2"><span>{m.nome} · {m.data_prazo || 'A definir'} · {m.status}</span><button className="underline p-3" disabled={historico||ocupado} onClick={()=>{setMarcoEditar({...m});setDataMarco(m.data_prazo || '');}}>Editar data de {m.nome}</button></li>)}</ul>
+        {marcoEditar&&<form className="space-y-3 mt-3" onSubmit={e=>{e.preventDefault();void executar(async()=>{await c.editarMarco(marcoEditar,dataMarco);setMarcoEditar(null);setMensagem('Data confirmada no servidor.');});}}>
+          <p>{marcoEditar.nome}: {marcoEditar.data_prazo || 'A definir'} → {dataMarco || 'Selecione a nova data'}</p>
+          <label className="block">Nova data<input className="block border p-3" type="date" required value={dataMarco} disabled={ocupado||historico} onChange={e=>setDataMarco(e.target.value)}/></label>
+          <p className="prisma-meta">A confirmação altera somente a data deste marco. Uma versão mais recente no servidor bloqueará a alteração.</p>
+          <button className="cs-primary-action p-3" disabled={ocupado||historico}>Confirmar alteração de data</button>
+          <button type="button" className="underline p-3" disabled={ocupado} onClick={()=>setMarcoEditar(null)}>Cancelar edição</button>
+        </form>}
+      </details>
+      <details className="prisma-section">
         <summary>Importar cronograma</summary>
         <p className="prisma-meta">
           CSV: nome;data;tipo;codigo_marco;status;origem;visibilidade. Datas ISO
-          (AAAA-MM-DD). Use OUTRO para início de aulas, feriados, reposições e
-          outros marcos, identificados por codigo_marco. Nenhum marco existente
+          (AAAA-MM-DD). Aceita INICIO_AULAS, FERIADO, REPOSICAO, SEMINARIO e
+          outras categorias administrativas, preservadas em codigo_marco. Nenhum marco existente
           é substituído.
         </p>
         <label className="block text-sm mt-3">

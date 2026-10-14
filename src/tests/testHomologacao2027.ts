@@ -211,7 +211,7 @@ const avaliacoes = matriculas.flatMap((m) =>
 const revisao = revisarEncerramento(plano.periodo, {
   turmas: plano.turmas,
   matriculas,
-  criterios: plano.criterios,
+  criterios: plano.criterios.map(c=>({...c,status_validacao:"CONFIRMADO"})),
   avaliacoes,
   pendencias: [],
   pendentesSync: 0,
@@ -221,7 +221,7 @@ assert.equal(
   revisarEncerramento(plano.periodo, {
     turmas: plano.turmas,
     matriculas,
-    criterios: plano.criterios,
+    criterios: plano.criterios.map(c=>({...c,status_validacao:"CONFIRMADO"})),
     avaliacoes: [],
     pendencias: [],
     pendentesSync: 1,

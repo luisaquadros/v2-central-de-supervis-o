@@ -187,7 +187,7 @@ for (const scenario of [
   if(scenario==='navegacao'){
     await page.getByRole('navigation',{name:'Navegação rápida'}).getByRole('button',{name:'Avaliações',exact:true}).click();
     await page.getByText('Estudante sintético',{exact:true}).waitFor();
-    await page.evaluate(async()=>{const s=await import('/src/services/googleSheetsService.ts');s.setMockToken('sintetico');const id=await window.auditContext.createNovoPeriodo('2028.1','2028-02-01','2028-06-30');window.auditContext.setSelectedPeriodoId(id);});
+    await page.evaluate(async()=>{const s=await import('/src/services/googleSheetsService.ts');s.setMockToken('sintetico');await window.auditContext.sincronizarAgora();await new Promise(r=>setTimeout(r,100));const id=await window.auditContext.createNovoPeriodo('2028.1','2028-02-01','2028-06-30');window.auditContext.setSelectedPeriodoId(id);});
     await page.getByText('Nenhuma turma neste período. Cadastre uma turma antes de avaliar.',{exact:true}).waitFor();
     result.periodoVazioIsolado=await page.getByText('Estudante sintético',{exact:true}).count()===0;
   }
@@ -405,6 +405,13 @@ for (const scenario of [
       ),
     );
     result.cronogramaRegistrado = true;
+    await page.getByText('Editar datas do cronograma',{exact:true}).click();
+    await page.getByRole('button',{name:'Editar data de Prova fictícia',exact:true}).click();
+    await page.getByLabel('Nova data',{exact:true}).fill('2027-05-12');
+    await page.getByRole('button',{name:'Confirmar alteração de data',exact:true}).click();
+    await page.waitForFunction(()=>window.auditContext.marcosAcademicos.some(m=>m.nome==='Prova fictícia'&&m.data_prazo==='2027-05-12'));
+    assert.equal(criticalPayloads.filter(p=>p.tabela==='marcos_academicos'&&p.tipo==='UPDATE').length,1);
+    result.dataEditada=true;
     await page.setViewportSize({ width: 320, height: 800 });
     result.gestaoOverflow = await page.evaluate(() => ({
       width: innerWidth,
