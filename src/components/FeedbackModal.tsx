@@ -2,6 +2,10 @@ import React, { useState } from 'react';
 import { X, Printer, Mail, Check, Edit2, Sparkles, AlertCircle, FileText, Send, Save } from 'lucide-react';
 import { useSupervisao } from '../context/SupervisaoContext';
 import { AvaliacaoCompleta, Aluno, Turma } from '../types';
+import { lerNumero } from '../services/avaliacaoEngine';
+
+/** Nota ausente ou inválida aparece como "—", nunca como 0,0. */
+const notaLegivel = (v: unknown): string => { const n = lerNumero(v).valor; return n === null ? '—' : n.toFixed(1); };
 
 interface FeedbackModalProps {
   isOpen: boolean;
@@ -23,13 +27,13 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({
   const [editando, setEditando] = useState(false);
   const [textoFeedback, setTextoFeedback] = useState(
     avaliacao.feedback_gerado ||
-      `DEVOLUTIVA DE SUPERVISÃO\n\nEstudante: ${aluno.nome} (${aluno.identificador_academico})\nTurma: ${turma.nome}\nInstrumento: ${avaliacao.tipo_instrumento}\nNota Final: ${(Number(avaliacao.nota_final) || 0).toFixed(1)} / ${(Number(avaliacao.nota_maxima) || 10).toFixed(1)}\n\n${
+      `DEVOLUTIVA DE SUPERVISÃO\n\nEstudante: ${aluno.nome} (${aluno.identificador_academico})\nTurma: ${turma.nome}\nInstrumento: ${avaliacao.tipo_instrumento}\nNota Final: ${notaLegivel(avaliacao.nota_final)} / ${(Number(avaliacao.nota_maxima) || 10).toFixed(1)}\n\n${
         avaliacao.notas_criterios && avaliacao.notas_criterios.length > 0
           ? 'DESEMPENHO POR CRITÉRIO:\n' +
             avaliacao.notas_criterios
               .map(
                 c =>
-                  `• ${c.criterio_nome}: ${(Number(c.nota) || 0).toFixed(1)}/${(Number(c.nota_maxima) || 10).toFixed(1)}${
+                  `• ${c.criterio_nome}: ${notaLegivel(c.nota)}/${(Number(c.nota_maxima) || 10).toFixed(1)}${
                     c.comentario ? ` — ${c.comentario}` : ''
                   }`
               )

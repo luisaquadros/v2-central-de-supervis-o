@@ -1,4 +1,5 @@
-import QuadroAvaliacaoPrazo from '../components/QuadroAvaliacaoPrazo';
+import AvaliacaoAlunoPainel from '../components/avaliacao/AvaliacaoAlunoPainel';
+import ContribuicaoMonitora from '../components/avaliacao/ContribuicaoMonitora';
 import { resumirNotasMatricula, selecionarCriteriosAplicaveis } from '../services/avaliacaoResumo';
 import { entregasDoEstudante } from '../services/documentacaoAcademicaService';
 import { selecionarRssDoEstudante } from '../services/rssVinculos';
@@ -351,6 +352,9 @@ export const AlunoFichaView: React.FC<AlunoFichaViewProps> = ({
       {/* 1. RESUMO */}
       {activeTab === 'resumo' && (
         <div className="space-y-4">
+          {ehMonitora && perfilServidor?.operacoes.includes('CONTRIBUICAO_AVALIATIVA') && (
+            <ContribuicaoMonitora matriculaId={matriculaId} turmaId={turma.turma_id} periodoId={matricula.periodo_id} email={perfilServidor.email} />
+          )}
           {/* Card Resumo Compacto com Indicadores Clicáveis */}
           <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs">
             <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-3">
@@ -861,9 +865,8 @@ export const AlunoFichaView: React.FC<AlunoFichaViewProps> = ({
 
       {/* 6. AVALIAÇÃO TAB (Critérios configuráveis) */}
       {activeTab === 'avaliacao' && (
-        <QuadroAvaliacaoPrazo criterios={criterios} avaliacoes={studentAvaliacoes} ocorrencias={studentOcorrencias} matriculaId={matriculaId} turmaId={turma.turma_id} disciplinaId={turma.disciplina_id} />
-      )}
-      {activeTab === 'avaliacao' && (
+        <AvaliacaoAlunoPainel aluno={aluno} turma={turma} matriculaId={matriculaId} periodoId={matricula.periodo_id} grupoId={grupoId}
+          criterios={criterios} avaliacoes={studentAvaliacoes} ocorrencias={studentOcorrencias} documentos={documentos}>
         <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs space-y-4">
           <div className="flex items-center justify-between">
             <div>
@@ -941,6 +944,7 @@ export const AlunoFichaView: React.FC<AlunoFichaViewProps> = ({
             })}
           </div>
         </div>
+        </AvaliacaoAlunoPainel>
       )}
 
       {/* 7. FREQUÊNCIA TAB */}

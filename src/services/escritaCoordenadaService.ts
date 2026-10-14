@@ -75,3 +75,17 @@ export async function chamarServidor(caminho: string, metodo: 'GET' | 'POST' = '
   const res = await fetch(caminho, { method: metodo, headers: { 'X-Firebase-Id-Token': idToken }, signal: AbortSignal.timeout(60000) });
   return { status: res.status, corpo: await res.json().catch(() => ({})) };
 }
+
+/** Estrutura aditiva da avaliação (somente professora): GET = diagnóstico; POST = criação (exige confirmação e checksum de backup). */
+export async function chamarEstruturaAvaliacao(metodo: 'GET' | 'POST', corpo?: unknown): Promise<{ status: number; corpo: any }> {
+  const idToken = await provedorIdToken();
+  const token = await getAccessToken();
+  if (!idToken) throw new Error('Sessão expirada: entre novamente com a conta Google.');
+  if (!token) throw new Error('Sessão Google expirada.');
+  const res = await fetch('/api/estrutura/avaliacao', {
+    method: metodo,
+    headers: { Authorization: 'Bearer ' + token, 'X-Firebase-Id-Token': idToken, ...(corpo ? { 'Content-Type': 'application/json' } : {}) },
+    body: corpo ? JSON.stringify(corpo) : undefined, signal: AbortSignal.timeout(60000),
+  });
+  return { status: res.status, corpo: await res.json().catch(() => ({})) };
+}

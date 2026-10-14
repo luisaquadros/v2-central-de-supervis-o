@@ -66,7 +66,13 @@ export function criterioDaPlanilha(
     subcriterios: subs.map(s => ({ ...s, criterioId: c.criterio_id })),
     config: configuracao?.config ?? jsonOuNulo<ConfigCalculo>(c.config_calculo_json) ?? undefined,
     // a nota entra CRUA: a engine distingue ausente (null), inválida (sinalizada) e zero explícito
-    dados: { nota: nota ? nota.nota : null, ...extras },
+    dados: {
+      nota: nota ? nota.nota : null,
+      // `valor_original` guarda a nota bruta da fonte (ex.: prova 0–10, "5,0"); só alimenta o cálculo proporcional se configurado
+      ...(tipo === 'proportional' && nota && (nota as unknown as Record<string, unknown>).valor_original !== undefined
+        ? { valorBruto: (nota as unknown as Record<string, unknown>).valor_original } : {}),
+      ...extras,
+    },
   };
 }
 

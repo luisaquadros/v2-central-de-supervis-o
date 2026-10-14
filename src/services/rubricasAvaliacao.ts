@@ -396,3 +396,8 @@ export const CLASSIFICACAO_SUGERIDA: Array<{ padrao: RegExp; tipo: 'proportional
 export function sugerirClassificacao(nomeCriterio: string): (typeof CLASSIFICACAO_SUGERIDA)[number] | null {
   return CLASSIFICACAO_SUGERIDA.find(c => c.padrao.test(nomeCriterio)) ?? null;
 }
+/** Prefere o código estável da planilha (codigo_criterio); os nomes variam entre turmas. Continua sendo só sugestão. */
+export function sugerirClassificacaoCriterio(c: { codigo_criterio?: unknown; nome?: unknown }) {
+  const codigo = String(c.codigo_criterio ?? '').replaceAll('_', ' ');
+  return (codigo && sugerirClassificacao(codigo)) || sugerirClassificacao(String(c.nome ?? ''));
+}
