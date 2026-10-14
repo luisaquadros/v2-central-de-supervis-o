@@ -141,11 +141,18 @@ assert(resConflito.totalSemanas === 12, 'Total corresponde às doze janelas info
 assert(resConflito.semanaTexto === '11 / 12', 'Exibe próxima janela prevista com total do cronograma');
 assert(resConflito.semanasEncerradas === 10, 'Todas as semanas encerradas continuam contadas após o período');
 assert(resConflito.semanasEncerradasTexto === '10', 'Texto correto de semanas encerradas');
-assert(resConflito.conflitoIdentificado === true, 'Conflito de datas defasadas na base foi identificado e sinalizado');
-assert(
-  resConflito.avisoInconsistencia?.includes('Número da aula de supervisão') || false,
-  'Mensagem de inconsistência gerada para auditoria'
-);
+assert(resConflito.conflitoIdentificado === false, 'Número da aula diferente da semana RSS não é inconsistência');
+assert(resConflito.avisoInconsistencia === null, 'Nenhum falso alerta sobre contagens de ciclos distintos');
+// Sem calendário, aula presencial não define semana RSS nem reduz entregas esperadas.
+const semCalendario = calcularMetricasCronogramaRss('turma-conflito', [], situacaoOficial, '2026-10-06');
+assert(semCalendario.semanaAtual === null && semCalendario.semanaTexto === '—', 'Semana desconhecida não é inferida da aula');
+assert(semCalendario.semanasEncerradas === 4 && !semCalendario.conflitoIdentificado, 'Contagem RSS própria preservada');
+const ultimaSemana = calcularMetricasCronogramaRss('t', [], [{turma_id:'t',aula_cronograma_atual:5,rss_esperados_ate_hoje:12,rss_total_previsto:12}], '2026-10-06');
+assert(ultimaSemana.semanasEncerradas === 12 && !ultimaSemana.conflitoIdentificado, 'Semestre encerrado pode ter todas as semanas concluídas');
+const contagemInvalida = calcularMetricasCronogramaRss('t', [], [{turma_id:'t',rss_esperados_ate_hoje:13,rss_total_previsto:12}], '2026-10-06');
+assert(contagemInvalida.conflitoIdentificado, 'Contagem RSS maior que seu próprio total continua sinalizada');
+const datasAusentes = calcularMetricasCronogramaRss('turma-conflito', calConflito.map(c=>({...c,semana_inicio:'',semana_fim:''})), situacaoOficial, '2026-10-06');
+assert(datasAusentes.conflitoIdentificado && !datasAusentes.temDados, 'Cronograma sem datas mantém alerta real');
 
 // ============================================================================
 // 5. TESTE: VALIDAÇÃO DE ESCRITA SEGURA E TABELAS PROTEGIDAS

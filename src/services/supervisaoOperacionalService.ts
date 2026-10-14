@@ -786,9 +786,9 @@ export interface MetricasCronogramaRss {
 /**
  * Calcula metricas do cronograma semanal de prática e RSS de forma canônica:
  * - Aplica filtragem estrita por turma_id (NUNCA usa calendário de outra turma como fallback).
- * - Garante a invariante acadêmica: semanasEncerradas < semanaAtual (uma turma na semana 5/12
- *   nunca pode aparecer com 10 semanas de prática encerradas).
- * - Identifica e resolve divergências entre datas defasadas e marcadores manuais de status.
+ * - Deriva semanas de prática pelas datas, sem comparar com aulas presenciais.
+ * - Sem calendário, preserva somente contagens RSS explícitas; semana desconhecida fica neutra.
+ * - Ao terminar a prática, todas as semanas podem estar encerradas.
  */
 export function calcularMetricasCronogramaRss(
   turmaId: string | undefined,
@@ -817,35 +817,27 @@ export function calcularMetricasCronogramaRss(
   if (calendarioDaTurma.length === 0) {
     // Se a tabela oficial materializada situacao_atual_turmas tiver dados para esta turma
     if (situacaoTurma && (situacaoTurma.rss_total_previsto || situacaoTurma.rss_esperados_ate_hoje || situacaoTurma.aula_cronograma_atual)) {
-      const totalPrevisto = situacaoTurma.rss_total_previsto ? Number(situacaoTurma.rss_total_previsto) : 12;
-      let esperadosAteHoje =
-        situacaoTurma.rss_esperados_ate_hoje !== undefined && situacaoTurma.rss_esperados_ate_hoje !== ''
-          ? Number(situacaoTurma.rss_esperados_ate_hoje)
-          : null;
-      let aulaAtual =
-        situacaoTurma.aula_cronograma_atual !== undefined && situacaoTurma.aula_cronograma_atual !== ''
-          ? Number(situacaoTurma.aula_cronograma_atual)
-          : (esperadosAteHoje !== null ? Math.min(totalPrevisto, esperadosAteHoje + 1) : null);
-
-      let conflito = false;
-      let avisoInconsistencia: string | null = null;
-
-      // Invariante acadêmica: semanas encerradas NUNCA pode ser >= semana atual
-      if (aulaAtual !== null && esperadosAteHoje !== null && esperadosAteHoje >= aulaAtual) {
-        conflito = true;
-        avisoInconsistencia = `Inconsistência na tabela situacao_atual_turmas: RSS esperados (${esperadosAteHoje}) >= Semana atual (${aulaAtual}). Ajustado para ${Math.max(0, aulaAtual - 1)}.`;
-        esperadosAteHoje = Math.max(0, aulaAtual - 1);
-      }
-
+      // Aula de supervisão não informa a semana de prática: não inferir nem
+      // limitar contagens de RSS usando aula_cronograma_atual.
+      const inteiro = (v: unknown): number | null => {
+        if (v == null || String(v).trim() === '') return null;
+        const n = Number(v);
+        return Number.isInteger(n) && n >= 0 ? n : null;
+      };
+      const totalPrevisto = inteiro(situacaoTurma.rss_total_previsto);
+      const esperadosAteHoje = inteiro(situacaoTurma.rss_esperados_ate_hoje);
+      const invalido = (v: unknown) => v != null && String(v).trim() !== '' && inteiro(v) === null;
+      const conflito = invalido(situacaoTurma.rss_total_previsto) || invalido(situacaoTurma.rss_esperados_ate_hoje) ||
+        (totalPrevisto !== null && esperadosAteHoje !== null && esperadosAteHoje > totalPrevisto);
       return {
-        semanaAtual: aulaAtual,
+        semanaAtual: null,
         totalSemanas: totalPrevisto,
         semanasEncerradas: esperadosAteHoje,
-        semanaTexto: aulaAtual !== null ? `${aulaAtual} / ${totalPrevisto}` : '—',
+        semanaTexto: '—',
         semanasEncerradasTexto: esperadosAteHoje !== null ? `${esperadosAteHoje}` : '—',
-        temDados: true,
+        temDados: totalPrevisto !== null || esperadosAteHoje !== null,
         conflitoIdentificado: conflito,
-        avisoInconsistencia,
+        avisoInconsistencia: conflito ? 'Contagens de RSS inválidas ou superiores ao total previsto. Confira os dados da turma.' : null,
         fonte: 'situacao_atual_turmas',
       };
     }
@@ -891,8 +883,7 @@ export function calcularMetricasCronogramaRss(
   const primeiraFutura = semanas.find(s => s.inicio > hojeIso);
   const semanaAtual = atual?.seq ?? primeiraFutura?.seq ?? totalSemanas;
   const semanasEncerradas = encerradas.length;
-  const conflito = Boolean(situacaoTurma?.aula_cronograma_atual &&
-    Number(situacaoTurma.aula_cronograma_atual) !== semanaAtual);
+
   return {
     semanaAtual,
     totalSemanas,
@@ -900,10 +891,8 @@ export function calcularMetricasCronogramaRss(
     semanaTexto: `${semanaAtual} / ${totalSemanas}`,
     semanasEncerradasTexto: `${semanasEncerradas}`,
     temDados: true,
-    conflitoIdentificado: conflito,
-    avisoInconsistencia: conflito
-      ? 'Número da aula de supervisão difere da semana de prática; prevalece o calendário de prática.'
-      : null,
+    conflitoIdentificado: false,
+    avisoInconsistencia: null,
     fonte: 'calendario_rss',
   };
 }
