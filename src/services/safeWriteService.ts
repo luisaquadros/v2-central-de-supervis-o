@@ -37,6 +37,10 @@ export const TABELAS_AUTORIZADAS_ESCRITA = [
   'leituras_responsaveis',
   'grupos_pratica',
   'grupo_integrantes',
+  'config_avaliacao',
+  'rubricas_avaliacao',
+  'avaliacao_rascunhos',
+  'evidencias_avaliacao',
 ] as const;
 
 export type TabelaAutorizada = typeof TABELAS_AUTORIZADAS_ESCRITA[number];

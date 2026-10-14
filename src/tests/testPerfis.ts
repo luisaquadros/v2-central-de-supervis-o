@@ -83,7 +83,11 @@ const ctx = (d = dados) => ({
   assert.equal(tabelaLegivelPor({ ...m2b, operacoes: ['ENTREGAS'] }, 'entregas'), true);
   // sem coluna de vínculo não há como provar a turma: nada é liberado
   assert.deepEqual(filtrarLeitura('turmas', tab(['nome'], ['2B'], ['3B']), m2b, ctx()), [['nome']]);
-  for (const t of Object.keys(LEITURA_MONITORA)) assert(!/aval|ocorr|feedback|supervisao|semanais|orienta/.test(t), `${t} não pode estar na lista de leitura`);
+  // Exceções AUDITADAS (testContribuicaoMonitora): definição da rubrica (sem notas) e as PRÓPRIAS contribuições preliminares da monitora.
+  const EXCECOES_AUDITADAS = new Set(['rubricas_avaliacao', 'evidencias_avaliacao']);
+  for (const t of Object.keys(LEITURA_MONITORA)) assert(EXCECOES_AUDITADAS.has(t) || !/aval|ocorr|feedback|supervisao|semanais|orienta/.test(t), `${t} não pode estar na lista de leitura`);
+  assert.deepEqual(LEITURA_MONITORA.rubricas_avaliacao.operacao, 'CONTRIBUICAO_AVALIATIVA');
+  assert.deepEqual(LEITURA_MONITORA.evidencias_avaliacao.operacao, 'CONTRIBUICAO_AVALIATIVA');
   const adm = { papel: 'PROFESSORA_ADMIN' as const, email: 'a@x.com', turmas: ['*'], operacoes: [] };
   assert.equal(filtrarLeitura('alunos', dados.alunos, adm, ctx())!.length, 4, 'administradora vê tudo');
 }

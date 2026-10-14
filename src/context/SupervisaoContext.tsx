@@ -1,3 +1,4 @@
+import { ABAS_AVALIACAO, type NomeAbaAvaliacao } from '../services/estruturaAvaliacao';
 import { chaveItemOperacional, prepararRegistroOperacional, combinarOperacionais, contarLegadosLocais, type TipoOperacional } from '../services/operacionaisSheetsService';
 import { resumirDocumentacaoOficial, documentosPendentesOficiais } from '../services/documentacaoAcademicaService';
 import { interpretarStatusEntrega } from '../services/normalizacaoAcademica';
@@ -322,6 +323,13 @@ interface SupervisaoContextType {
   // Gestão de Encontros, Aulas Não Realizadas e Reagendamentos
   encontrosTurma: EncontroTurma[];
   preparacoesAula: PreparacaoAula[];
+  /** Linhas brutas das abas aditivas da avaliação; converta com services/estruturaAvaliacao.ts */
+  configAvaliacao: Record<string, unknown>[];
+  rubricasAvaliacao: Record<string, unknown>[];
+  rascunhosAvaliacao: Record<string, unknown>[];
+  evidenciasAvaliacao: Record<string, unknown>[];
+  /** Insere ou atualiza (por chave) uma linha das abas aditivas da avaliação, com versão, fila e log. */
+  salvarLinhaAvaliacao: (tabela: NomeAbaAvaliacao, linha: Record<string, unknown>) => Promise<void>;
   adicionarPreparacaoAula: (dados: Pick<PreparacaoAula, 'turma_id' | 'data_aula' | 'tipo' | 'texto'>) => Promise<void>;
   alterarPreparacaoAula: (id: string, mudancas: Partial<Pick<PreparacaoAula, 'status' | 'data_aula' | 'texto' | 'tipo'>>) => Promise<void>;
   excluirPreparacaoAula: (id: string) => Promise<void>;
@@ -576,6 +584,10 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
   // Gestão Operacional de Encontros (Feriados, Cancelamentos e Reagendamentos)
   const [preparacoesAula, setPreparacoesAula] = useState<PreparacaoAula[]>([]);
+  const [configAvaliacao, setConfigAvaliacao] = useState<Record<string, unknown>[]>([]);
+  const [rubricasAvaliacao, setRubricasAvaliacao] = useState<Record<string, unknown>[]>([]);
+  const [rascunhosAvaliacao, setRascunhosAvaliacao] = useState<Record<string, unknown>[]>([]);
+  const [evidenciasAvaliacao, setEvidenciasAvaliacao] = useState<Record<string, unknown>[]>([]);
   const [encontrosTurma, setEncontrosTurma] = useState<EncontroTurma[]>(() => {
     try {
       if (typeof window !== 'undefined') {
@@ -646,6 +658,10 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     if (Array.isArray(data.registrosSupervisao)) setRegistrosSupervisao(data.registrosSupervisao);
     if (Array.isArray(data.encontrosTurma)) setEncontrosTurma(data.encontrosTurma);
     if (Array.isArray(data.preparacoesAula)) setPreparacoesAula(data.preparacoesAula);
+    if (Array.isArray(data.configAvaliacao)) setConfigAvaliacao(data.configAvaliacao);
+    if (Array.isArray(data.rubricasAvaliacao)) setRubricasAvaliacao(data.rubricasAvaliacao);
+    if (Array.isArray(data.rascunhosAvaliacao)) setRascunhosAvaliacao(data.rascunhosAvaliacao);
+    if (Array.isArray(data.evidenciasAvaliacao)) setEvidenciasAvaliacao(data.evidenciasAvaliacao);
     if (Array.isArray(data.monitoramentoDocumentos)) setMonitoramentoDocumentos(data.monitoramentoDocumentos);
     if (Array.isArray(data.avaliacoesCompletas)) setAvaliacoesCompletas(data.avaliacoesCompletas);
     if (Array.isArray(data.sincronizacao)) setSincronizacao(data.sincronizacao);
@@ -954,6 +970,22 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     const lista = preparacoesAula.filter(p => p.preparacao_id !== id);
     await persistirMudancaWeb('preparacoes_aula', 'DELETE', registro, lista);
     setPreparacoesAula(lista);
+  };
+
+  const salvarLinhaAvaliacao = async (tabela: NomeAbaAvaliacao, linha: Record<string, unknown>): Promise<void> => {
+    const chave = ABAS_AVALIACAO[tabela].pk;
+    const id = String(linha[chave] ?? '').trim();
+    if (!id) throw new Error('Registro sem identificador.');
+    const atuais: Record<string, unknown>[] = tabela === 'config_avaliacao' ? configAvaliacao
+      : tabela === 'rubricas_avaliacao' ? rubricasAvaliacao
+      : tabela === 'avaliacao_rascunhos' ? rascunhosAvaliacao : evidenciasAvaliacao;
+    const existe = atuais.some(r => String(r[chave] ?? '').trim() === id);
+    const lista = existe ? atuais.map(r => String(r[chave] ?? '').trim() === id ? linha : r) : [...atuais, linha];
+    await persistirMudancaWeb(tabela, existe ? 'UPDATE' : 'INSERT', linha, lista);
+    if (tabela === 'config_avaliacao') setConfigAvaliacao(lista);
+    else if (tabela === 'rubricas_avaliacao') setRubricasAvaliacao(lista);
+    else if (tabela === 'avaliacao_rascunhos') setRascunhosAvaliacao(lista);
+    else setEvidenciasAvaliacao(lista);
   };
 
   const reconectarESincronizar = async (): Promise<void> => {
@@ -2887,6 +2919,11 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         // Operação: Encontros, Aulas Não Realizadas e Reagendamentos
         encontrosTurma,
         preparacoesAula,
+        configAvaliacao,
+        rubricasAvaliacao,
+        rascunhosAvaliacao,
+        evidenciasAvaliacao,
+        salvarLinhaAvaliacao,
         adicionarPreparacaoAula,
         alterarPreparacaoAula,
         excluirPreparacaoAula,
