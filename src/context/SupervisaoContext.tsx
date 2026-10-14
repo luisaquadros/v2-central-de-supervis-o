@@ -1694,7 +1694,7 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     const periodo=periodos.find(p=>p.periodo_id===periodoId);if(!periodo)throw new Error('Período não encontrado.');
     const {carregarFilaSincronizacao}=await import('../services/indexedDbService');
     const fila=await carregarFilaSincronizacao();
-    const revisao=revisarEncerramento(periodo,{turmas,matriculas,criterios,avaliacoes,pendencias:getPendenciasOperacionais(),pendentesSync:fila.length});
+    const revisao=revisarEncerramento(periodo,{turmas,matriculas,criterios,avaliacoes,pendencias:getPendenciasCanonicas(periodoId),pendentesSync:fila.length});
     if(revisao.pendencias.length)throw new Error('Resolva as pendências identificadas antes de arquivar.');
     if(roteirosPeriodo.some(r=>r.periodo_id===periodoId&&r.estado==='PENDENTE'))throw new Error('Conclua ou confira a criação deste período antes de arquivar.');
     const registro={...periodo,status:'ARQUIVADO' as const};

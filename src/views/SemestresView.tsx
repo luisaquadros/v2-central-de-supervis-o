@@ -29,7 +29,7 @@ export function SemestresView() {
         matriculas: c.matriculas,
         criterios: c.criterios,
         avaliacoes: c.avaliacoes,
-        pendencias: c.getPendenciasOperacionais(),
+        pendencias: c.getPendenciasCanonicas(periodo.periodo_id),
         pendentesSync: pendentes,
       })
     : null;
