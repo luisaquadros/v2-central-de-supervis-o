@@ -19,3 +19,9 @@ lint ✔ · `npm test` (32 arquivos) ✔ · build ✔ · `test:worker-real` ✔ 
 1. **Precisa de autorização**: retificação de chamada encerrada (altera frequência já confirmada, ainda que com trilha).
 2. ✔ Abas confidenciais da ficha ocultas para monitora (implementado; não exercitado no navegador com perfil monitora).
 3. (Bloqueado por D2/D3/validação real) regras de falta/atraso, rubricas, ativação de crons.
+
+## Engine de avaliação (nova)
+- Implementada: `avaliacaoEngine.ts`, `avaliacaoAdaptador.ts`, quadro "Avaliação até o prazo" na aba Avaliação da ficha. Testes: `testAvaliacaoEngine`, `testQuadroAvaliacaoPrazo` (na cadeia de `npm test`). Detalhes em DOCUMENTO_MESTRE §4.1.
+- Nenhum critério/subcritério/dado removido; nenhuma gravação nova; sem coluna nova na planilha.
+- **Depende da professora (D3):** confirmar pesos e regras por turma, tipo de cada critério (`tipo_calculo`), `progressRatio` do prazo, total de registros por turma, e se o texto de feedback deve citar o quadro.
+- Próximo (após D3): ligar configuração por turma, alimentar RSS/relatório no quadro e gerar o rascunho de devolutiva a partir dele.

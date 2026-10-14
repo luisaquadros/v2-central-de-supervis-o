@@ -86,6 +86,16 @@ Colunas escritas pela sincronização: `data_modificacao_drive`, `consultado_em`
 
 ---
 
+### 4.1 Engine de avaliação (acumulado até o prazo)
+
+- **Onde:** `src/services/avaliacaoEngine.ts` (cálculo puro) + `avaliacaoAdaptador.ts` (liga `criterios_avaliacao`/`avaliacoes`/`ocorrencias`, somente leitura) + `QuadroAvaliacaoPrazo.tsx` (aba Avaliação da ficha; oculta para monitora).
+- **Estrutura encontrada:** plana, 8 critérios por turma (`nota_maxima`, `peso`, `ordem`, `ativo`), 1 nota por matrícula×critério (`avaliacoes`), comentários/pontos por critério em `avaliacoes_completas.notas_criterios_json`. **Não há subcritérios nem descritores implementados.** Nada foi removido, renomeado ou migrado; nenhuma coluna criada na planilha.
+- **Sem configuração, todo critério é `manual`** (usa a nota já lançada, como antes). Configuração opcional por critério: colunas `tipo_calculo`, `config_calculo_json`, `subcriterios_json` (ainda inexistentes; só lidas se aparecerem). Rubrica/híbrido sem fórmula declarada → `aguardando_decisao` (não inventa).
+- **Regras implementadas (parâmetros informados pela professora, configuráveis):** prova = nota/10×máx; relatório: antecipado/no prazo = máx, após prazo = máx−0,10 (dedução auditável, `latePenalty`), desconhecido = `a_conferir`; RSS = concluídos/**total do semestre**×máx (nunca /esperados até o prazo); contínuo = máx×`progressRatio` (só em `calculationMode: 'progress'`).
+- **Invariantes:** null ≠ zero; `a_conferir`/`nao_avaliado`/`aguardando_decisao` fora do acumulado; sem média parcial, nota convertida para 10 ou projeção; ocorrência sem regra cadastrada nunca desconta (fica pendente); fora do limite → `a_conferir`. `auditarAvaliacao` confere esses invariantes.
+- **Pendente (D3):** confirmar pesos/regras por turma e onde vive a configuração (hoje só em código/colunas opcionais); progresso do período (`progressRatio`) e total de registros por turma ainda não alimentados pela interface; histórico de alterações de nota usa o `log_alteracoes` existente.
+- **Validado só em simulação** (`testAvaliacaoEngine`, `testQuadroAvaliacaoPrazo`); a ficha de exemplo reproduz 4,29.
+
 ## 5. Permissões e segurança
 
 **Perfis** (decididos no servidor; configuração no Worker, não na planilha, para que quem edita a planilha não conceda acesso a si mesmo):

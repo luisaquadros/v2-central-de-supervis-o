@@ -1,3 +1,4 @@
+import QuadroAvaliacaoPrazo from '../components/QuadroAvaliacaoPrazo';
 import { entregasDoEstudante } from '../services/documentacaoAcademicaService';
 import { selecionarRssDoEstudante } from '../services/rssVinculos';
 import { LeituraRss } from '../components/LeituraRss';
@@ -862,6 +863,9 @@ export const AlunoFichaView: React.FC<AlunoFichaViewProps> = ({
       )}
 
       {/* 6. AVALIAÇÃO TAB (Critérios configuráveis) */}
+      {activeTab === 'avaliacao' && (
+        <QuadroAvaliacaoPrazo criterios={disciplinaCriterios} avaliacoes={studentAvaliacoes} ocorrencias={studentOcorrencias} matriculaId={matriculaId} turmaId={turma.turma_id} />
+      )}
       {activeTab === 'avaliacao' && (
         <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs space-y-4">
           <div className="flex items-center justify-between">
