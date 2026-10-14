@@ -111,9 +111,9 @@ Colunas escritas pela sincronização: `data_modificacao_drive`, `consultado_em`
 - Versões imutáveis: editar pesos cria nova versão (rascunho até aprovar); rascunhos guardam a versão e os pesos usados. Documento **coletivo** só gera sugestão; a professora adota item a item na avaliação individual.
 - A nota só vira oficial por **confirmação explícita** (diálogo com valor proposto × oficial atual e diferença), pelo caminho de gravação existente (`saveAvaliacao`: fila, coordenador, log).
 
-### 4.4 Estrutura aditiva e versionada (4 abas novas; nenhuma existente alterada)
+### 4.4 Estrutura aditiva e versionada (5 abas novas; nenhuma existente alterada)
 
-`config_avaliacao` (configuração por turma+período+critério) · `rubricas_avaliacao` (uma linha por versão) · `avaliacao_rascunhos` (níveis, ajustes, histórico) · `evidencias_avaliacao` (por referência a registros existentes; origem, polaridade, preliminar). Todas passam pelo coordenador (versão, idempotência, log sem texto livre/JSON). Abas únicas (não se cria aba por semestre).
+`config_avaliacao` (configuração por turma+período+critério) · `rubricas_avaliacao` (uma linha por versão) · `avaliacao_rascunhos` (níveis, ajustes, histórico) · `evidencias_avaliacao` (por referência a registros existentes; origem, polaridade, preliminar) · `rss_ajustes` (correção auditável de associação e observações de RSS, §4.6). Todas passam pelo coordenador (versão, idempotência, log sem texto livre/JSON). Abas únicas (não se cria aba por semestre).
 
 - **Criação:** Configurações → "Estrutura da avaliação" → `GET/POST /api/estrutura/avaliacao`. POST só adiciona abas ausentes + cabeçalho, é idempotente, **desligada por padrão** (`ESTRUTURA_AVALIACAO=ligada`), exige confirmação e checksum de backup (o backup é gerado pelo app; o servidor só confere o formato). Aba existente com cabeçalho diferente é apenas relatada.
 - Leitura do servidor tolera abas ainda inexistentes (leem vazias).
@@ -204,7 +204,7 @@ Entradas inválidas (sem turma, sem operação, `"*"`, e-mail ruim) são **ignor
 
 ## 7. Testes e evidências
 
-Comandos: `npm run lint` · `npm test` (41 arquivos) · `npm run build` · `npm run test:worker-real` (também no CI).
+Comandos: `npm run lint` · `npm test` (43 arquivos) · `npm run build` · `npm run test:worker-real` (também no CI).
 
 | Prova | Cobertura | Resultado |
 |---|---|---|
@@ -215,7 +215,7 @@ Comandos: `npm run lint` · `npm test` (41 arquivos) · `npm run build` · `npm 
 | `testMonitoramentoDocumentos` | recência por data, Olyver (duas matrículas, documentos separados), grupo coletivo uma vez, condição de horário alternativo | ✅ |
 | `testSincronizacaoDocumentos` | só metadados, 4 colunas, sem duplicar, uma por vez, 08:00/18:00, falhas, histórico; mutação deliberada foi detectada | ✅ |
 | **`test:worker-real`** (workerd + planilha, Drive e Google simulados em loopback, conta de serviço falsa) | sem identidade 401; conta sem papel 403; administradora 200 + log; reenvio idempotente; versão antiga 409; simultâneas 200+409; **monitora**: grava só com a conta de serviço, outra turma 403 `FORA_DA_TURMA`, nota 403, leitura de avaliações 403, leitura filtrada (sem e-mail/justificativa/observação); **sincronização** manual (403 monitora), duas simultâneas 200+409, **cron `0 11 * * *` e `0 21 * * *` executam, outro cron é ignorado**, histórico `AGENDADO`; corpo > 128 KB 413 | ✅ |
-| `testAvaliacaoEngine`, `testAvaliacaoUnificacao`, `testAvaliacaoEstruturaReal`, `testRubricasAvaliacao`, `testEstruturaAvaliacao`, `testContribuicaoMonitora`, `testDevolutivaAvaliacao`, `testQuadroAvaliacaoPrazo` | oficial×prévia×prazo; ficha 4,29 preservada; unificação (soma idêntica à legada, inválido sinalizado); estrutura real 6×8=10,0; rubrica/níveis/versões/grupo; persistência pelo coordenador e criação idempotente de abas; permissões da monitora no handler do Worker; devolutiva | ✅ |
+| `testAvaliacaoEngine`, `testAvaliacaoUnificacao`, `testAvaliacaoEstruturaReal`, `testRubricasAvaliacao`, `testEstruturaAvaliacao`, `testContribuicaoMonitora`, `testDevolutivaAvaliacao`, `testQuadroAvaliacaoPrazo`, `testRssEntregas`, `testRssMonitora` | oficial×prévia×prazo; ficha 4,29 preservada; unificação (soma idêntica à legada, inválido sinalizado); estrutura real 6×8=10,0; rubrica/níveis/versões/grupo; persistência pelo coordenador e criação idempotente de abas; permissões da monitora no handler do Worker; devolutiva | ✅ |
 | Navegador (planilha simulada, dados anonimizados) | painel de documentos na turma e na ficha (grupo uma vez; individual por matrícula); selo de horário alternativo; chamada enviou 13 de 14 matrículas (a alternativa ficou de fora); backup baixar/conferir/restaurar; botão "Sincronizar agora" | ✅ |
 
 **Defeito encontrado pelo runtime real:** `worker.ts` exportava auxiliares e o Cloudflare não inicia Worker assim; o CI anterior (`build` + `--dry-run`) não detectava. Corrigido e coberto por teste.

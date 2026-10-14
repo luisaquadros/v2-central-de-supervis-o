@@ -23,8 +23,15 @@ lint ✔ · `npm test` (32 arquivos) ✔ · build ✔ · `test:worker-real` ✔ 
 ## Avaliação formativa (D3 aplicada) — estado
 - **Implementado (simulado/local):** engine oficial×prévia×prazo×divergência; cálculo unificado entre `AvaliacaoView` e `AlunoFichaView` (`avaliacaoResumo.ts`); nota inválida sinalizada (nunca 0); rubrica de Documentação versionada com níveis e descritores por estágio; estrutura aditiva de 4 abas (coordenador, log sem texto livre); `/api/estrutura/avaliacao` (diagnóstico + criação aditiva, desligada por padrão); evidências; contribuição preliminar de monitora (servidor); avaliação parcial/final; devolutiva determinística; painel "Estrutura da avaliação" em Configurações. Detalhes: `DOCUMENTO_MESTRE.md` §4.1–4.5, §5, §8.1.
 - **Nada alterado:** notas oficiais, critérios, abas existentes, planilha real. Abas novas **ainda não criadas** em nenhuma planilha.
-- **Testes:** lint · `npm test` (41 arquivos) · build · `test:worker-real` (novo cenário da estrutura) · navegador desktop e celular (dados anonimizados) — ver commit final.
+- **Testes:** lint · `npm test` (43 arquivos) · build · `test:worker-real` (novo cenário da estrutura) · navegador desktop e celular (dados anonimizados) — ver commit final.
 - **Auditoria da estrutura real:** 6 turmas × 8 critérios = 10,0; nomes variam, `codigo_criterio` estável.
+
+## RSS simplificado (decisão de 14/10) — implementado
+- **Regra:** dois status (ENTREGUE / NÃO ENTREGUE), identificação automática por unidade+turma+semana (semana_rss ou data no cronograma), sem validação individual, sem desconto. Detalhes em `DOCUMENTO_MESTRE.md` §4.6.
+- **Preservado:** `registros_semanais` nunca é alterada; 0 entregas perdidas na verificação com a planilha anonimizada (86 matrículas); correções de associação e observações em `rss_ajustes` (aditiva, auditável, reversível).
+- **Monitora:** vê o status administrativo (lista branca de colunas, delegação `ENTREGAS`); nunca o conteúdo clínico. `CLAUDE.md` atualizado nesse ponto.
+- **Testes:** `testRssEntregas`, `testRssMonitora`, testes de RSS existentes ajustados à nova regra (registro "em revisão" agora conta como entrega), `test:worker-real` (5 abas), navegador desktop e celular (administradora) e desktop (monitora).
+- **Pendente (você):** criar a aba `rss_ajustes` junto com as demais (painel "Estrutura da avaliação e correções de RSS", §8.1) numa cópia da planilha; confirmar que "atraso" = entrega depois do fim da semana do cronograma (hoje só informativo).
 
 ## Depende da professora
 1. **Registros semanais × Seminário/Atividade (0,5):** a ficha tem "Registros semanais 0,5"; a planilha tem "Seminário/Atividade avaliativa 0,5". Qual vale? (nenhum critério novo foi criado.)
