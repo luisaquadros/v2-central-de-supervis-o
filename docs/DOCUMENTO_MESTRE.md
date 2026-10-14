@@ -135,7 +135,7 @@ Entradas inválidas (sem turma, sem operação, `"*"`, e-mail ruim) são **ignor
 | Cadastros restantes (4 tabelas) | ❌ | ver §3: risco de sobrescrever fórmulas / dependem de D3 |
 | Backup v2.0 (checksum) · conferência · restauração por registro | ✅ | restauração testada só em planilha simulada |
 | `monitoramento_documentos` na turma e na ficha (aluno e grupo) | ✅ | existência, data de modificação, data de verificação, status, erros e "a conferir" |
-| Condição `SUPERVISAO_HORARIO_ALTERNATIVO` (Olyver: matrículas 2B e 3B) | ✅ regra e interface · ⏸ dados reais | selo na turma, ficha e chamada; sem presença/falta automática |
+| Condição `SUPERVISAO_HORARIO_ALTERNATIVO` (estudante com supervisão alternativa: matrículas 2B e 3B) | ✅ regra e interface · ⏸ dados reais | selo na turma, ficha e chamada; sem presença/falta automática |
 | Conferência dos vínculos da aba real (Configurações) | ✅ | roda no navegador da administradora |
 | Sincronização Drive→planilha ("Sincronizar agora", lock, histórico, falhas) | ✅ simulado · ⏸ real | só administradora |
 | Cron 08:00 e 18:00 (Brasília) | ⏸ | lógica e horários testados; **não declarados** em `wrangler.jsonc` |
@@ -157,9 +157,9 @@ Comandos: `npm run lint` · `npm test` (32 arquivos) · `npm run build` · `npm 
 | `testPerfis` | configuração, matriz de escrita, leitura filtrada, conta de serviço (assinatura JWT conferida), monitora × administradora ponta a ponta | ✅ |
 | `testMigracaoCadastro` | por tabela (`alunos`, `matriculas`, `turmas`, `horarios_turma`): edição, preservação de colunas, conflito, exclusão com versão | ✅ |
 | `testAuditoriaLog`, `testE1Integracao`, `testBackup` | log sem texto livre, idempotência, conflito, restauração | ✅ |
-| `testMonitoramentoDocumentos` | recência por data, Olyver (duas matrículas, documentos separados), grupo coletivo uma vez, condição de horário alternativo | ✅ |
+| `testMonitoramentoDocumentos` | recência por data, estudante com supervisão alternativa (duas matrículas, documentos separados), grupo coletivo uma vez, condição de horário alternativo | ✅ |
 | `testSincronizacaoDocumentos` | só metadados, 4 colunas, sem duplicar, uma por vez, 08:00/18:00, falhas, histórico; mutação deliberada foi detectada | ✅ |
-| **`test:worker-real`** (workerd + planilha, Drive e Google simulados em loopback, conta de serviço falsa) | sem identidade 401; conta sem papel 403; administradora 200 + log; reenvio idempotente; versão antiga 409; simultâneas 200+409; **monitora**: grava só com a conta de serviço, outra turma 403 `FORA_DA_TURMA`, nota 403, leitura de avaliações 403, leitura filtrada (sem e-mail/justificativa/observação); **sincronização** manual (403 monitora), duas simultâneas 200+409, **cron `0 11 * * *` e `0 21 * * *` executam, outro cron é ignorado**, histórico `AGENDADO`; corpo > 128 KB 413 | ✅ |
+| **`test:worker-real`** (workerd + planilha, Drive e Google simulados em loopback, conta de serviço falsa) | sem identidade 401; conta sem papel 403; administradora 200 + log; reenvio idempotente; versão antiga 409; simultâneas 200+409; **monitora**: chamada bloqueada inclusive na própria turma, outra turma 403 `FORA_DA_TURMA`, nota 403, leitura de avaliações 403, leitura filtrada (sem e-mail/justificativa/observação); **sincronização** manual (403 monitora), duas simultâneas 200+409, **cron `0 11 * * *` e `0 21 * * *` executam, outro cron é ignorado**, histórico `AGENDADO`; corpo > 128 KB 413 | ✅ |
 | Navegador (planilha simulada, dados anonimizados) | painel de documentos na turma e na ficha (grupo uma vez; individual por matrícula); selo de horário alternativo; chamada enviou 13 de 14 matrículas (a alternativa ficou de fora); backup baixar/conferir/restaurar; botão "Sincronizar agora" | ✅ |
 
 **Defeito encontrado pelo runtime real:** `worker.ts` exportava auxiliares e o Cloudflare não inicia Worker assim; o CI anterior (`build` + `--dry-run`) não detectava. Corrigido e coberto por teste.
@@ -167,7 +167,7 @@ Comandos: `npm run lint` · `npm test` (32 arquivos) · `npm run build` · `npm 
 ### Não validado com a planilha oficial e o Worker real ❗
 - Nenhuma execução contra a planilha oficial, o Google, o Drive ou o Firebase **reais**. Os testes usam simulações fiéis à API.
 - **Aba `monitoramento_documentos` real:** só foi possível confirmar pelo Drive que existe com **17 colunas × 3 linhas** (cabeçalho + 2 linhas). Os valores das células e os nomes exatos das colunas **não foram lidos**; a leitura é por nome de coluna e tolera extras, mas os cabeçalhos reais precisam conferir. Use *Configurações → Conferência de documentos e horário alternativo* (roda no seu navegador, sem enviar nada).
-- **Vínculos do Olyver:** não verificados na planilha real (a matrícula 3B/2B e o valor em `papel_na_turma`). A mesma conferência lista as matrículas marcadas.
+- **Vínculos do estudante com supervisão alternativa:** não verificados na planilha real (a matrícula 3B/2B e o valor em `papel_na_turma`). A mesma conferência lista as matrículas marcadas.
 - Conta de serviço, `ACESSOS_JSON` e Cron Triggers reais.
 
 ---
@@ -200,9 +200,61 @@ O teste `testSincronizacaoDocumentos` recusa qualquer outro valor. **Desligar:**
 
 ## 10. Próximas etapas priorizadas
 
-1. **Validação real (bloqueia o resto):** itens de §1 e §8 numa cópia da planilha; conferir cabeçalhos e vínculos do Olyver.
+1. **Validação real (bloqueia o resto):** itens de §1 e §8 numa cópia da planilha; conferir cabeçalhos e vínculos do estudante com supervisão alternativa.
 2. **E2 restante:** conferir e migrar as 4 tabelas restantes; decidir D5.
 3. **E3 restante:** retificação de chamada encerrada; falta/atraso/justificativa/dispensa separados (D2, depende do regulamento); diário e participação.
 4. **E4:** RSS original imutável, tela de conferência de vínculos, janela operacional de 7 dias sem cortar histórico.
 5. **E5:** rubricas versionadas, competências, devolutiva com evidência (D3).
 6. **E6:** menu (Agenda/Acervo), pendências tipadas, fechamento semestral.
+
+## 8. Checkpoint Codex — 14/10/2026
+
+### Referências e arquitetura efetiva
+PR #46 permanece **aberto, não integrado**, head `3cf4bc2`; main `d707105`. Trabalho isolado em branches próprias: estabilização `bf6bb05`, PRISMA `3c2b4b6`, gestão/homologação sobre essa base. Nenhum merge, deploy, alteração de credencial, migração D1 ou escrita nos recursos externos.
+
+React → serviços/contexto → autenticação Firebase verificada no Worker → coordenador serial por planilha → Google Sheets. Cada escrita crítica usa identidade verificada, ID de operação, base de comparação, recibo durável e log. Resposta perdida é reconciliada antes de repetir; a fila conserva o mesmo ID/corpo depois do primeiro envio. IndexedDB é cache/fila, não prova de gravação remota. Conflitos exigem revisão; adotar a versão oficial arquiva a proposta local, sem sobrescrevê-la automaticamente. Conta/titular da fila e do token OAuth são conferidos.
+
+### Gestão contínua, sem novas abas por semestre
+- `semestreService`: valida identificação/datas, remapeia IDs de turmas e critérios, reutiliza o catálogo de disciplinas, cria nova vigência de horários e marco de início das aulas quando fornecido. Não copia matrículas, notas, frequências, RSS, documentos, pareceres ou cancelamentos/reagendamentos antigos. Competências/modelos/regras administrativas sem modelo canônico confirmado não são copiados automaticamente.
+- Rubrica herdada: `A_CONFERIR`; professora confere explicitamente. Pontos máximos/pesos e descrições vêm dos critérios existentes. Critério usado em avaliação não é editado em lugar; versionamento formal permanece pendente. Validação das avaliações detalhadas verifica critérios, escopo, limites e consistência com a soma já utilizada pela interface; não muda pesos ou notas armazenadas.
+- CSV de cronograma: prévia, datas explícitas, origem/status/escopo, bloqueio de repetidos, somente inserção. Datas ausentes não são estimadas. Edição de marco existente ainda depende de interface específica; importação não substitui registros.
+- Inscrição: Google Forms institucional existente + QR local; importação das respostas por CSV pela professora. Usa `alunos` e `matriculas`, com `PENDENTE` antes da aprovação; rejeição mantém matrícula cancelada. RA identifica cadastro existente; conferência humana precede recebimento, sem atualizar dados pessoais antigos silenciosamente. Abrir/fechar respostas e coleta automática continuam no Forms; integração automática não foi provisionada.
+- Grupos: criação/vínculos datados apenas no contexto coletivo reconhecido pelas regras existentes; IDs próprios, membros por matrícula, vínculos ativos não duplicados e controle de turma no servidor. Documentação coletiva continua uma referência única.
+- Encerramento: conferência de pendências conhecidas/fila/avaliações + declaração explícita de revisão docente. Servidor também recusa inscrições/rubricas/avaliações pendentes; período arquivado bloqueia edições comuns inclusive por chamadas diretas. Arquivo não significa homologação de notas, nem validação automática de reposições/pareceres ainda sem módulo. Retificação formal não está habilitada.
+
+### Confiabilidade e segurança
+- Monitoras não escrevem frequências/encontros, mesmo com delegação legada `CHAMADA`; leitura legada permanece filtrada e sem justificativas/observações. Negação acontece antes de solicitar credencial Google. Notas, critérios e ocorrências continuam restritos no servidor.
+- Validação de período da matrícula, RA/matrícula duplicados, critério de outra turma, grupo/integrante incompatíveis, identidade imutável da matrícula, chamada encerrada e relações antes de exclusão. Frequências e avaliações não têm exclusão comum.
+- `avaliacoes_completas`: validação dos critérios dentro do JSON, evitando limite inválido, critério repetido/alheio ou total inconsistente. Rascunho permanece distinto de conclusão.
+- Logs ocultam textos pessoais/livres e JSON estruturado (incluindo comentários dentro da rubrica). Mantêm autor verificado, horário, operação, campos e valores escalares necessários.
+- `/api/diagnostico`: autenticado, somente professora, mostra observação real do Worker/bindings. Configuração não equivale a acesso Google. Interface usa datas reais de leitura/escrita e fila; documentos e backup conservam seus painéis de conferência.
+- Drive: somente metadados, execução serial, estados de acesso/arquivo/conferência separados. `0 11 * * *` e `0 21 * * *` correspondem a 08h/18h em Brasília, conforme configuração/testes locais. **Agendamentos não ativados.**
+- Backup v2: checksum/contagens/referências, dados operacionais, fila/titular e arquivos de recuperação. Restauração por registro via mesma persistência, sem exclusão do trabalho posterior. Retenção institucional não definida; nenhuma limpeza automática. Cache/backup local exigem política para dispositivos compartilhados e proteção institucional.
+
+### Evidências e cobertura
+Fontes externas consultadas **somente em leitura**: especificação v1.2/anexo, metadados/cabeçalhos da planilha de desenvolvimento, amostra dos oito critérios e ACLs da planilha/pasta fornecidas. Não apareceu permissão pública nesses dois recursos; não equivale a auditoria completa do Drive ou a teste da conta de serviço. Não foi lido conteúdo clínico.
+
+37 programas de teste, TypeScript, build, auditoria de dependências, Worker real local (`workerd`) e navegador. O cenário 2027.1 usa 3 turmas, 54 matrículas/51 alunos, vínculos em duas turmas, matrícula alternativa, 3 grupos/18 integrantes, 6 semanas, 318 frequências e 18 encontros. Cobre inscrições pendentes/aprovação, rubrica/copiar/confirmar, zero versus ausência, replay, nota de outro contexto, bloqueio de alteração após fechamento, arquivo e histórico. QR decodificado opticamente; backup conferido e restauração efetiva exercitada pelo teste de backup em planilha simulada.
+
+UI: nove telas claro/escuro, cinco cenários de interação, 320–1440 px/lista de 60 pessoas, foco/escape de modal e menu, contraste/axe WCAG 2/2.1/2.2 AA, prévia sem gravação, confirmação explícita, erro preservando formulário, nota digitada mantida na sincronização, ausência de dados sem falso “regular”. Artefatos locais em `artifacts/ui-prisma/`; reprodução: `npm run test:ui` (Chromium instalado ou `CHROMIUM_PATH`). CI inclui testes UI, sem autorização de produção.
+
+**Distinções:** navegador usa API simulada; handler/coordenador usam Sheets/Drive/JWKS simulados; `workerd` é runtime real local com APIs simuladas. Leituras externas de metadados são reais. Não houve teste de escrita/restauração/Google/Firebase reais ou produção, nem leitor de tela/dispositivo físico.
+
+### Diagnóstico e pendências
+**PARCIALMENTE CONCLUÍDO · NÃO APTO para homologação do semestre completo.**
+
+| Prioridade | Situação |
+|---|---|
+| P0 | Falhas reproduzidas de permissão de chamada, vínculo cruzado, exposição de JSON em log e estados falsos corrigidas/mitigadas no escopo testado. Infraestrutura/autorização reais não homologadas. |
+| P1 | Participação/diário/competências estruturados, ciclo de reposição conforme D2, pareceres de monitoras/revisão docente, homologação/versionamento oficial e retificação formal ainda incompletos. Não simulados como sucesso. |
+| P2 | Criação/clonagem/importação é sequencial, não transação entre tabelas: interrupção preserva progresso/fila, exige conferência antes de repetir. Coleta automática/abertura-fechamento do Forms, correção de inscrição já recebida, edição de marcos, política de retenção/cache/backup e teste de escala de vários anos pendentes. |
+| P3 | Componentes legados ainda usam utilidades antigas; migração gradual de tokens e avaliação manual assistiva/dispositivos físicos. |
+
+Próxima intervenção humana: confirmar as definições institucionais e a base canônica; disponibilizar ambiente/cópia e contas de teste autorizadas para validar identidade, conta de serviço, gravação, Drive e recuperação reais. Conferir implantações/gatilhos GAS antes de qualquer merge: ausência de referência ativa no código não comprova ausência de implantação externa. Nenhuma autorização de produção é inferida deste checkpoint.
+
+
+**Correções finais do checkpoint:** base de versão da avaliação acompanha o formulário desde o início da edição, mesmo após sincronização do cache; teste mantém proposta 7, servidor 8 e base original 5, recusando sobrescrita. Avaliação de semestre vazio não reutiliza turma/notas do período anterior. Datas de chamada são conferidas contra a vigência conhecida do período. Calendário/documentação ausentes exibem “não verificado”, sem falso “em dia”. Auditoria automatizada inclui painel desktop além dos temas mobile.
+
+**Proteção adicional de cache:** proposta recusada por conflito permanece na fila, enquanto o cache restaura o snapshot anterior à proposta (teste: base 5, proposta 7, servidor/cache 8). Mudança observada de papel/turmas/operações invalida a interface antes de uma nova leitura. Monitoras só recebem o snapshot filtrado pelo servidor, inclusive com fila pendente; não recebem propostas privadas antigas no painel de conflitos. Isso não substitui uma política institucional de dispositivos e armazenamento local.
+
+**Referência revalidada na entrega:** main `d707105` permanece; PR #46 avançou de `3cf4bc2` para `a3d6cba` enquanto esta branch era desenvolvida, acrescentando avaliação formativa/RSS. Sem sobrescrita, merge ou deploy. A cobertura e as lacunas de §8 descrevem esta branch isolada, não a combinação ainda não testada com esses commits novos. Reconciliar antes de qualquer integração.
