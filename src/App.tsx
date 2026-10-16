@@ -51,6 +51,15 @@ const MainContent: React.FC = () => {
   const [currentView, setCurrentView] = useState<AppView>({ type: 'tab', tab: 'hoje' });
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [prepararTurmaId, setPrepararTurmaId] = useState<string | null>(null);
+  const ultimaConta = React.useRef<string | null>(null);
+  React.useEffect(() => {
+    const uid = currentUser?.uid ?? null;
+    if (ultimaConta.current === uid) return;
+    ultimaConta.current = uid;
+    setCurrentView({ type: 'tab', tab: 'hoje' });
+    setIsMobileMenuOpen(false);
+    setPrepararTurmaId(null);
+  }, [currentUser?.uid]);
   // Evita tela vazia quando a mesma sessão assume um perfil mais restrito.
   React.useEffect(() => {
     if (podeAvaliar) return;
