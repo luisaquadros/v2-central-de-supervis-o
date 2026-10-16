@@ -203,11 +203,15 @@ const ctx = (d = dados) => ({
   assert(!JSON.stringify(r.corpo).includes('confidencial'));
   assert.equal((await chamar(A, '/api/leitura?tabelas=avaliacoes,ocorrencias')).status, 200, 'administradora lê tudo');
 
-  // administradora continua grava com o próprio token Google
+  // Com conta de serviço, nem a administradora depende do OAuth do Sheets.
+  r = await chamar(A, '/api/acesso');
+  assert.equal(r.corpo.viaContaServico, true);
   const a0 = amb.chamadas.length;
   r = await escrever(A, 'adm-op-0001', 'avaliacoes', 'UPDATE', { avaliacao_id: 'v1', nota: 9 }, { avaliacao_id: 'v1', nota: 8 });
   assert.equal(r.status, 200);
-  assert(amb.chamadas.slice(a0).filter(c => c.url.includes('/v4/spreadsheets')).every(c => c.auth === 'Bearer token-google-do-usuario'), 'administradora usa o próprio acesso');
+  const chamadasSheets = amb.chamadas.slice(a0).filter(c => c.url.includes('/v4/spreadsheets'));
+  assert(chamadasSheets.length > 0);
+  assert(chamadasSheets.every(c => c.auth !== 'Bearer token-google-do-usuario'), 'admin usa a conta de serviço, não o token do navegador');
 
   // cliente: leitura via servidor monta o resultado do app e marca o que foi retido
   const { carregarViaServidor } = await import('../services/leituraServidor');
