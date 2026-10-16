@@ -15,10 +15,11 @@ export async function gravarCriticoCoordenado(item: SyncQueueItem): Promise<void
   const token=await getAccessToken();
   const idToken=await provedorIdToken();
   if(!idToken)throw new Error('Sessão expirada: entre novamente com a conta Google.');
-  if(!token)throw new Error('Sessão Google expirada.');
+  const modoServidor = !token && (await obterPerfilServidor())?.viaContaServico === true;
+  if(!token && !modoServidor)throw new Error('Autorização do Sheets indisponível. O registro permanece no dispositivo.');
   const res=await fetch('/api/critical-write',{
     method:'POST',
-    headers:{'Authorization': 'Bearer '+token,'X-Firebase-Id-Token':idToken,'Content-Type':'application/json'},
+    headers:{...(token ? { Authorization: 'Bearer '+token } : {}),'X-Firebase-Id-Token':idToken,'Content-Type':'application/json'},
     body:JSON.stringify({
       tabela:item.tabela,tipo:tipoEfetivo,registro:item.payload,
       esperado:item.versao_base??null,operacaoId:item.id
@@ -81,10 +82,11 @@ export async function chamarEstruturaAvaliacao(metodo: 'GET' | 'POST', corpo?: u
   const idToken = await provedorIdToken();
   const token = await getAccessToken();
   if (!idToken) throw new Error('Sessão expirada: entre novamente com a conta Google.');
-  if (!token) throw new Error('Sessão Google expirada.');
+  const modoServidor = !token && (await obterPerfilServidor())?.viaContaServico === true;
+  if (!token && !modoServidor) throw new Error('Autorização do Google Sheets não disponível.');
   const res = await fetch('/api/estrutura/avaliacao', {
     method: metodo,
-    headers: { Authorization: 'Bearer ' + token, 'X-Firebase-Id-Token': idToken, ...(corpo ? { 'Content-Type': 'application/json' } : {}) },
+    headers: { ...(token ? { Authorization: 'Bearer ' + token } : {}), 'X-Firebase-Id-Token': idToken, ...(corpo ? { 'Content-Type': 'application/json' } : {}) },
     body: corpo ? JSON.stringify(corpo) : undefined, signal: AbortSignal.timeout(60000),
   });
   return { status: res.status, corpo: await res.json().catch(() => ({})) };
