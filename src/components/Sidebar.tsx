@@ -80,7 +80,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   return (
     <aside
       className={`
-        w-64 bg-white border-r border-slate-200 flex flex-col justify-between shrink-0 select-none
+        w-64 bg-white border-r border-slate-200 flex flex-col justify-between shrink-0 select-none overflow-y-auto overscroll-contain
         ${isOpenMobile ? 'fixed inset-y-0 left-0 z-50 shadow-xl' : 'hidden md:flex'}
       `}
     >
