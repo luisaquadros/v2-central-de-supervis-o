@@ -228,7 +228,7 @@ export const HojeView: React.FC<HojeViewProps> = ({
       )}
 
       {/* Top Banner: Central Operacional & Próxima Supervisão */}
-      <div className="bg-white border border-slate-200 rounded-2xl p-5 sm:p-6 shadow-xs relative overflow-hidden">
+      <div className="cs-home-hero bg-white border border-slate-200 rounded-2xl p-5 sm:p-6 shadow-xs relative overflow-hidden">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-5">
           <div className="space-y-2">
             <div className="flex items-center gap-2">
@@ -297,7 +297,7 @@ export const HojeView: React.FC<HojeViewProps> = ({
                 className="px-5 py-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs flex items-center gap-2.5 cursor-pointer shadow-xs"
               >
                 <Play className="w-4 h-4 fill-current text-emerald-400" />
-                <span>Iniciar Supervisão / Modo Aula</span>
+                <span>Iniciar supervisão</span>
               </button>
             </div>
           )}
