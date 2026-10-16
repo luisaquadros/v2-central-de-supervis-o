@@ -676,30 +676,19 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     if (Array.isArray(data.auditoriaBase)) setAuditoriaBase(data.auditoriaBase);
   }, []);
 
-  // 1. ABERTURA DO APP: Carrega imediatamente o cache do IndexedDB
+  // 1. ABERTURA: não ler registros do dispositivo antes de validar o proprietário do cache.
+  // A restauração offline acontece somente no observador de autenticação, para o MESMO UID.
   useEffect(() => {
-    let isMounted = true;
-    inicializarCacheLocal().then(({ dados }) => {
-      if (!isMounted) return;
-      if (dados && dados.periodos && dados.periodos.length > 0) {
-        aplicarDados(dados);
-        setHasLocalCache(true);
-        setConnectionStatus('CONECTADO');
-      } else {
-        setHasLocalCache(false);
-        setConnectionStatus('LOCAL_DEV');
-      }
-    });
-
+    let ativo = true;
+    setConnectionStatus('LOCAL_DEV');
     const unsubSync = subscribeSyncStatus(state => {
-      if (isMounted) setSyncStatusState(state);
+      if (ativo) setSyncStatusState(state);
     });
-
     return () => {
-      isMounted = false;
+      ativo = false;
       unsubSync();
     };
-  }, [aplicarDados]);
+  }, []);
 
   // 2. OBSERVADOR DE AUTENTICAÇÃO GOOGLE: Sincroniza silenciosamente se o token estiver válido
   useEffect(() => {
@@ -722,8 +711,17 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
               return null;
             }
             if (estado === 'LIMPO') setHasLocalCache(false);
-            // Reabrir em modo offline só para a MESMA conta e com sessão local ainda válida.
-            if (estado === 'MESMO' && lerSessaoAutorizada(user.uid)) setAcessoGoogleValidado(true);
+            // Reabrir offline só com identidade do cache e sessão local válidas.
+            if (estado === 'MESMO' && lerSessaoAutorizada(user.uid)) {
+              const local = await inicializarCacheLocal();
+              if (!isMounted || geracao !== geracaoAuth) return null;
+              if (local.dados?.periodos?.length) {
+                aplicarDados(local.dados);
+                setHasLocalCache(true);
+                setConnectionStatus('LOCAL_DEV'); // cache nunca significa conexão online
+              }
+              setAcessoGoogleValidado(true);
+            }
             try { await processarFilaSincronizacao(); }
             catch (e) { console.warn('Fila local não enviada:', e); }
             if (!isMounted || geracao !== geracaoAuth) return null;
