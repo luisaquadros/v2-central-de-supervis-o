@@ -45,3 +45,29 @@ lint ✔ · `npm test` (32 arquivos) ✔ · build ✔ · `test:worker-real` ✔ 
 
 ## Próxima ação exata
 Validar numa cópia da planilha: criar as 4 abas pelo painel, configurar a rubrica de uma turma, preencher uma avaliação e conferir log, versões e permissões da monitora com a conta de serviço real.
+
+
+## Auditoria complementar — 16/10/2026 (PR #46)
+
+### Correções efetuadas nesta rodada
+- Removidos 24 bancos SQLite temporários da árvore Git e bloqueado seu reenvio pelo CI; revisar histórico Git separadamente caso contenha dados indevidos.
+- Leitura acadêmica agora exige perfil confirmado pelo Worker, sem fallback para leitura direta quando a autorização não responde.
+- Troca de usuário verifica a posse do cache e a identidade da fila antes de reutilizar dados; telas administrativas deixam de ser exibidas sem perfil confirmado.
+- Navegação mobile ajustada por perfil, menu lateral rolável, indicação do item atual e retorno à tela inicial na troca de conta.
+- Sincronização: conflitos aparecem prioritariamente no indicador e no painel, diferenciados de alterações apenas pendentes.
+- Leitura de monitoras usa colunas permitidas em alunos e monitoramento de documentos; testes verificam novas colunas e identificadores internos.
+- A rotina de CI passou a exigir `npm run test:worker-real` (workerd com Google/Drive/Sheets simulados), além de lint, testes e build.
+
+### Conferências externas (somente leitura)
+- Planilha **Central de Supervisão - DESENVOLVIMENTO**: as abas de avaliação e ajustes previstas no PR ainda não estão presentes; `monitoramento_documentos` tem 17 colunas, incluindo `observacao_administrativa`.
+- Cloudflare Worker publicado: último deployment de produção verificado datado de 13/10/2026. Na consulta de bindings apareceram `ASSETS` e `WRITE_COORDINATOR`; não foram confirmadas as variáveis/credenciais necessárias para ativar a nova autorização. Não havia Cron Triggers cadastrados.
+- Os builds de prévia do PR **não** comprovam que a versão de produção esteja atualizada ou autenticando/gravoando na planilha real.
+
+### Critérios ainda bloqueantes antes de mesclar/publicar
+1. Verificar o Apps Script ativo e suas integrações antes de aceitar a remoção de `gas/`.
+2. Configurar e testar `ADMIN_EMAILS`, `ACESSOS_JSON`, conta de serviço e permissões do Google sem inserir segredos no Git.
+3. Homologar login, leitura, escrita, recarga e troca de dispositivo numa cópia da planilha, com perfis professora e monitora.
+4. Validar backup e criar as abas aditivas da avaliação/RSS **somente** na cópia; confirmar critérios acadêmicos sem mudar notas oficiais.
+5. Resolver as decisões institucionais D2, D3, D5–D7 antes de ativar automações e regras que afetem avaliação/frequência.
+
+**Status:** alterações no PR, sem merge. Não autorizado declarar uso exclusivo em produção até a homologação real.
