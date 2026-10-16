@@ -49,7 +49,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     logoutGoogle,
     perfilServidor,
   } = useSupervisao();
-  const ehMonitora = perfilServidor?.papel === 'MONITORA';
+  const podeAdministrar = perfilServidor?.papel === 'PROFESSORA_ADMIN';
 
   // Total unificado de itens que vem da coleção canônica de pendências
   const totalAlerts = getPendenciasCanonicas().length;
@@ -61,7 +61,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'turmas' as NavTab, label: 'Turmas', icon: Users },
     { id: 'frequencia' as NavTab, label: 'Frequência', icon: CalendarCheck },
     { id: 'alunos' as NavTab, label: 'Alunos', icon: GraduationCap },
-    ...(ehMonitora ? [] : [{ id: 'avaliacao' as NavTab, label: 'Avaliação', icon: Award }]),
+    ...(podeAdministrar ? [{ id: 'avaliacao' as NavTab, label: 'Avaliação', icon: Award }] : []),
     { id: 'calendario' as NavTab, label: 'Calendário', icon: Calendar },
     {
       id: 'pendencias' as NavTab,
@@ -72,10 +72,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
   ];
 
   // Monitoras não veem Avaliação, Semestres nem Configurações (o servidor também nega os dados).
-  const secondaryItems = ehMonitora ? [] : [
+  const secondaryItems = podeAdministrar ? [
     { id: 'semestres' as NavTab, label: 'Semestres', icon: Calendar },
     { id: 'configuracoes' as NavTab, label: 'Configurações', icon: Settings },
-  ];
+  ] : [];
 
   return (
     <aside

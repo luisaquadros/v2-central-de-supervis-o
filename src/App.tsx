@@ -46,11 +46,17 @@ const MainContent: React.FC = () => {
     sincronizarAgora,
     perfilServidor,
   } = useSupervisao();
-  const ehMonitora = perfilServidor?.papel === 'MONITORA';
+  const podeAvaliar = perfilServidor?.papel === 'PROFESSORA_ADMIN';
 
   const [currentView, setCurrentView] = useState<AppView>({ type: 'tab', tab: 'hoje' });
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [prepararTurmaId, setPrepararTurmaId] = useState<string | null>(null);
+  // Evita tela vazia quando a mesma sessão assume um perfil mais restrito.
+  React.useEffect(() => {
+    if (podeAvaliar) return;
+    setCurrentView(v => v.type === 'tab' && ['avaliacao', 'semestres', 'configuracoes'].includes(v.tab)
+      ? { type: 'tab', tab: 'hoje' } : v);
+  }, [podeAvaliar]);
 
   // Navigation handlers
   const handleSelectNavTab = (tab: NavTab) => {
@@ -59,7 +65,7 @@ const MainContent: React.FC = () => {
 
   const handleMobileSelect = (action: 'hoje'|'turmas'|'aula'|'avaliacao'|'menu') => {
     if (action === 'menu') { setIsMobileMenuOpen(true); return; }
-    if (action === 'avaliacao' && ehMonitora) return;
+    if (action === 'avaliacao' && !podeAvaliar) return;
     setIsMobileMenuOpen(false);
     if (action === 'aula') {
       const turma = getSupervisaoAtual().turma || getProximaSupervisao()?.turma ||
@@ -267,7 +273,7 @@ const MainContent: React.FC = () => {
               />
             )}
 
-            {currentView.type === 'tab' && currentView.tab === 'avaliacao' && !ehMonitora && (
+            {currentView.type === 'tab' && currentView.tab === 'avaliacao' && podeAvaliar && (
               <AvaliacaoView />
             )}
 
@@ -304,9 +310,9 @@ const MainContent: React.FC = () => {
               />
             )}
 
-            {currentView.type === 'tab' && currentView.tab === 'semestres' && !ehMonitora && <SemestresView />}
+            {currentView.type === 'tab' && currentView.tab === 'semestres' && podeAvaliar && <SemestresView />}
 
-            {currentView.type === 'tab' && currentView.tab === 'configuracoes' && !ehMonitora && (
+            {currentView.type === 'tab' && currentView.tab === 'configuracoes' && podeAvaliar && (
               <ConfiguracoesView />
             )}
 
@@ -348,7 +354,7 @@ const MainContent: React.FC = () => {
           selected={currentView.type === 'tab' && ['hoje','turmas','avaliacao'].includes(currentView.tab) ?
             currentView.tab as 'hoje'|'turmas'|'avaliacao' : 'menu'}
           onSelect={handleMobileSelect}
-          ehMonitora={ehMonitora}
+          podeAvaliar={podeAvaliar}
         />
       )}
       {prepararTurmaId && turmas.some(t => t.turma_id === prepararTurmaId) && (

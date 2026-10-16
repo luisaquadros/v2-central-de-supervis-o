@@ -3,14 +3,14 @@ import { LayoutDashboard, Users, ClipboardCheck, Award, Menu } from 'lucide-reac
 
 export type Action = 'hoje' | 'turmas' | 'aula' | 'avaliacao' | 'menu';
 
-export function acoesMobilePermitidas(ehMonitora: boolean): Action[] {
-  return ehMonitora ? ['hoje', 'turmas', 'aula', 'menu'] : ['hoje', 'turmas', 'aula', 'avaliacao', 'menu'];
+export function acoesMobilePermitidas(podeAvaliar: boolean): Action[] {
+  return podeAvaliar ? ['hoje', 'turmas', 'aula', 'avaliacao', 'menu'] : ['hoje', 'turmas', 'aula', 'menu'];
 }
 
-export function MobileBottomNav({ selected, onSelect, ehMonitora = false }: {
+export function MobileBottomNav({ selected, onSelect, podeAvaliar = false }: {
   selected: Action;
   onSelect: (action: Action) => void;
-  ehMonitora?: boolean;
+  podeAvaliar?: boolean;
 }) {
   const tabs = [
     { id: 'hoje', label: 'Hoje', icon: LayoutDashboard },
@@ -19,12 +19,12 @@ export function MobileBottomNav({ selected, onSelect, ehMonitora = false }: {
     { id: 'avaliacao', label: 'Avaliar', icon: Award },
     { id: 'menu', label: 'Mais', icon: Menu },
   ] as const;
-  const permitidas = new Set(acoesMobilePermitidas(ehMonitora));
+  const permitidas = new Set(acoesMobilePermitidas(podeAvaliar));
   const tabsVisiveis = tabs.filter(tab => permitidas.has(tab.id));
   return (
     <nav aria-label="Navegação rápida"
       className="fixed bottom-0 inset-x-0 z-40 md:hidden bg-white border-t border-slate-200 shadow-[0_-2px_12px_rgba(21,35,59,0.06)] pb-[env(safe-area-inset-bottom)]">
-      <div className={`grid ${ehMonitora ? "grid-cols-4" : "grid-cols-5"} px-1.5 py-1.5 gap-0.5`}>
+      <div className={`grid ${podeAvaliar ? "grid-cols-5" : "grid-cols-4"} px-1.5 py-1.5 gap-0.5`}>
         {tabsVisiveis.map(({id,label,icon: Icon}) => (
           <button key={id} type="button" onClick={()=>onSelect(id)}
             aria-current={selected===id ? 'page' : undefined}
