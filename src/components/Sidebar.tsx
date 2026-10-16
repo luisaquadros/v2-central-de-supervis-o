@@ -80,13 +80,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
   return (
     <aside
       className={`
-        w-64 bg-white border-r border-slate-200 flex flex-col justify-between shrink-0 select-none overflow-y-auto overscroll-contain
+        cs-sidebar w-64 bg-white border-r border-slate-200 flex flex-col justify-between shrink-0 select-none overflow-y-auto overscroll-contain
         ${isOpenMobile ? 'fixed inset-y-0 left-0 z-50 shadow-xl' : 'hidden md:flex'}
       `}
     >
       <div>
         {/* Brand / Header */}
-        <div className="p-4 border-b border-slate-100">
+        <div className="cs-sidebar-brand p-4 border-b border-slate-100">
           <div className="flex items-center gap-2.5">
             <img src="/central-supervisao.svg" alt="" aria-hidden="true" className="w-9 h-9 rounded-xl shrink-0" />
             <div>
