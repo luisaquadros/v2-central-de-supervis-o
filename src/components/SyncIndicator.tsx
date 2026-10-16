@@ -120,6 +120,7 @@ export const SyncIndicator: React.FC = () => {
         onClick={() => setModalAberto(true)}
         title="Ver status de sincronização"
         aria-label={`Status da sincronização: ${isTokenExpired ? 'reconexão necessária' :
+          syncStatusState.conflitosCount > 0 ? 'conflitos para revisão' :
           syncStatusState.pendentesCount > 0 ? 'alterações aguardando envio' :
           syncStatusState.status === 'SINCRONIZANDO' ? 'sincronizando' :
           syncStatusState.status === 'ERRO' ? 'erro na sincronização' :
