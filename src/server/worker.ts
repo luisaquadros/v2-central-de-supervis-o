@@ -17,6 +17,7 @@ interface Env extends AmbienteAutorizacao, AmbienteContaServico {ASSETS:{fetch(r
   /** 'ligada' permite criar (somente adicionar) as abas da avaliação. Qualquer outro valor = desligada. */ESTRUTURA_AVALIACAO?:string;
   /** Somente testes locais: precisam ser loopback. */SHEETS_API_BASE?:string;DRIVE_API_BASE?:string}
 const DRIVE_PADRAO='https://www.googleapis.com/drive/v3';
+const temContaServico=(env:Env)=>typeof env.GOOGLE_SERVICE_ACCOUNT_JSON==='string' && !!env.GOOGLE_SERVICE_ACCOUNT_JSON.trim();
 const driveBase=(env:{DRIVE_API_BASE?:string}):string=>{const o=env.DRIVE_API_BASE;return o&&/^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?\//.test(o)?o.replace(/\/+$/,''):DRIVE_PADRAO};
 const lerPerfil=(request:Request):Perfil|null=>{try{const p=JSON.parse(request.headers.get('X-Perfil')||'null');return p&&(p.papel==='PROFESSORA_ADMIN'||p.papel==='MONITORA')?p as Perfil:null}catch{return null}};
 
@@ -135,10 +136,11 @@ export class WriteCoordinator {
     try {
       const perfil=lerPerfil(request);
       if(!perfil)return fail('Perfil verificado ausente.',401,'TOKEN_AUSENTE');
-      // Administradora grava com o próprio acesso Google. Monitora NÃO usa credencial Google própria:
-      // o servidor grava com a conta de serviço, depois de validar permissão e turma.
+      // Quando a conta de serviço está configurada, ambos os perfis usam o Worker,
+      // sempre depois de autenticação Firebase e autorização por tabela/turma.
+      // Modo legado sem conta de serviço continua disponível somente à administradora.
       let token:string;
-      if(perfil.papel==='MONITORA'){
+      if(perfil.papel==='MONITORA'||temContaServico(this.env)){
         try{token=await tokenContaServico(this.env,[ESCOPO_SHEETS])}
         catch(e){return fail(e instanceof ContaServicoIndisponivel?e.message:'Conta de serviço indisponível.',503,'CONTA_SERVICO_INDISPONIVEL')}
       }else{
@@ -264,7 +266,7 @@ export default {
 
     if(url.pathname==='/api/acesso'){
       if(request.method!=='GET')return fail('Método não permitido.',405);
-      return json({ok:true,...perfilPublico(perfil),avisos:perfil.papel==='PROFESSORA_ADMIN'?auth.config.avisos:[]});
+      return json({ok:true,...perfilPublico(perfil),viaContaServico:temContaServico(env),avisos:perfil.papel==='PROFESSORA_ADMIN'?auth.config.avisos:[]});
     }
 
     if(url.pathname==='/api/leitura'){
@@ -299,9 +301,15 @@ export default {
 
     if(url.pathname==='/api/estrutura/avaliacao'){
       if(perfil.papel!=='PROFESSORA_ADMIN')return fail('Somente a professora administradora.',403,'NAO_AUTORIZADO');
-      const bearer=request.headers.get('Authorization')||'';
-      if(!/^Bearer \S+$/.test(bearer))return fail('Autenticação Google necessária.',401);
-      const token=bearer.slice(7);
+      let token:string;
+      if(temContaServico(env)){
+        try{token=await tokenContaServico(env,[ESCOPO_SHEETS])}
+        catch(e){return fail(e instanceof ContaServicoIndisponivel?e.message:'Conta de serviço indisponível.',503,'CONTA_SERVICO_INDISPONIVEL')}
+      }else{
+        const bearer=request.headers.get('Authorization')||'';
+        if(!/^Bearer \S+$/.test(bearer))return fail('Autenticação Google necessária.',401);
+        token=bearer.slice(7);
+      }
       const urlPlanilha=baseSheets(env)+SPREADSHEET_ID;
       const chamar=(u:string,init:RequestInit={})=>googleFetch(u,token,init);
       if(request.method==='GET'){
