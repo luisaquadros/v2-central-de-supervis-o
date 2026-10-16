@@ -33,7 +33,7 @@ export async function gravarCriticoCoordenado(item: SyncQueueItem): Promise<void
     throw new Error(data.message||'Falha na gravação coordenada. A alteração permanece no dispositivo.');
 }
 
-export interface PerfilServidor { papel: 'PROFESSORA_ADMIN' | 'MONITORA'; email: string; turmas: string[]; operacoes: string[]; avisos: string[] }
+export interface PerfilServidor { papel: 'PROFESSORA_ADMIN' | 'MONITORA'; email: string; turmas: string[]; operacoes: string[]; avisos: string[]; viaContaServico?: boolean }
 export type EstadoAcesso =
   | { estado: 'AUTORIZADO'; email: string; perfil: PerfilServidor }
   | { estado: 'SEM_PERMISSAO' | 'NAO_CONFIGURADO' | 'SESSAO_INVALIDA' | 'INDISPONIVEL'; mensagem: string };
@@ -59,7 +59,7 @@ async function consultarAcesso(): Promise<EstadoAcesso> {
     if (!idToken) return { estado: 'SESSAO_INVALIDA', mensagem: 'Entre novamente com a conta Google.' };
     const res = await fetch('/api/acesso', { headers: { 'X-Firebase-Id-Token': idToken }, signal: AbortSignal.timeout(15000) });
     const data = await res.json().catch(() => ({}));
-    if (res.ok && data.ok) return { estado: 'AUTORIZADO', email: String(data.email), perfil: { papel: data.papel, email: String(data.email), turmas: data.turmas ?? [], operacoes: data.operacoes ?? [], avisos: data.avisos ?? [] } };
+    if (res.ok && data.ok) return { estado: 'AUTORIZADO', email: String(data.email), perfil: { papel: data.papel, email: String(data.email), turmas: data.turmas ?? [], operacoes: data.operacoes ?? [], avisos: data.avisos ?? [], viaContaServico: data.viaContaServico === true } };
     const mensagem = String(data.message || 'Não foi possível verificar o acesso.');
     if (res.status === 403) return { estado: 'SEM_PERMISSAO', mensagem };
     if (res.status === 503) return { estado: 'NAO_CONFIGURADO', mensagem };
