@@ -81,6 +81,24 @@ const ctx = (d = dados) => ({
   assert.equal(filtrarLeitura('entregas', [['matricula_id']], m2b, ctx()), null, 'entregas exige a operação ENTREGAS');
   assert.equal(filtrarLeitura('monitoramento_documentos', [['turma_id']], m2b, ctx()), null, 'documentos exige DOCUMENTOS_VER');
   assert.equal(tabelaLegivelPor({ ...m2b, operacoes: ['ENTREGAS'] }, 'entregas'), true);
+  const autorizadaParaDocumentos = { ...m2b, operacoes: ['DOCUMENTOS_VER' as const] };
+  const documentosFiltrados = filtrarLeitura('monitoramento_documentos',
+    tab(['monitoramento_id', 'turma_id', 'status', 'arquivo_id', 'pasta_id', 'observacao_administrativa', 'coluna_nova'],
+      ['d1', 't2b', 'NAO_VERIFICADO', 'id-arquivo-interno', 'id-pasta-interna', 'informacao-privada', 'novo-campo-privado'],
+      ['d2', 't9', 'NAO_VERIFICADO', 'outro-arquivo', 'outra-pasta', 'outro-dado', 'outra-coluna']),
+    autorizadaParaDocumentos, ctx())!;
+  assert.deepEqual(documentosFiltrados[0], ['monitoramento_id', 'turma_id', 'status'],
+    'monitora recebe apenas metadados explicitamente autorizados');
+  assert.equal(documentosFiltrados.length, 2, 'a turma alheia fica oculta');
+  assert(!JSON.stringify(documentosFiltrados).includes('informacao-privada'));
+  assert(!JSON.stringify(documentosFiltrados).includes('id-arquivo-interno'));
+  assert(!JSON.stringify(documentosFiltrados).includes('novo-campo-privado'));
+  const alunosComColunaExtra = filtrarLeitura('alunos',
+    tab(['aluno_id', 'nome', 'email', 'novo_campo'], ['a1', 'Pessoa 1', 'email-interno', 'dado-extra']),
+    m2b, ctx())!;
+  assert.deepEqual(alunosComColunaExtra[0], ['aluno_id', 'nome']);
+  assert(!JSON.stringify(alunosComColunaExtra).includes('dado-extra'));
+
   // sem coluna de vínculo não há como provar a turma: nada é liberado
   assert.deepEqual(filtrarLeitura('turmas', tab(['nome'], ['2B'], ['3B']), m2b, ctx()), [['nome']]);
   // Exceções AUDITADAS (testContribuicaoMonitora): definição da rubrica (sem notas) e as PRÓPRIAS contribuições preliminares da monitora.
