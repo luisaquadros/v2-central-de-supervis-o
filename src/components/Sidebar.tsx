@@ -135,6 +135,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             return (
               <button
                 key={item.id}
+                aria-current={isActive ? 'page' : undefined}
                 onClick={() => {
                   onSelectTab(item.id);
                   if (onCloseMobile) onCloseMobile();
@@ -182,6 +183,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             return (
               <button
                 key={item.id}
+                aria-current={isActive ? 'page' : undefined}
                 onClick={() => {
                   onSelectTab(item.id);
                   if (onCloseMobile) onCloseMobile();
