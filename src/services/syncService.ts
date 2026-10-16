@@ -203,18 +203,17 @@ async function sincronizarDaBaseOficialInterna(): Promise<{
   notifySyncStatusChange({ status: 'SINCRONIZANDO' });
 
   try {
+    // O servidor valida o Firebase e consulta a planilha com credencial própria.
+    // O OAuth individual do Sheets só é necessário no modo legado da administradora.
+    const perfilServidor = exigirPerfilLeitura(await obterPerfilServidor());
     const token = await getAccessToken();
-    if (!token) {
+    if (!token && !perfilServidor.viaContaServico && perfilServidor.papel !== 'MONITORA') {
       notifySyncStatusChange({
         status: currentSyncState.ultimaSincronizacao ? 'LOCAL' : 'ERRO',
-        erros: ['Autenticação necessária para sincronizar com Google Sheets.'],
+        erros: ['Reconecte a conta Google para sincronizar este ambiente legado.'],
       });
-      return { sucesso: false, erro: 'Não autenticado no Google.' };
+      return { sucesso: false, erro: 'Autorização do Google Sheets não está disponível.' };
     }
-
-    // Antes de qualquer replay da fila, o servidor precisa confirmar o perfil atual.
-    // A posse do cache por UID é verificada nos fluxos de autenticação do aplicativo.
-    const perfilServidor = exigirPerfilLeitura(await obterPerfilServidor());
     // Alterações locais precisam ser confirmadas antes de aceitar o snapshot remoto.
     // Caso permaneçam pendentes, a leitura não pode sobrescrever essas tabelas.
     await processarFilaInterna();
@@ -227,7 +226,7 @@ async function sincronizarDaBaseOficialInterna(): Promise<{
 
     // Executa a busca resiliente na planilha oficial
     // Monitoras não leem a planilha diretamente: o servidor entrega só o que foi delegado a elas.
-    const resultado = perfilServidor.papel === 'MONITORA'
+    const resultado = perfilServidor.papel === 'MONITORA' || perfilServidor.viaContaServico
       ? await carregarViaServidor(perfilServidor)
       : await carregarDadosDaPlanilhaOficial();
     const restritas: string[] = (resultado as any)._restritas || [];
@@ -439,7 +438,11 @@ async function processarFilaInterna(): Promise<{
   }
 
   const token = await getAccessToken();
-  if (!token) {
+  // Sem OAuth do Sheets, o Worker pode processar gravações coordenadas usando
+  // a identidade Firebase. Nunca usar a conta de serviço para acesso direto no navegador.
+  const perfilAtivo = token ? null : await obterPerfilServidor().catch(() => null);
+  const escritaSoPeloServidor = !token && perfilAtivo?.viaContaServico === true;
+  if (!token && !escritaSoPeloServidor) {
     const conflitosNaFila = fila.filter(i => i.status === 'CONFLITO').length;
     notifySyncStatusChange({
       status: conflitosNaFila > 0 ? 'PARCIAL' : 'LOCAL',
@@ -458,6 +461,9 @@ async function processarFilaInterna(): Promise<{
 
       if (TABELAS_CRITICAS.has(item.tabela)) {
         await gravarCriticoCoordenado(item);
+      } else if (escritaSoPeloServidor) {
+        // Nunca contornar o coordenador com uma conta de serviço não autorizada.
+        throw new Error('ESCRITA_PENDENTE: esta tabela ainda requer migração para o Worker; registro preservado.');
       } else if (item.tipo === 'DELETE') {
         await removerRegistroDaPlanilhaOficial(item.tabela, item.payload);
       } else {
