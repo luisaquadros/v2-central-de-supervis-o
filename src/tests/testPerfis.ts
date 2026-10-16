@@ -212,6 +212,17 @@ const ctx = (d = dados) => ({
   const chamadasSheets = amb.chamadas.slice(a0).filter(c => c.url.includes('/v4/spreadsheets'));
   assert(chamadasSheets.length > 0);
   assert(chamadasSheets.every(c => c.auth !== 'Bearer token-google-do-usuario'), 'admin usa a conta de serviço, não o token do navegador');
+  // Prova a ausência completa do cabeçalho OAuth do Sheets no navegador.
+  const semOAuth = await fetch('/api/critical-write', {
+    method: 'POST',
+    headers: { 'X-Firebase-Id-Token': await amb.emissor.token(A), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ tabela: 'avaliacoes', tipo: 'UPDATE', operacaoId: 'adm-sem-oauth-0002',
+      registro: { avaliacao_id: 'v1', nota: 9.5 },
+      esperado: { avaliacao_id: 'v1', nota: 9 } }),
+  });
+  assert.equal(semOAuth.status, 200, 'conta de serviço permite escrita com Firebase sem OAuth do Sheets');
+  assert.equal(abas.avaliacoes[1][2], 9.5);
+
 
   // cliente: leitura via servidor monta o resultado do app e marca o que foi retido
   const { carregarViaServidor } = await import('../services/leituraServidor');
