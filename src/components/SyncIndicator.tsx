@@ -176,7 +176,19 @@ export const SyncIndicator: React.FC = () => {
                     {syncStatusState.pendentesCount} item(ns)
                   </strong>
                 </div>
+                <div className="flex justify-between py-1 border-t border-slate-50">
+                  <span className="text-slate-500">Conflitos que precisam de revisão:</span>
+                  <strong className={syncStatusState.conflitosCount > 0 ? 'text-red-700' : 'text-emerald-600'}>
+                    {syncStatusState.conflitosCount} item(ns)
+                  </strong>
+                </div>
               </div>
+
+              {syncStatusState.conflitosCount > 0 && (
+                <p role="alert" className="p-3 rounded-lg bg-red-50 border border-red-200 text-red-800">
+                  Alterações com conflito permanecem preservadas no dispositivo e exigem conferência manual. Não exclua esses registros nem considere a sincronização concluída.
+                </p>
+              )}
 
               {/* Erros se houver */}
               {syncStatusState.erros && syncStatusState.erros.length > 0 && (
