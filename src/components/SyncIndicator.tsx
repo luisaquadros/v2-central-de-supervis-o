@@ -43,6 +43,16 @@ export const SyncIndicator: React.FC = () => {
       );
     }
 
+    if (syncStatusState.conflitosCount > 0) {
+      return (
+        <div className="flex items-center gap-1.5 text-xs text-red-800 bg-red-50 border border-red-300 px-2 xl:px-3 py-1.5 rounded-full min-h-10 min-w-10 justify-center" title="Há conflitos de versão. É necessária revisão.">
+          <AlertCircle className="w-3.5 h-3.5 text-red-700" />
+          <span className="font-semibold hidden xl:inline">{syncStatusState.conflitosCount} conflito(s) — revisar</span>
+          <span className="font-bold xl:hidden">{syncStatusState.conflitosCount}</span>
+        </div>
+      );
+    }
+
     if (isTokenExpired) {
       return (
         <div className="flex items-center gap-1.5 text-xs text-amber-900 bg-amber-100 border border-amber-300 px-2 xl:px-3 py-1.5 rounded-full min-h-10 min-w-10 justify-center cursor-pointer hover:bg-amber-200 transition-colors animate-pulse" title="Sessão Google expirada. Clique para reconectar.">
