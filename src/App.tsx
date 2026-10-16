@@ -185,6 +185,8 @@ const MainContent: React.FC = () => {
               <div className="md:hidden flex items-center gap-2">
                 <button
                   onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+                  aria-label={isMobileMenuOpen ? 'Fechar menu' : 'Abrir menu'}
+                  aria-expanded={isMobileMenuOpen}
                   className="p-1.5 rounded-lg border border-slate-200 text-slate-700"
                 >
                   {isMobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
