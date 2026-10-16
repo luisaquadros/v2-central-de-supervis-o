@@ -227,3 +227,34 @@ html[data-theme="dark"] .cs-panel { box-shadow: 0 6px 18px rgba(0,0,0,.14); }
   .cs-login-story .cs-login-feature { display: none; }
   .cs-login-form { padding: 1.9rem 1.5rem; }
 }
+
+
+/* Navegação e painel de trabalho: profundidade discreta sem perder escaneabilidade. */
+.cs-sidebar { box-shadow: 3px 0 18px rgba(21,35,59,.025); }
+.cs-sidebar-brand {
+  background: linear-gradient(155deg, rgba(44,130,126,.055), rgba(130,118,177,.06) 58%, transparent);
+}
+.cs-sidebar nav button:not(.cs-nav-active) { border: 1px solid transparent; }
+.cs-sidebar nav button:not(.cs-nav-active):hover {
+  border-color: rgba(44,130,126,.10);
+  background: rgba(44,130,126,.06);
+}
+.cs-home-hero {
+  box-shadow: var(--cs-shadow);
+  background:
+    radial-gradient(circle at 98% 0%, rgba(44,130,126,.09), transparent 35%),
+    radial-gradient(circle at 0% 100%, rgba(130,118,177,.06), transparent 31%),
+    var(--cs-surface);
+}
+.cs-home-hero > * { position: relative; z-index: 1; }
+.cs-home-hero button:hover { transform: translateY(-1px); }
+.cs-home-hero button { transition: transform .16s ease, box-shadow .16s ease; }
+html[data-theme="dark"] .cs-sidebar-brand { background: linear-gradient(155deg, rgba(44,130,126,.14), rgba(130,118,177,.12) 58%, transparent); }
+html[data-theme="dark"] .cs-home-hero {
+  background:
+    radial-gradient(circle at 98% 0%, rgba(44,130,126,.15), transparent 37%),
+    #172437;
+}
+@media (prefers-reduced-motion: reduce) {
+  .cs-home-hero button:hover { transform: none; }
+}
