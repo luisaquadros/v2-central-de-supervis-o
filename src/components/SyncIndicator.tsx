@@ -3,7 +3,8 @@ import { RefreshCw, CheckCircle2, AlertCircle, Database, Clock, CloudOff, X } fr
 import { useSupervisao } from '../context/SupervisaoContext';
 
 export const SyncIndicator: React.FC = () => {
-  const { syncStatusState, sincronizarAgora, currentUser, loginGoogle, isTokenExpired, tokenExpiredAviso, reconectarESincronizar } = useSupervisao();
+  const { syncStatusState, sincronizarAgora, currentUser, loginGoogle, isTokenExpired, tokenExpiredAviso, reconectarESincronizar, perfilServidor } = useSupervisao();
+  const requerOAuth = isTokenExpired && !perfilServidor?.viaContaServico;
   const [modalAberto, setModalAberto] = useState(false);
   const [sincronizandoManual, setSincronizandoManual] = useState(false);
 
@@ -20,7 +21,7 @@ export const SyncIndicator: React.FC = () => {
   const handleSincronizar = async () => {
     setSincronizandoManual(true);
     try {
-      if (!currentUser || isTokenExpired) {
+      if (!currentUser || requerOAuth) {
         await reconectarESincronizar();
       } else {
         await sincronizarAgora();
@@ -53,7 +54,7 @@ export const SyncIndicator: React.FC = () => {
       );
     }
 
-    if (isTokenExpired) {
+    if (requerOAuth) {
       return (
         <div className="flex items-center gap-1.5 text-xs text-amber-900 bg-amber-100 border border-amber-300 px-2 xl:px-3 py-1.5 rounded-full min-h-10 min-w-10 justify-center cursor-pointer hover:bg-amber-200 transition-colors animate-pulse" title="Sessão Google expirada. Clique para reconectar.">
           <Clock className="w-3.5 h-3.5 text-amber-700" />
@@ -119,7 +120,7 @@ export const SyncIndicator: React.FC = () => {
         className="shrink-0 rounded-full focus-visible:outline-2 focus-visible:outline-teal-500"
         onClick={() => setModalAberto(true)}
         title="Ver status de sincronização"
-        aria-label={`Status da sincronização: ${isTokenExpired ? 'reconexão necessária' :
+        aria-label={`Status da sincronização: ${requerOAuth ? 'reconexão necessária' :
           syncStatusState.conflitosCount > 0 ? 'conflitos para revisão' :
           syncStatusState.pendentesCount > 0 ? 'alterações aguardando envio' :
           syncStatusState.status === 'SINCRONIZANDO' ? 'sincronizando' :
