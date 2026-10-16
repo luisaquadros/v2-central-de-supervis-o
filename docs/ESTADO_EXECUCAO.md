@@ -61,7 +61,7 @@ Validar numa cópia da planilha: criar as 4 abas pelo painel, configurar a rubri
 ### Conferências externas (somente leitura)
 - Planilha **Central de Supervisão - DESENVOLVIMENTO**: as abas de avaliação e ajustes previstas no PR ainda não estão presentes; `monitoramento_documentos` tem 17 colunas, incluindo `observacao_administrativa`.
 - Cloudflare Worker publicado: último deployment de produção verificado datado de 13/10/2026. Na consulta de bindings apareceram `ASSETS` e `WRITE_COORDINATOR`; não foram confirmadas as variáveis/credenciais necessárias para ativar a nova autorização. Não havia Cron Triggers cadastrados.
-- Os builds de prévia do PR **não** comprovam que a versão de produção esteja atualizada ou autenticando/gravoando na planilha real.
+- Os builds de prévia do PR **não** comprovam que a versão de produção esteja atualizada ou autenticando ou gravando na planilha real.
 
 ### Critérios ainda bloqueantes antes de mesclar/publicar
 1. Verificar o Apps Script ativo e suas integrações antes de aceitar a remoção de `gas/`.
