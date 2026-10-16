@@ -205,7 +205,7 @@ const MainContent: React.FC = () => {
               <div className="hidden md:flex items-center gap-2 text-xs text-slate-500">
                 <span className="font-semibold text-slate-700">Central de Supervisão</span>
                 <span>•</span>
-                <span>Base Oficial Google Sheets</span>
+                <span>Base acadêmica conectada</span>
               </div>
             </div>
 
