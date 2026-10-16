@@ -164,15 +164,26 @@ export async function limparTabelasDoCache(): Promise<void> {
  * e a troca é sinalizada: elas não devem ser enviadas com a identidade de outra pessoa.
  */
 export async function garantirCacheDoUsuario(uid: string): Promise<'MESMO' | 'LIMPO' | 'PENDENTES_DE_OUTRA_CONTA'> {
-  let anterior: string | null = null;
-  try { anterior = localStorage.getItem(CHAVE_UID_CACHE); } catch { /* sem localStorage */ }
+  if (!uid?.trim()) throw new Error('Conta inválida: o cache não pode ser atribuído.');
+  // Falha fechada: sem armazenamento confiável da identidade, não reusar dados de outra conta.
+  if (typeof localStorage === 'undefined') throw new Error('Não foi possível verificar a conta proprietária do cache.');
+  let anterior: string | null;
+  try { anterior = localStorage.getItem(CHAVE_UID_CACHE); }
+  catch { throw new Error('Não foi possível verificar a conta proprietária do cache.'); }
   if (anterior === uid) return 'MESMO';
-  if (anterior) {
-    if ((await carregarFilaSincronizacao()).length > 0) return 'PENDENTES_DE_OUTRA_CONTA';
-    await limparTabelasDoCache();
+
+  // Não assumir o cache legado sem proprietário conhecido: pode ter registros de outra usuária.
+  // A fila nunca é excluída automaticamente, mesmo se o proprietário estiver ausente.
+  if ((await carregarFilaSincronizacao()).length > 0) return 'PENDENTES_DE_OUTRA_CONTA';
+
+  await limparTabelasDoCache();
+  try {
+    localStorage.setItem(CHAVE_UID_CACHE, uid);
+    if (localStorage.getItem(CHAVE_UID_CACHE) !== uid) throw new Error('Identidade do cache não persistida.');
+  } catch {
+    throw new Error('Não foi possível registrar com segurança a conta proprietária do cache.');
   }
-  try { localStorage.setItem(CHAVE_UID_CACHE, uid); } catch { /* ignora */ }
-  return anterior ? 'LIMPO' : 'MESMO';
+  return 'LIMPO';
 }
 
 /**
