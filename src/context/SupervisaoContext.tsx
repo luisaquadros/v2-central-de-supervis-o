@@ -759,7 +759,7 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     const autoSyncSePossivel = async () => {
       if (!isMounted || !currentUser || !acessoGoogleValidado) return;
       const token = await getAccessToken();
-      if (token && document.visibilityState === 'visible') {
+      if ((token || perfilServidor?.viaContaServico) && document.visibilityState === 'visible') {
         try {
           await processarFilaSincronizacao();
           const res = await sincronizarDaBaseOficial();
@@ -788,7 +788,7 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       window.removeEventListener('online', autoSyncSePossivel);
       clearInterval(intervalId);
     };
-  }, [aplicarDados, currentUser?.uid, acessoGoogleValidado]);
+  }, [aplicarDados, currentUser?.uid, acessoGoogleValidado, perfilServidor?.viaContaServico]);
 
   // 4. SINCRONIZAÇÃO DA BASE OFICIAL COM RENOVAÇÃO INTERATIVA SE NECESSÁRIO
   const sincronizarAgora = useCallback(async () => {
@@ -798,8 +798,8 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     // Ambiente web: acesso Google com renovação interativa quando o token expira.
     let token = await getAccessToken();
     let usuarioSincronizacao = currentUser?.uid;
-    if (!token) {
-      // Se não há token ativo (expirou ou sessão nova), abre o popup de login do Google!
+    if (!token && !perfilServidor?.viaContaServico) {
+      // Só o modo legado precisa renovar a autorização Google da planilha.
       setIsLoggingIn(true);
       try {
         const resLogin = await googleSignIn();
@@ -866,7 +866,7 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       setConnectionErrorMessage(res.erro || 'Falha ao sincronizar com Google Sheets');
       setConnectionStatus('ERRO_CONEXAO'); // mantém cache, mas informa falha real
     }
-  }, [aplicarDados, currentUser?.uid]);
+  }, [aplicarDados, currentUser?.uid, perfilServidor?.viaContaServico]);
 
   const carregarDadosReais = sincronizarAgora;
 
