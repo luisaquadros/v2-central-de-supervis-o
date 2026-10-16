@@ -1,6 +1,7 @@
 import { TABELAS_CRITICAS } from '../server/coordenacaoCritica';
 import { gravarCriticoCoordenado, obterPerfilServidor } from './escritaCoordenadaService';
 import { carregarViaServidor } from './leituraServidor';
+import { exigirPerfilLeitura } from './leituraPermissoes';
 /**
  * CENTRAL DE SUPERVISÃO - CAMADA DE SINCRONIZAÇÃO E CONTROLE DE FILA (syncService)
  *
@@ -223,8 +224,8 @@ async function sincronizarDaBaseOficialInterna(): Promise<{
 
     // Executa a busca resiliente na planilha oficial
     // Monitoras não leem a planilha diretamente: o servidor entrega só o que foi delegado a elas.
-    const perfilServidor = await obterPerfilServidor().catch(() => null);
-    const resultado = perfilServidor?.papel === 'MONITORA'
+    const perfilServidor = exigirPerfilLeitura(await obterPerfilServidor());
+    const resultado = perfilServidor.papel === 'MONITORA'
       ? await carregarViaServidor(perfilServidor)
       : await carregarDadosDaPlanilhaOficial();
     const restritas: string[] = (resultado as any)._restritas || [];
