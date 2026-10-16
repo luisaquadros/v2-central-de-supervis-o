@@ -82,9 +82,12 @@ provider.addScope('https://www.googleapis.com/auth/spreadsheets');
 // Persistência segura da sessão e token de acesso OAuth no sessionStorage (com expiração de 55 minutos)
 const SESSION_TOKEN_KEY = 'cs_google_access_token_session';
 const SESSION_EXPIRY_KEY = 'cs_google_access_token_exp';
+const SESSION_OWNER_KEY = 'cs_google_access_token_owner';
 let accessTokenExpiresAt = 0;
+let oauthOwnerUid: string | null = null;
 
-function saveTokenToSession(token: string) {
+function saveTokenToSession(token: string, ownerUid?: string) {
+  oauthOwnerUid = ownerUid || auth.currentUser?.uid || null;
   accessTokenExpiresAt = Date.now() + 55 * 60 * 1000;
   try {
     if (typeof window !== 'undefined') {
@@ -92,6 +95,8 @@ function saveTokenToSession(token: string) {
       try {
         sessionStorage.setItem(SESSION_TOKEN_KEY, token);
         sessionStorage.setItem(SESSION_EXPIRY_KEY, String(expiresAt));
+        if (oauthOwnerUid) sessionStorage.setItem(SESSION_OWNER_KEY, oauthOwnerUid);
+        else sessionStorage.removeItem(SESSION_OWNER_KEY);
       } catch {}
     }
   } catch (e) {
@@ -107,8 +112,9 @@ function getStoredTokenFromSession(): string | null {
       try {
         token = sessionStorage.getItem(SESSION_TOKEN_KEY);
         expStr = sessionStorage.getItem(SESSION_EXPIRY_KEY);
+        oauthOwnerUid = sessionStorage.getItem(SESSION_OWNER_KEY);
       } catch {}
-      if (token && expStr) {
+      if (token && expStr && oauthOwnerUid) {
         const exp = Number(expStr);
         if (Date.now() < exp) {
           accessTokenExpiresAt = exp;
@@ -125,15 +131,19 @@ function getStoredTokenFromSession(): string | null {
 }
 
 function clearSessionToken() {
+  oauthOwnerUid = null;
+  accessTokenExpiresAt = 0;
   try {
     if (typeof window !== 'undefined') {
       try {
         sessionStorage.removeItem(SESSION_TOKEN_KEY);
         sessionStorage.removeItem(SESSION_EXPIRY_KEY);
+        sessionStorage.removeItem(SESSION_OWNER_KEY);
       } catch {}
       try {
         localStorage.removeItem(SESSION_TOKEN_KEY);
         localStorage.removeItem(SESSION_EXPIRY_KEY);
+        localStorage.removeItem(SESSION_OWNER_KEY);
       } catch {}
     }
   } catch (e) {
@@ -151,10 +161,13 @@ export const initAuth = (
   return onAuthStateChanged(auth, async (user: User | null) => {
     if (user) {
       const token = inMemoryAccessToken || getStoredTokenFromSession();
-      if (token) {
+      if (token && oauthOwnerUid && oauthOwnerUid !== user.uid) {
+        inMemoryAccessToken = null;
+        clearSessionToken();
+      } else if (token) {
         inMemoryAccessToken = token;
       }
-      if (onAuthSuccess) onAuthSuccess(user, token);
+      if (onAuthSuccess) onAuthSuccess(user, oauthOwnerUid === user.uid ? token : null);
     } else {
       if (!isSigningIn) {
         if (onAuthFailure) onAuthFailure();
@@ -173,7 +186,7 @@ export const googleSignIn = async (): Promise<{ user: User; accessToken: string 
       throw new Error('Falha ao obter token de acesso do Google.');
     }
     inMemoryAccessToken = credential.accessToken;
-    saveTokenToSession(credential.accessToken);
+    saveTokenToSession(credential.accessToken, result.user.uid);
     return { user: result.user, accessToken: inMemoryAccessToken };
   } catch (error: any) {
     console.error('Erro de autenticação Google:', error);
@@ -184,6 +197,12 @@ export const googleSignIn = async (): Promise<{ user: User; accessToken: string 
 };
 
 export const getAccessToken = async (): Promise<string | null> => {
+  // Não reutilizar autorização da planilha de uma conta Google anterior.
+  if (oauthOwnerUid && auth.currentUser && oauthOwnerUid !== auth.currentUser.uid) {
+    inMemoryAccessToken = null;
+    clearSessionToken();
+    return null;
+  }
   if (inMemoryAccessToken && Date.now() < accessTokenExpiresAt) return inMemoryAccessToken;
   inMemoryAccessToken = null;
   const stored = getStoredTokenFromSession();
