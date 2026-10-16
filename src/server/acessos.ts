@@ -87,7 +87,7 @@ interface RegraLeitura { operacao?: Operacao; porTurma?: 'turma_id' | 'matricula
 export const LEITURA_MONITORA: Record<string, RegraLeitura> = {
   periodos: { todas: true }, disciplinas: { todas: true },
   turmas: { porTurma: 'turma_id' }, horarios_turma: { porTurma: 'turma_id' }, matriculas: { porTurma: 'turma_id' },
-  alunos: { porTurma: 'aluno_id', ocultar: ['email'] },
+  alunos: { porTurma: 'aluno_id', somente: ['aluno_id', 'nome', 'identificador_academico', 'status'] },
   grupos_pratica: { porTurma: 'turma_id' }, grupo_integrantes: { porTurma: 'grupo_id' },
   encontros_turma: { operacao: 'CHAMADA', porTurma: 'turma_id', ocultar: ['observacao'] },
   frequencias: { operacao: 'CHAMADA', porTurma: 'matricula_id', ocultar: ['justificativa', 'observacao'] },
