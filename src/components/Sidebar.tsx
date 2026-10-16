@@ -173,7 +173,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </div>
 
         {/* Administração menos frequente, recolhida sem retirar funções. */}
-        <details className="mx-3 rounded-lg border border-slate-200" open={currentTab === 'semestres' || currentTab === 'configuracoes' ? true : undefined}>
+        {secondaryItems.length > 0 && <details className="mx-3 rounded-lg border border-slate-200" open={currentTab === 'semestres' || currentTab === 'configuracoes' ? true : undefined}>
         <summary className="px-3 py-2.5 text-xs font-semibold text-slate-600 cursor-pointer">Administração e ajustes</summary>
         <nav className="px-2 pb-2 space-y-1">
           {secondaryItems.map(item => {
@@ -201,7 +201,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             );
           })}
         </nav>
-        </details>
+        </details>}
       </div>
 
       {/* Footer Info & Connection Status */}

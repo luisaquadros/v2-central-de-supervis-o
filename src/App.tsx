@@ -59,6 +59,7 @@ const MainContent: React.FC = () => {
 
   const handleMobileSelect = (action: 'hoje'|'turmas'|'aula'|'avaliacao'|'menu') => {
     if (action === 'menu') { setIsMobileMenuOpen(true); return; }
+    if (action === 'avaliacao' && ehMonitora) return;
     setIsMobileMenuOpen(false);
     if (action === 'aula') {
       const turma = getSupervisaoAtual().turma || getProximaSupervisao()?.turma ||
@@ -347,6 +348,7 @@ const MainContent: React.FC = () => {
           selected={currentView.type === 'tab' && ['hoje','turmas','avaliacao'].includes(currentView.tab) ?
             currentView.tab as 'hoje'|'turmas'|'avaliacao' : 'menu'}
           onSelect={handleMobileSelect}
+          ehMonitora={ehMonitora}
         />
       )}
       {prepararTurmaId && turmas.some(t => t.turma_id === prepararTurmaId) && (
