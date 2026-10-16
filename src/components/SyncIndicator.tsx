@@ -134,7 +134,7 @@ export const SyncIndicator: React.FC = () => {
       {/* Painel Modal de Detalhes da Sincronização */}
       {modalAberto && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-md w-full overflow-hidden flex flex-col">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-md w-full overflow-hidden flex flex-col max-h-[90dvh]">
             <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-50">
               <div className="flex items-center gap-2">
                 <Database className="w-4 h-4 text-slate-700" />
@@ -148,7 +148,7 @@ export const SyncIndicator: React.FC = () => {
               </button>
             </div>
 
-            <div className="p-5 space-y-4 text-xs">
+            <div className="p-5 space-y-4 text-xs overflow-y-auto">
               {/* Hierarquia */}
               <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1 text-slate-600">
                 <div className="font-semibold text-slate-800">Hierarquia da Base:</div>
