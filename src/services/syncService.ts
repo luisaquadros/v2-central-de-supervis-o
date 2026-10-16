@@ -212,6 +212,9 @@ async function sincronizarDaBaseOficialInterna(): Promise<{
       return { sucesso: false, erro: 'Não autenticado no Google.' };
     }
 
+    // Antes de qualquer replay da fila, o servidor precisa confirmar o perfil atual.
+    // A posse do cache por UID é verificada nos fluxos de autenticação do aplicativo.
+    const perfilServidor = exigirPerfilLeitura(await obterPerfilServidor());
     // Alterações locais precisam ser confirmadas antes de aceitar o snapshot remoto.
     // Caso permaneçam pendentes, a leitura não pode sobrescrever essas tabelas.
     await processarFilaInterna();
@@ -224,7 +227,6 @@ async function sincronizarDaBaseOficialInterna(): Promise<{
 
     // Executa a busca resiliente na planilha oficial
     // Monitoras não leem a planilha diretamente: o servidor entrega só o que foi delegado a elas.
-    const perfilServidor = exigirPerfilLeitura(await obterPerfilServidor());
     const resultado = perfilServidor.papel === 'MONITORA'
       ? await carregarViaServidor(perfilServidor)
       : await carregarDadosDaPlanilhaOficial();

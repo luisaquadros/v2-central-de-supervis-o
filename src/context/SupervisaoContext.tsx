@@ -704,29 +704,33 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   // 2. OBSERVADOR DE AUTENTICAÇÃO GOOGLE: Sincroniza silenciosamente se o token estiver válido
   useEffect(() => {
     let isMounted = true;
+    let geracaoAuth = 0;
     const unsubscribe = initAuth(
       (user, _token) => {
         if (!isMounted) return;
+        const geracao = ++geracaoAuth;
+        // Nunca mostrar o cache anterior enquanto a posse e as permissões da conta mudaram.
+        setAcessoGoogleValidado(false);
+        limparCachePerfil();
+        setPerfilServidor(null);
         setCurrentUser(user);
-        // Sessão do app é independente do token OAuth do Sheets (que expira antes).
-        // Só exibe cache em até 6h se esta conta já foi validada neste dispositivo.
-        if (lerSessaoAutorizada(user.uid)) {
-          setAcessoGoogleValidado(true);
-        }
-        // Cache local é do navegador: na troca de conta, apaga a cópia das tabelas (se não houver pendências de outra conta).
         garantirCacheDoUsuario(user.uid)
-          .then(estado => {
+          .then(async estado => {
+            if (!isMounted || geracao !== geracaoAuth) return null;
             if (estado === 'PENDENTES_DE_OUTRA_CONTA') {
               setConnectionErrorMessage('Há alterações pendentes de outra conta neste aparelho. Entre com a conta original para enviá-las antes de trocar de usuária.');
-              return Promise.reject(new Error('PENDENTES_DE_OUTRA_CONTA'));
+              return null;
             }
-            if (estado === 'LIMPO') { setHasLocalCache(false); }
+            if (estado === 'LIMPO') setHasLocalCache(false);
+            // Reabrir em modo offline só para a MESMA conta e com sessão local ainda válida.
+            if (estado === 'MESMO' && lerSessaoAutorizada(user.uid)) setAcessoGoogleValidado(true);
+            try { await processarFilaSincronizacao(); }
+            catch (e) { console.warn('Fila local não enviada:', e); }
+            if (!isMounted || geracao !== geracaoAuth) return null;
+            return sincronizarDaBaseOficial();
           })
-          .then(() => processarFilaSincronizacao())
-          .catch(e => { if (e instanceof Error && e.message === 'PENDENTES_DE_OUTRA_CONTA') throw e; })
-          .then(() => sincronizarDaBaseOficial())
           .then(res => {
-            if (!isMounted) return;
+            if (!isMounted || geracao !== geracaoAuth || !res) return;
             if (res.sucesso && res.dados) {
               registrarSessaoAutorizada(user.uid);
               setAcessoGoogleValidado(true);
@@ -735,10 +739,11 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
               setConnectionStatus('CONECTADO');
             }
           })
-          .catch(() => { /* pendências de outra conta já sinalizadas; falhas de rede seguem o fluxo de reconexão */ });
+          .catch(() => { /* falha de rede não autoriza expor cache de outra conta */ });
       },
       () => {
         if (!isMounted) return;
+        ++geracaoAuth;
         setAcessoGoogleValidado(false);
         setCurrentUser(null);
       }
@@ -754,7 +759,7 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     let isMounted = true;
 
     const autoSyncSePossivel = async () => {
-      if (!isMounted) return;
+      if (!isMounted || !currentUser || !acessoGoogleValidado) return;
       const token = await getAccessToken();
       if (token && document.visibilityState === 'visible') {
         try {
@@ -785,7 +790,7 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       window.removeEventListener('online', autoSyncSePossivel);
       clearInterval(intervalId);
     };
-  }, [aplicarDados]);
+  }, [aplicarDados, currentUser?.uid, acessoGoogleValidado]);
 
   // 4. SINCRONIZAÇÃO DA BASE OFICIAL COM RENOVAÇÃO INTERATIVA SE NECESSÁRIO
   const sincronizarAgora = useCallback(async () => {
@@ -794,13 +799,17 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
     // Ambiente web: acesso Google com renovação interativa quando o token expira.
     let token = await getAccessToken();
+    let usuarioSincronizacao = currentUser?.uid;
     if (!token) {
       // Se não há token ativo (expirou ou sessão nova), abre o popup de login do Google!
       setIsLoggingIn(true);
       try {
         const resLogin = await googleSignIn();
         if (resLogin) {
+          setAcessoGoogleValidado(false);
+          limparCachePerfil();
           setCurrentUser(resLogin.user);
+          usuarioSincronizacao = resLogin.user.uid;
           setIsTokenExpired(false);
           setTokenExpiredAviso(null);
           token = resLogin.accessToken;
@@ -815,6 +824,29 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       }
     }
 
+    // A fila nunca pode ser enviada com a identidade de outra conta.
+    if (!usuarioSincronizacao) {
+      setConnectionErrorMessage('Entre com sua conta antes de sincronizar.');
+      setConnectionStatus('ERRO_CONEXAO');
+      return;
+    }
+    try {
+      const dono = await garantirCacheDoUsuario(usuarioSincronizacao);
+      if (dono === 'PENDENTES_DE_OUTRA_CONTA') {
+        setAcessoGoogleValidado(false);
+        setConnectionErrorMessage('Há alterações pendentes de outra conta. Entre com a conta original antes de sincronizar.');
+        setConnectionStatus('ERRO_CONEXAO');
+        return;
+      }
+      if (dono === 'LIMPO') {
+        setHasLocalCache(false);
+        setAcessoGoogleValidado(false);
+      }
+    } catch {
+      setConnectionErrorMessage('Não foi possível verificar a segurança do cache local.');
+      setConnectionStatus('ERRO_CONEXAO');
+      return;
+    }
     // 1. PRIMEIRO: Processa e envia alterações pendentes na fila local (syncQueue) para o Google Sheets!
     try {
       await processarFilaSincronizacao();
@@ -836,7 +868,7 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       setConnectionErrorMessage(res.erro || 'Falha ao sincronizar com Google Sheets');
       setConnectionStatus('ERRO_CONEXAO'); // mantém cache, mas informa falha real
     }
-  }, [aplicarDados, hasLocalCache]);
+  }, [aplicarDados, currentUser?.uid]);
 
   const carregarDadosReais = sincronizarAgora;
 
@@ -848,8 +880,15 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       // ela poderia abrir outro popup e iniciar uma segunda tentativa concorrente.
       const res = await googleSignIn();
       if (!res) throw new Error('A autenticação não foi concluída.');
+      setAcessoGoogleValidado(false);
+      limparCachePerfil();
       setCurrentUser(res.user);
       setConnectionStatus('CARREGANDO');
+      const dono = await garantirCacheDoUsuario(res.user.uid);
+      if (dono === 'PENDENTES_DE_OUTRA_CONTA') {
+        throw new Error('Há alterações pendentes de outra conta. Entre com a conta original para enviá-las.');
+      }
+      if (dono === 'LIMPO') setHasLocalCache(false);
       const resultado = await Promise.race([
         sincronizarDaBaseOficial(),
         new Promise<never>((_, reject) => setTimeout(
