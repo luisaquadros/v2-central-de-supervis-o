@@ -92,7 +92,7 @@ export const LEITURA_MONITORA: Record<string, RegraLeitura> = {
   encontros_turma: { operacao: 'CHAMADA', porTurma: 'turma_id', ocultar: ['observacao'] },
   frequencias: { operacao: 'CHAMADA', porTurma: 'matricula_id', ocultar: ['justificativa', 'observacao'] },
   entregas: { operacao: 'ENTREGAS', porTurma: 'matricula_id', ocultar: ['observacao'] },
-  monitoramento_documentos: { operacao: 'DOCUMENTOS_VER', porTurma: 'turma_id', ocultar: ['observacao', 'observacao_manual', 'observacao_administrativa'] },
+  monitoramento_documentos: { operacao: 'DOCUMENTOS_VER', porTurma: 'turma_id', somente: ['monitoramento_id', 'periodo_id', 'turma_id', 'titular_tipo', 'titular_id', 'tipo_documento_id', 'data_modificacao_drive', 'consultado_em', 'status', 'erro_codigo'] },
   // RSS: a monitora vê só o STATUS ADMINISTRATIVO das entregas (unidade, turma, semana, data, status). Lista branca: nenhuma coluna
   // com conteúdo clínico, nome de autor ou observação sai, mesmo que a planilha ganhe colunas novas.
   registros_semanais: { operacao: 'ENTREGAS', porTurma: 'turma_id', somente: ['registro_id', 'matricula_id', 'grupo_id', 'turma_id', 'escopo', 'data_entrega', 'semana_rss', 'status', 'status_revisao'] },
