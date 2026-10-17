@@ -76,8 +76,9 @@ export const TABELAS_NORMALIZADAS = [
 const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 
+// Autenticação apenas no aplicativo. O acesso ao Sheets é feito no Worker,
+ // com a conta de serviço e as permissões validadas pelo Firebase.
 const provider = new GoogleAuthProvider();
-provider.addScope('https://www.googleapis.com/auth/spreadsheets');
 
 // Persistência segura da sessão e token de acesso OAuth no sessionStorage (com expiração de 55 minutos)
 const SESSION_TOKEN_KEY = 'cs_google_access_token_session';
