@@ -202,6 +202,9 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
   } | null>(null);
   const [mobileTab, setMobileTab] = useState<'LISTA' | 'DETALHE'>('LISTA');
   const [searchQuery, setSearchQuery] = useState('');
+  const [selectedMatriculaId, setSelectedMatriculaId] = useState<string>(() => {
+    return alunosLista.length > 0 ? alunosLista[0].matricula.matricula_id : '';
+  });
   const [participacao, setParticipacao] = useState('NAO_REGISTRADO');
   const [leituraDirigida, setLeituraDirigida] = useState('NAO_REGISTRADO');
   const [casoCompartilhado, setCasoCompartilhado] = useState('NAO_REGISTRADO');
@@ -220,9 +223,6 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
     } catch (e: any) { setErroParticipacao(e?.message || 'Não foi possível gravar.'); }
     finally { setRegistrandoParticipacao(false); }
   };
-  const [selectedMatriculaId, setSelectedMatriculaId] = useState<string>(() => {
-    return alunosLista.length > 0 ? alunosLista[0].matricula.matricula_id : '';
-  });
 
   // Ao concluir a leitura assíncrona da planilha, a lista pode chegar depois
   // de abrir a aula. Evita ficha vazia e seleção de matrícula de outra turma.
@@ -379,7 +379,7 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
     ? Math.floor((Date.parse(hojeIso + 'T12:00:00Z') - Date.parse(ultimoRss.data_entrega.slice(0,10) + 'T12:00:00Z')) / 86400000) : null;
   const orientacoesAnteriores = orientacoes.filter(o => o.matricula_id === selectedMatriculaId && o.data_hora?.slice(0,10) < hojeIso)
     .sort((a,b) => String(b.data_hora).localeCompare(String(a.data_hora)));
-  const registrosAulaAnterior = registrosSupervisao.filter(r => r.matricula_id === selectedMatriculaId && r.data_hora?.slice(0,10) < hojeIso)
+  const registrosAulaAnterior = registrosSupervisao.filter(r => r.matricula_id === selectedMatriculaId && String(r.data_hora || '').slice(0,10) < hojeIso)
     .sort((a,b) => String(b.data_hora).localeCompare(String(a.data_hora)));
 
   return (
