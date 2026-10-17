@@ -1548,6 +1548,7 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
         <ModalNovaOrientacao
           matriculaId={selectedMatriculaId}
           alunoNome={resumoAluno?.aluno.nome || ''}
+          dataAula={hojeIso}
           onClose={() => setModalType(null)}
         />
       )}
