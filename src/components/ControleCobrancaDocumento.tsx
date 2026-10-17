@@ -26,6 +26,16 @@ export const ControleCobrancaDocumento:React.FC<{matriculaId:string;tipo:string;
   const [salvando,setSalvando]=useState(false);
   const [erro,setErro]=useState('');
   const [resultado,setResultado]=useState('');
+  const emailJaEnviado = async()=>{
+    if(salvando) return;
+    if(!window.confirm('Registrar que a cobrança deste documento já foi enviada por e-mail? A data do envio ficará em branco porque não foi informada.'))return;
+    setSalvando(true);setErro('');setResultado('');
+    try {
+      await registrarCobrancaDocumento(matriculaId,tipo,{data_contato:'',canal:'EMAIL',situacao:'CONTATO_ENVIADO',nota:'Cobrança enviada, conforme confirmação da professora; data do e-mail não informada.'});
+      setResultado('Cobrança registrada. Confira a sincronização.');
+    }catch(e){setErro(e instanceof Error?e.message:'Falha no registro.');}
+    finally{setSalvando(false);}
+  };
   const enviar=async()=>{
     if(salvando) return;
     setSalvando(true);setErro('');setResultado('');
@@ -44,9 +54,14 @@ export const ControleCobrancaDocumento:React.FC<{matriculaId:string;tipo:string;
           ? <p className="text-slate-700">Último contato: <strong>{rotulo(ultimo.situacao)}</strong> · {ultimo.canal} · {ultimo.data_contato || 'data do contato não informada'}</p>
           : <p className="text-amber-800">Nenhum contato registrado para este documento.</p>}
       </div>
+      <div className="flex flex-wrap items-center gap-2">
+      {!ultimo && <button type="button" disabled={salvando} onClick={()=>void emailJaEnviado()}
+        className="min-h-10 px-3 rounded-lg border border-teal-600 bg-teal-50 text-teal-900 font-semibold disabled:opacity-50">
+        Já cobrei por e-mail
+      </button>}
       <button type="button" onClick={()=>setAberto(v=>!v)} className="min-h-10 px-3 rounded-lg border border-slate-300 bg-white font-semibold text-teal-900">
         {aberto?'Cancelar':'Registrar cobrança/retorno'}
-      </button>
+      </button></div>
     </div>
     {aberto && <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3 border-t pt-3">
       <label className="font-semibold text-slate-700">Data do contato (opcional)
