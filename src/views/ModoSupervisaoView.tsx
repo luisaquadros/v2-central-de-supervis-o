@@ -41,6 +41,7 @@ import { Frequencia, MotivoNaoRealizado } from '../types';
 
 interface ModoSupervisaoViewProps {
   turmaId: string;
+  dataAulaInicial?: string;
   onEncerrar: () => void;
   onOpenFichaAluno: (matriculaId: string, initialTab?: string) => void;
   onPrepararAula?: (turmaId: string) => void;
@@ -56,6 +57,7 @@ interface ExcecaoAluno {
 
 export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
   turmaId,
+  dataAulaInicial,
   onEncerrar,
   onOpenFichaAluno,
   onPrepararAula,
@@ -80,6 +82,9 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
     reagendarEncontro,
     encontrosTurma,
     frequencias,
+    registrosSemanais,
+    orientacoes,
+    addRegistroSupervisao,
     saveStatus,
     isTokenExpired,
     tokenExpiredAviso,
@@ -92,7 +97,11 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
   const diagnosticoChamada = diagnosticarChamada(turmaId, matriculas, alunos);
   const chamadaIncompleta = alunosLista.length === 0 || diagnosticoChamada.alunosLocalizados < diagnosticoChamada.matriculasElegiveis;
 
-  const hojeIso = useMemo(() => getHojeDataIso(), []);
+  // Data do encontro é uma decisão explícita da professora, não o relógio do navegador.
+  const [hojeIso, setDataEncontro] = useState(dataAulaInicial || getHojeDataIso());
+  useEffect(() => { setDataEncontro(dataAulaInicial || getHojeDataIso()); }, [turmaId, dataAulaInicial]);
+  const retrospectivo = hojeIso < getHojeDataIso();
+  const dataInvalida = !/^\d{4}-\d{2}-\d{2}$/.test(hojeIso) || hojeIso > getHojeDataIso();
 
   // 1. Verificação de Encontro de Hoje (Cancelado / Reagendado / Realizado)
   const encontroHoje = encontrosTurma.find(
@@ -173,10 +182,13 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
     return initialMap;
   };
   const [excecoes, setExcecoes] = useState<Record<string, ExcecaoAluno>>(construirExcecoesDaTurma);
+  const [confirmadosRetro, setConfirmadosRetro] = useState<Record<string, boolean>>({});
   // Refaz o formulário quando a turma muda; não reseta alterações do usuário
   // durante a sincronização normal da mesma turma.
   useEffect(() => {
     setExcecoes(construirExcecoesDaTurma());
+    const previamenteGravadas = new Set(frequencias.filter(f => f.data_aula === hojeIso).map(f => f.matricula_id));
+    setConfirmadosRetro(Object.fromEntries(alunosLista.filter(x => previamenteGravadas.has(x.matricula.matricula_id)).map(x => [x.matricula.matricula_id, true])));
     setSearchQuery('');
     setChamadaSalvaMsg(null);
   }, [turmaId, hojeIso]);
@@ -226,6 +238,7 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
 
   // Helper de exceções
   const toggleFaltou = (matriculaId: string) => {
+    if (retrospectivo) setConfirmadosRetro(prev => ({ ...prev, [matriculaId]: true }));
     setExcecoes(prev => {
       const atual = prev[matriculaId] || { faltou: false, atraso: false, celular: false };
       return {
@@ -239,6 +252,7 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
   };
 
   const toggleAtraso = (matriculaId: string) => {
+    if (retrospectivo) setConfirmadosRetro(prev => ({ ...prev, [matriculaId]: true }));
     setExcecoes(prev => {
       const atual = prev[matriculaId] || { faltou: false, atraso: false, celular: false };
       return {
@@ -269,6 +283,11 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
   const [encerrando, setEncerrando] = useState(false);
   const previa = prepararEncerramentoChamada(alunosLista, excecoes);
   const abrirPrevia = () => {
+    if (dataInvalida) { setChamadaSalvaMsg({texto: 'Escolha uma data de aula válida (não futura).', tipo: 'local'}); return; }
+    if (retrospectivo && alunosLista.some(item => !temSupervisaoHorarioAlternativo(item.matricula) && !confirmadosRetro[item.matricula.matricula_id])) {
+      setChamadaSalvaMsg({texto: 'Chamada retrospectiva: confirme Presente ou Falta/Atraso individualmente. Nunca presumimos presença em uma aula anterior.', tipo: 'local'});
+      return;
+    }
     if (chamadaIncompleta) {
       setChamadaSalvaMsg({ texto: 'Chamada não encerrada: lista de alunos incompleta. Confira a sincronização da turma.', tipo: 'local' });
       return;
@@ -351,6 +370,12 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
           </div>
         </div>
 
+        <label className="flex flex-col gap-1 text-xs font-semibold text-white min-w-[160px]">
+          <span>Data da supervisão · confirme</span>
+          <input type="date" aria-label="Data do encontro de supervisão" value={hojeIso} onChange={e => setDataEncontro(e.target.value)}
+            className="min-h-10 rounded-lg px-3 text-slate-900 bg-white border border-slate-300" />
+          {retrospectivo && <span className="text-amber-200 text-[11px]">Registro retrospectivo · validar presenças</span>}
+        </label>
         {/* Ações operacionais da aula: Não realizada, Reagendar, Encerrar */}
         <div className="flex items-center gap-2 flex-wrap">
           {onPrepararAula && <button
@@ -849,6 +874,10 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
 
                     {/* CONTROLES RÁPIDOS DE EXCEÇÃO: [Faltou] [Atraso] [Celular] [+] (Áreas mínimas de 44px) */}
                     <div className="flex items-center gap-1.5 shrink-0">
+                      {retrospectivo && !temSupervisaoHorarioAlternativo(item.matricula) && <button type="button"
+                        onClick={() => { setConfirmadosRetro(p => ({ ...p, [matId]: true })); setExcecoes(p => ({ ...p, [matId]: { ...(p[matId] || {faltou:false,atraso:false,celular:false}), faltou:false, atraso:false } })); }}
+                        className={'min-h-[44px] px-2 rounded-lg text-xs font-bold ' + (confirmadosRetro[matId] && !exc.faltou ? 'bg-emerald-700 text-white' : 'bg-slate-100 text-slate-700')}
+                        aria-label={'Confirmar presença retrospectiva de ' + item.aluno.nome}>Presente</button>}
                       {/* [Faltou] */}
                       <button
                         onClick={() => toggleFaltou(matId)}
