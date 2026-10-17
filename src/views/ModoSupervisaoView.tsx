@@ -219,7 +219,7 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
       const texto = 'Participação na discussão: ' + participacao + '\nLeitura dirigida: ' + leituraDirigida + '\nCompartilhamento de caso: ' + casoCompartilhado + (observacaoFormativa.trim() ? '\nObservação da professora: ' + observacaoFormativa.trim() : '');
       await addRegistroSupervisao(selectedMatriculaId, hojeIso + 'T12:00:00', 'PARTICIPACAO_AULA', texto);
       setParticipacao('NAO_REGISTRADO'); setLeituraDirigida('NAO_REGISTRADO'); setCasoCompartilhado('NAO_REGISTRADO'); setObservacaoFormativa('');
-      setErroParticipacao('Registro formativo salvo. A data da aula foi preservada; a gravação mantém auditoria própria.');
+      setErroParticipacao('Registro armazenado. Confira no indicador de sincronização se já foi enviado à planilha.');
     } catch (e: any) { setErroParticipacao(e?.message || 'Não foi possível gravar.'); }
     finally { setRegistrandoParticipacao(false); }
   };
@@ -373,7 +373,10 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
   });
   const ultimoRss = [...rssDoAluno].filter(r => {
     const x = r as unknown as Record<string, unknown>;
-    return CAMPOS_TEXTO_RSS.some(([ch]) => String(x[ch] ?? '').trim()) || Boolean(r.data_entrega && !['FALTANTE'].includes(String(r.status)));
+    const temConteudo = CAMPOS_TEXTO_RSS.some(([ch]) => String(x[ch] ?? '').trim()) ||
+      ['link','url','link_documento','url_documento','link_rss','arquivo_url','documento_url'].some(ch => /^https:\/\//.test(String(x[ch] || '')));
+    const entregueAteEncontro = !r.data_entrega || r.data_entrega.slice(0,10) <= hojeIso;
+    return temConteudo && entregueAteEncontro && String(r.status || '').toUpperCase() !== 'FALTANTE';
   }).sort((a,b) => String(b.data_entrega || '').localeCompare(String(a.data_entrega || '')) || Number((b as any).semana_rss ?? b.semana ?? 0) - Number((a as any).semana_rss ?? a.semana ?? 0))[0];
   const diasUltimoRss = ultimoRss?.data_entrega && /^\d{4}-\d{2}-\d{2}/.test(ultimoRss.data_entrega)
     ? Math.floor((Date.parse(hojeIso + 'T12:00:00Z') - Date.parse(ultimoRss.data_entrega.slice(0,10) + 'T12:00:00Z')) / 86400000) : null;
