@@ -56,4 +56,21 @@ assert.equal(lerSessaoAutorizada('conta-a',now+SEIS_HORAS_MS),false);
 assert.equal(lerSessaoAutorizada('conta-b',now+1000),false);
 encerrarSessaoAutorizada();
 assert.equal(lerSessaoAutorizada('conta-a',now+1000),false);
-console.log('[PASS] Interface operacional: 6h de sessão, transferência de leituras, RSS e alertas.');
+import { listarDatasSupervisao } from '../services/historicoAulas';
+const datas= listarDatasSupervisao('T',[
+ {turma_id:'T',ativo:true,dia_semana:2,data_inicio:'2026-09-01',data_fim:'2026-10-20'},
+ {turma_id:'U',ativo:true,dia_semana:3,data_inicio:'2026-09-01',data_fim:'2026-10-20'}
+] as any,[
+ {turma_id:'T',data:'2026-10-06',status:'NAO_REALIZADO'},
+ {turma_id:'T',data:'2026-10-08',status:'REALIZADO'}
+] as any,'2026-09-01','2026-12-01','2026-10-17');
+assert(datas.some(d=>d.data==='2026-10-06'&&d.situacao==='Não realizada'));
+assert(datas.some(d=>d.data==='2026-10-08'&&d.situacao==='Registrada'));
+assert(datas.every(d=>d.data<='2026-10-17'));
+assert(!datas.some(d=>d.data==='2026-10-07'));
+import { interpretarRegistroFormativo, serializarRegistroFormativo } from '../services/registroFormativo';
+const indicadores={participacao:'SIM',leituraDirigida:'NAO',casoCompartilhado:'NAO_SE_APLICA',observacao:'Discussão formativa sem identificação clínica'};
+const rFormativo=serializarRegistroFormativo(indicadores);
+assert.deepEqual(interpretarRegistroFormativo(rFormativo),indicadores);
+assert.deepEqual(interpretarRegistroFormativo(''),{participacao:'NAO_REGISTRADO',leituraDirigida:'NAO_REGISTRADO',casoCompartilhado:'NAO_REGISTRADO',observacao:''});
+console.log('[PASS] Interface operacional: histórico por turma, registro formativo editável e navegação temporal.');

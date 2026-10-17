@@ -12,6 +12,8 @@ import {
   Users,
 } from 'lucide-react';
 import { useSupervisao } from '../context/SupervisaoContext';
+import { documentosPendentesOficiais } from '../services/documentacaoAcademicaService';
+import { ControleCobrancaDocumento } from '../components/ControleCobrancaDocumento';
 
 interface PendenciasViewProps {
   initialFilterType?: string;
@@ -31,6 +33,7 @@ export const PendenciasView: React.FC<PendenciasViewProps> = ({
     alunos,
     orientacoes,
     documentos,
+    entregas,
     registrosSemanais,
     statusRssUnidades,
     getStatusRssUnidade,
@@ -53,6 +56,7 @@ export const PendenciasView: React.FC<PendenciasViewProps> = ({
   const [resolvendoId, setResolvendoId] = useState<string | null>(null);
   const [mostrarTodas, setMostrarTodas] = useState(true);
 
+  const documentosAConferir = documentosPendentesOficiais(entregas, documentos);
   const todasPendenciasCanonicas = getPendenciasCanonicas().filter(p => {
     if (turmaFiltro === 'TODAS') return true;
     return p.turma_id === turmaFiltro;
@@ -194,6 +198,9 @@ export const PendenciasView: React.FC<PendenciasViewProps> = ({
                 <div className="flex flex-wrap gap-2 mt-2 text-[11px] text-slate-700"><span className="rounded bg-slate-100 px-2 py-1">Tipo: {item.tipo.replaceAll('_',' ')}</span>
                   {item.aluno_nome && <span className="rounded bg-slate-100 px-2 py-1">Estudante: {item.aluno_nome}</span>}
                   {item.matricula_id && <span className="rounded bg-slate-100 px-2 py-1">Ficha individual disponível</span>}</div>
+                {item.tipo === 'DOCUMENTO' && item.matricula_id && documentosAConferir.find(d => 'pend-doc-' + d.documento_id === item.id) && <ControleCobrancaDocumento
+                   matriculaId={item.matricula_id} nome={item.aluno_nome || 'Estudante'}
+                   tipo={documentosAConferir.find(d => 'pend-doc-' + d.documento_id === item.id)!.tipo}/>}
               </div>
               <div className="flex gap-2 shrink-0">
                 {item.matricula_id && <button type="button" onClick={() => onOpenAluno(item.matricula_id!)} className="px-3 py-2 text-xs border border-slate-300 rounded-lg">Abrir ficha</button>}

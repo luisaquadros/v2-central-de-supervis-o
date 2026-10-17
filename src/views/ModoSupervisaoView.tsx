@@ -39,6 +39,8 @@ import { getHojeDataIso } from '../services/supervisaoOperacionalService';
 import { obterLeiturasAgendadas, obterLacunasRssDaAula } from '../services/supervisaoOperacionalService';
 import { Frequencia, MotivoNaoRealizado } from '../types';
 import { LeituraRss, CAMPOS_TEXTO_RSS } from '../components/LeituraRss';
+import { listarDatasSupervisao } from '../services/historicoAulas';
+import { interpretarRegistroFormativo, serializarRegistroFormativo } from '../services/registroFormativo';
 
 interface ModoSupervisaoViewProps {
   turmaId: string;
@@ -66,6 +68,9 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
   const {
     turmas,
     disciplinas,
+    periodos,
+    horariosTurma,
+    selectedPeriodoId,
     matriculas,
     alunos,
     gruposPratica,
@@ -87,6 +92,7 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
     orientacoes,
     registrosSupervisao,
     addRegistroSupervisao,
+    atualizarRegistroFormativo,
     saveStatus,
     isTokenExpired,
     tokenExpiredAviso,
@@ -104,6 +110,21 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
   useEffect(() => { setDataEncontro(dataAulaInicial || getHojeDataIso()); }, [turmaId, dataAulaInicial]);
   const retrospectivo = hojeIso < getHojeDataIso();
   const dataInvalida = !/^\d{4}-\d{2}-\d{2}$/.test(hojeIso) || hojeIso > getHojeDataIso();
+  const [chamadaEditada,setChamadaEditada] = useState(false);
+  const periodo = periodos.find(p=>p.periodo_id===selectedPeriodoId);
+  const datasAula = useMemo(()=>listarDatasSupervisao(turmaId,horariosTurma,encontrosTurma,
+    periodo?.data_inicio || '',periodo?.data_fim || '',getHojeDataIso()),[turmaId,horariosTurma,encontrosTurma,periodo?.data_inicio,periodo?.data_fim]);
+  const posicao = datasAula.findIndex(d=>d.data===hojeIso);
+  const dataAnterior = datasAula.filter(d=>d.data<hojeIso).at(-1)?.data;
+  const dataPosterior = datasAula.find(d=>d.data>hojeIso)?.data;
+  const trocarData = (nova: string) => {
+    if(nova===hojeIso)return;
+    if(chamadaEditada || formularioAlterado) {
+      if(!window.confirm('Há alterações nesta aula que ainda não foram salvas. Deseja mudar de data e descartá-las?'))return;
+    }
+    setChamadaEditada(false);
+    setDataEncontro(nova);
+  };
 
   // 1. Verificação de Encontro de Hoje (Cancelado / Reagendado / Realizado)
   const encontroHoje = encontrosTurma.find(
@@ -193,6 +214,7 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
     setConfirmadosRetro(Object.fromEntries(alunosLista.filter(x => previamenteGravadas.has(x.matricula.matricula_id)).map(x => [x.matricula.matricula_id, true])));
     setSearchQuery('');
     setChamadaSalvaMsg(null);
+    setChamadaEditada(false);
   }, [turmaId, hojeIso]);
 
   const [chamadaSalvaMsg, setChamadaSalvaMsg] = useState<{
@@ -211,14 +233,22 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
   const [observacaoFormativa, setObservacaoFormativa] = useState('');
   const [registrandoParticipacao, setRegistrandoParticipacao] = useState(false);
   const [erroParticipacao, setErroParticipacao] = useState('');
-  useEffect(() => { setParticipacao('NAO_REGISTRADO'); setLeituraDirigida('NAO_REGISTRADO'); setCasoCompartilhado('NAO_REGISTRADO'); setObservacaoFormativa(''); setErroParticipacao(''); }, [selectedMatriculaId, hojeIso]);
+  const [formularioAlterado, setFormularioAlterado] = useState(false);
+  const registroFormativoAnterior = registrosSupervisao.find(r => r.matricula_id === selectedMatriculaId && String(r.data_hora || '').slice(0,10) === hojeIso && r.categoria === 'PARTICIPACAO_AULA');
+  useEffect(() => {
+    const base = interpretarRegistroFormativo(registroFormativoAnterior?.texto || '');
+    setParticipacao(base.participacao); setLeituraDirigida(base.leituraDirigida);
+    setCasoCompartilhado(base.casoCompartilhado); setObservacaoFormativa(base.observacao);
+    setFormularioAlterado(false); setErroParticipacao('');
+  }, [selectedMatriculaId,hojeIso,registroFormativoAnterior?.registro_id]);
   const registrarParticipacao = async () => {
     if (!selectedMatriculaId || registrandoParticipacao || (participacao === 'NAO_REGISTRADO' && leituraDirigida === 'NAO_REGISTRADO' && casoCompartilhado === 'NAO_REGISTRADO' && !observacaoFormativa.trim())) return;
     setRegistrandoParticipacao(true); setErroParticipacao('');
     try {
-      const texto = 'Participação na discussão: ' + participacao + '\nLeitura dirigida: ' + leituraDirigida + '\nCompartilhamento de caso: ' + casoCompartilhado + (observacaoFormativa.trim() ? '\nObservação da professora: ' + observacaoFormativa.trim() : '');
-      await addRegistroSupervisao(selectedMatriculaId, hojeIso + 'T12:00:00', 'PARTICIPACAO_AULA', texto);
-      setParticipacao('NAO_REGISTRADO'); setLeituraDirigida('NAO_REGISTRADO'); setCasoCompartilhado('NAO_REGISTRADO'); setObservacaoFormativa('');
+      const texto = serializarRegistroFormativo({participacao,leituraDirigida,casoCompartilhado,observacao:observacaoFormativa});
+      if (registroFormativoAnterior?.registro_id) await atualizarRegistroFormativo(registroFormativoAnterior.registro_id,texto);
+      else await addRegistroSupervisao(selectedMatriculaId, hojeIso + 'T12:00:00', 'PARTICIPACAO_AULA', texto);
+      setFormularioAlterado(false);
       setErroParticipacao('Registro armazenado. Confira no indicador de sincronização se já foi enviado à planilha.');
     } catch (e: any) { setErroParticipacao(e?.message || 'Não foi possível gravar.'); }
     finally { setRegistrandoParticipacao(false); }
@@ -258,6 +288,7 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
 
   // Helper de exceções
   const toggleFaltou = (matriculaId: string) => {
+    setChamadaEditada(true);
     if (retrospectivo) setConfirmadosRetro(prev => ({ ...prev, [matriculaId]: true }));
     setExcecoes(prev => {
       const atual = prev[matriculaId] || { faltou: false, atraso: false, celular: false };
@@ -272,6 +303,7 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
   };
 
   const toggleAtraso = (matriculaId: string) => {
+    setChamadaEditada(true);
     if (retrospectivo) setConfirmadosRetro(prev => ({ ...prev, [matriculaId]: true }));
     setExcecoes(prev => {
       const atual = prev[matriculaId] || { faltou: false, atraso: false, celular: false };
@@ -286,6 +318,7 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
   };
 
   const toggleCelular = (matriculaId: string) => {
+    setChamadaEditada(true);
     setExcecoes(prev => {
       const atual = prev[matriculaId] || { faltou: false, atraso: false, celular: false };
       return {
@@ -320,6 +353,7 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
     try {
       const res = await salvarChamadaPorExcecao(turmaId, hojeIso, previa.registros);
       setPreviaAberta(false);
+      setChamadaEditada(false);
       setChamadaSalvaMsg({
         texto: `${res.statusTexto} — ${previa.presentes.length} presentes, ${previa.faltas.length} falta(s).`,
         tipo: res.sincronizadoRemoto ? 'remoto' : 'local',
@@ -410,12 +444,24 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
           </div>
         </div>
 
-        <label className="flex flex-col gap-1 text-xs font-semibold text-white min-w-[160px]">
-          <span>Data da supervisão · confirme</span>
-          <input type="date" aria-label="Data do encontro de supervisão" value={hojeIso} onChange={e => setDataEncontro(e.target.value)}
-            className="min-h-10 rounded-lg px-3 text-slate-900 bg-white border border-slate-300" />
+        <div className="flex flex-col gap-1 text-xs font-semibold text-white min-w-[250px]">
+          <span>Encontro · confirmar data</span>
+          <div className="flex items-center gap-1">
+            <button type="button" aria-label="Encontro anterior" title="Encontro anterior" disabled={!dataAnterior}
+              onClick={()=>dataAnterior&&trocarData(dataAnterior)} className="min-h-10 px-2 rounded-lg bg-slate-700 disabled:opacity-40">‹</button>
+            <input type="date" aria-label="Data do encontro de supervisão" max={getHojeDataIso()} value={hojeIso} onChange={e => trocarData(e.target.value)}
+              className="min-h-10 flex-1 min-w-[145px] rounded-lg px-2 text-slate-900 bg-white border border-slate-300" />
+            <button type="button" aria-label="Próximo encontro" title="Próximo encontro" disabled={!dataPosterior}
+              onClick={()=>dataPosterior&&trocarData(dataPosterior)} className="min-h-10 px-2 rounded-lg bg-slate-700 disabled:opacity-40">›</button>
+          </div>
+          <select aria-label="Histórico de encontros" value={posicao<0?'':hojeIso} onChange={e=>e.target.value&&trocarData(e.target.value)}
+            className="min-h-10 px-2 rounded-lg bg-white text-slate-900 border border-slate-300" >
+            <option value="">Selecionar encontro do semestre</option>
+            {datasAula.map(d=><option key={d.data} value={d.data}>{d.data.split('-').reverse().join('/')} · {d.situacao}</option>)}
+          </select>
           {retrospectivo && <span className="text-amber-200 text-[11px]">Registro retrospectivo · validar presenças</span>}
-        </label>
+          {chamadaEditada && <span className="text-amber-200 text-[11px]">Chamada alterada, ainda não salva</span>}
+        </div>
         {/* Ações operacionais da aula: Não realizada, Reagendar, Encerrar */}
         <div className="flex items-center gap-2 flex-wrap">
           {onPrepararAula && <button
@@ -1047,18 +1093,18 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
                 <div><h4 className="font-bold text-sm text-slate-900">Participação e contribuições nesta aula</h4><p className="text-xs text-slate-600">Registro formativo da data {hojeIso}. Não atribui nota nem presença automaticamente.</p></div>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                   {([['Participou da discussão',participacao,setParticipacao],['Apresentou leitura dirigida',leituraDirigida,setLeituraDirigida],['Compartilhou caso para supervisão',casoCompartilhado,setCasoCompartilhado]] as const).map(([rotulo,valor,mudar]) =>
-                    <label key={rotulo} className="text-xs font-semibold text-slate-700">{rotulo}<select value={valor} onChange={e => mudar(e.target.value)} className="block mt-1 w-full min-h-10 bg-slate-50 border border-slate-200 rounded-lg p-2 text-slate-900">
+                    <label key={rotulo} className="text-xs font-semibold text-slate-700">{rotulo}<select value={valor} onChange={e => {mudar(e.target.value);setFormularioAlterado(true);}} className="block mt-1 w-full min-h-10 bg-slate-50 border border-slate-200 rounded-lg p-2 text-slate-900">
                       <option value="NAO_REGISTRADO">A registrar</option><option value="SIM">Sim</option><option value="NAO">Não</option><option value="NAO_SE_APLICA">Não se aplica</option>
                     </select></label>
                   )}
                 </div>
                 <label className="block text-xs font-semibold text-slate-700">Observação formativa opcional (sem identificar pacientes)
-                  <textarea value={observacaoFormativa} onChange={e => setObservacaoFormativa(e.target.value)} rows={2} maxLength={1500} className="block mt-1 w-full border border-slate-200 p-2 bg-white rounded-lg text-sm text-slate-900" />
+                  <textarea value={observacaoFormativa} onChange={e => {setObservacaoFormativa(e.target.value);setFormularioAlterado(true);}} rows={2} maxLength={1500} className="block mt-1 w-full border border-slate-200 p-2 bg-white rounded-lg text-sm text-slate-900" />
                 </label>
                 <div className="flex flex-wrap justify-between items-center gap-2">
                   <span className="text-xs text-slate-600">{registrosSupervisao.filter(r => r.matricula_id === selectedMatriculaId && r.data_hora?.slice(0,10) === hojeIso && r.categoria === 'PARTICIPACAO_AULA').length} registro(s) formativo(s) nesta data</span>
-                  <button type="button" onClick={() => void registrarParticipacao()} disabled={registrandoParticipacao || (participacao === 'NAO_REGISTRADO' && leituraDirigida === 'NAO_REGISTRADO' && casoCompartilhado === 'NAO_REGISTRADO' && !observacaoFormativa.trim())}
-                    className="min-h-11 rounded-lg bg-teal-800 disabled:opacity-40 text-white px-4 text-xs font-semibold">{registrandoParticipacao ? 'Salvando…' : 'Salvar registro formativo'}</button>
+                  <button type="button" onClick={() => void registrarParticipacao()} disabled={registrandoParticipacao || (registroFormativoAnterior ? !formularioAlterado : (participacao === 'NAO_REGISTRADO' && leituraDirigida === 'NAO_REGISTRADO' && casoCompartilhado === 'NAO_REGISTRADO' && !observacaoFormativa.trim()))}
+                    className="min-h-11 rounded-lg bg-teal-800 disabled:opacity-40 text-white px-4 text-xs font-semibold">{registrandoParticipacao ? 'Salvando…' : registroFormativoAnterior ? 'Atualizar registro formativo' : 'Salvar registro formativo'}</button>
                 </div>
                 {erroParticipacao && <p role="status" className="text-xs text-slate-700">{erroParticipacao}</p>}
                 {registrosSupervisao.filter(r => r.matricula_id === selectedMatriculaId && r.data_hora?.slice(0,10) === hojeIso && r.categoria === 'PARTICIPACAO_AULA').length > 0 &&
