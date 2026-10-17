@@ -35,6 +35,26 @@ const casos: Caso[] = [
   { tabela: 'grupo_integrantes', cab: ['grupo_integrante_id', 'grupo_id', 'matricula_id', 'data_inicio', 'data_fim', 'status', 'origem', 'origem_chave', 'atualizado_em'], linha: ['i1', 'g1', 'm1', '', '', 'ATIVO', 'CENTRAL_CONTROLE', '', ''],
     chave: 'integrante_id', campo: 'status', novo: 'INATIVO', local: { grupo_integrante_id: 'i1', integrante_id: 'i1', grupo_id: 'g1', matricula_id: 'm1', data_inicio: '', data_fim: '', status: 'ATIVO', origem: 'CENTRAL_CONTROLE', origem_chave: '', atualizado_em: '' } },
 ];
+// Últimas quatro tabelas do acesso direto: cabeçalhos conferidos na planilha real em 17/10/2026.
+casos.push(
+  { tabela: 'registros_semanais', cab: ['registro_id','matricula_id','grupo_id','responsavel_matricula_id','origem_autor','responsavel_nome','escopo','turma_id','data_entrega','encontro_numero','encontro_original','local_pratica','objetivos','tecnicas_atividades','manejo_resposta','compreensao_atual','proximo_passo','prioridade_supervisao','duvidas_supervisao','limitacoes','status','origem','origem_chave','sincronizado_em','status_revisao','motivos_revisao','tipo_registro','motivo_sem_encontro','encontros_referenciados','semana_rss'],
+    linha: ['r1','m1','','','ALUNO','','INDIVIDUAL','t1','2026-10-10','','','','resumo clínico','','','','','','','','RASCUNHO','','','','','','','','',''],
+    chave: 'registro_id', campo: 'status', novo: 'ENTREGUE',
+    local: { registro_id: 'r1', matricula_id: 'm1', turma_id: 't1', objetivos: 'resumo clínico', status: 'RASCUNHO' } },
+  { tabela: 'criterios_avaliacao', cab: ['criterio_id','periodo_id','disciplina_id','turma_id','codigo_criterio','nome','nota_maxima','peso','ordem','ativo','escopo','fonte_referencia','criterio_descricao','status_validacao','escopo_evidencia'],
+    linha: ['c1','p1','d1','t1','INTRO','Introdução',1,1,1,'TRUE','','','','',''],
+    chave: 'criterio_id', campo: 'nome', novo: 'Introdução do relatório',
+    local: { criterio_id: 'c1', nome: 'Introdução', turma_id: 't1' } },
+  { tabela: 'configuracoes', cab: ['configuracao_id','chave','valor','periodo_id','disciplina_id','turma_id'],
+    linha: ['cfg1','semestre_ativo','2026.2','p1','',''],
+    chave: 'chave', campo: 'valor', novo: '2027.1',
+    local: { configuracao_id: 'cfg1', chave: 'semestre_ativo', valor: '2026.2', periodo_id: 'p1' } },
+  { tabela: 'marcos_academicos', cab: ['marco_id','periodo_id','disciplina_id','turma_id','codigo_marco','nome','tipo','data_prazo','status','origem','observacao','escopo_marco'],
+    linha: ['mk1','p1','d1','t1','FINAL','Entrega final','RELATORIO','2026-12-01','PENDENTE','','',''],
+    chave: 'marco_id', campo: 'status', novo: 'CONCLUIDO',
+    local: { marco_id: 'mk1', status: 'PENDENTE', turma_id: 't1' } },
+);
+
 const alvo = process.argv[2]; // permite validar uma tabela de cada vez
 // Roda para as tabelas JÁ migradas (as demais ainda usam o caminho direto até o seu passo).
 const pendentes = casos.filter(x => !TABELAS_CRITICAS.has(x.tabela)).map(x => x.tabela);
