@@ -47,7 +47,9 @@ export const PendenciasView: React.FC<PendenciasViewProps> = ({
     if (initialFilterType === 'INCONSISTENCIA') return 'INCONSISTENCIA';
     return 'OBJETIVA';
   });
-  const [turmaFiltro, setTurmaFiltro] = useState<string>('TODAS');
+  const filtroEhTurma = (v?: string) => !!v && !['ATENCAO','orientacoes','faltas','CAIXA_ENTRADA','caixa','INCONSISTENCIA','OBJETIVA'].includes(v);
+  const [turmaFiltro, setTurmaFiltro] = useState<string>(() => filtroEhTurma(initialFilterType) ? initialFilterType! : 'TODAS');
+  React.useEffect(() => { if (filtroEhTurma(initialFilterType)) setTurmaFiltro(initialFilterType!); }, [initialFilterType]);
   const [resolvendoId, setResolvendoId] = useState<string | null>(null);
   const [mostrarTodas, setMostrarTodas] = useState(true);
 
