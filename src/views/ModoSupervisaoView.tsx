@@ -2,7 +2,7 @@ import { ResumoRssSemEnvio } from '../components/ResumoRssSemEnvio';
 import { ResumoDocumentosTurma } from '../components/ResumoDocumentosTurma';
 import { diagnosticarChamada } from '../services/aulaParticipants';
 import { temSupervisaoHorarioAlternativo, ROTULO_HORARIO_ALTERNATIVO } from '../services/condicoesMatricula';
-import { prepararEncerramentoChamada, naoRegistrados } from '../services/chamadaService';
+import { prepararEncerramentoChamada, naoRegistrados, naoConfirmadosRetrospectivos } from '../services/chamadaService';
 import { resolverResponsaveis } from '../services/aulaParticipants';
 import React, { useState, useMemo, useEffect } from 'react';
 import {
@@ -304,7 +304,7 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
   const previa = prepararEncerramentoChamada(alunosLista, excecoes);
   const abrirPrevia = () => {
     if (dataInvalida) { setChamadaSalvaMsg({texto: 'Escolha uma data de aula válida (não futura).', tipo: 'local'}); return; }
-    if (retrospectivo && alunosLista.some(item => !temSupervisaoHorarioAlternativo(item.matricula) && !confirmadosRetro[item.matricula.matricula_id])) {
+    if (retrospectivo && naoConfirmadosRetrospectivos(alunosLista, confirmadosRetro, retrospectivo).length > 0) {
       setChamadaSalvaMsg({texto: 'Chamada retrospectiva: confirme Presente ou Falta/Atraso individualmente. Nunca presumimos presença em uma aula anterior.', tipo: 'local'});
       return;
     }
