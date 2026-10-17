@@ -1113,19 +1113,21 @@ export const TurmaDetalheView: React.FC<{
         <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs text-xs space-y-3">
           <h3 className="font-bold text-slate-900">Pendências Desta Turma</h3>
           <p className="text-slate-500">
-            Alunos desta turma que necessitam de providências (documentos ou orientações).
+            Registros que exigem acompanhamento. Uma semana RSS não localizada deve ser conferida, não tratada automaticamente como falta de entrega.
           </p>
 
           <div className="divide-y divide-slate-100">
             {alunosTurma
               .filter(({ matricula }) => {
                 const resumo = getResumoAlunoSupervisao(matricula.matricula_id);
-                return resumo?.temAtencao;
+                const rss = classificacoesRss.find(x => x.matricula.matricula_id === matricula.matricula_id);
+                return resumo?.temAtencao || rss?.classificacao.categoria === 'RECENTE_PENDENTE' || rss?.classificacao.categoria === 'HISTORICO_INCOMPLETO';
               })
               .map(({ matricula, aluno }) => {
                 const resumo = getResumoAlunoSupervisao(matricula.matricula_id);
+                const rss = classificacoesRss.find(x => x.matricula.matricula_id === matricula.matricula_id);
                 return (
-                  <div key={matricula.matricula_id} className="py-3 flex items-center justify-between">
+                  <div key={matricula.matricula_id} className="py-3 flex flex-col sm:flex-row sm:items-start justify-between gap-3">
                     <div>
                       <div className="font-bold text-slate-900 flex items-center gap-1.5">
                         <span>{aluno.nome}</span>
@@ -1151,6 +1153,14 @@ export const TurmaDetalheView: React.FC<{
                           <span className="text-red-600">{resumo.faltasInjustificadasCount} falta(s)</span>
                         ) : null}
                       </div>
+                      {resumo?.motivosAtencao && resumo.motivosAtencao.length > 0 && <ul className="mt-2 list-disc pl-4 space-y-1 text-xs text-slate-700">
+                        {resumo.motivosAtencao.map((motivo,i) => <li key={i}>{motivo}</li>)}
+                      </ul>}
+                      {rss && rss.classificacao.categoria !== 'EM_DIA' && <div className="mt-2 p-2 rounded-lg bg-amber-50 border border-amber-200 text-xs text-amber-950">
+                        <strong>RSS a conferir:</strong> {statusRotulo[rss.classificacao.categoria] || 'Situação a conferir'}.
+                        {' '}{rss.situacao?.registrosRealizados ?? 0} recebido(s) de {rss.situacao?.registrosEsperadosAteHoje ?? 0} esperado(s) até hoje.
+                        {rss.classificacao.ultimaSemanaFechada && <span> · Última semana encerrada: {rss.classificacao.ultimaSemanaFechada}</span>}
+                      </div>}
                     </div>
                     <button
                       onClick={() => onOpenAluno(matricula.matricula_id)}
