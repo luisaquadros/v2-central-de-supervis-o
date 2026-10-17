@@ -40,6 +40,7 @@ import { obterLeiturasAgendadas, obterLacunasRssDaAula } from '../services/super
 import { Frequencia, MotivoNaoRealizado } from '../types';
 import { LeituraRss, CAMPOS_TEXTO_RSS } from '../components/LeituraRss';
 import { listarDatasSupervisao } from '../services/historicoAulas';
+import { interpretarRegistroFormativo, serializarRegistroFormativo } from '../services/registroFormativo';
 
 interface ModoSupervisaoViewProps {
   turmaId: string;
@@ -91,6 +92,7 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
     orientacoes,
     registrosSupervisao,
     addRegistroSupervisao,
+    atualizarRegistroFormativo,
     saveStatus,
     isTokenExpired,
     tokenExpiredAviso,
@@ -117,8 +119,7 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
   const dataPosterior = datasAula.find(d=>d.data>hojeIso)?.data;
   const trocarData = (nova: string) => {
     if(nova===hojeIso)return;
-    if(chamadaEditada || participacao!=='NAO_REGISTRADO' || leituraDirigida!=='NAO_REGISTRADO'
-      || casoCompartilhado!=='NAO_REGISTRADO' || observacaoFormativa.trim()) {
+    if(chamadaEditada || formularioAlterado) {
       if(!window.confirm('Há alterações nesta aula que ainda não foram salvas. Deseja mudar de data e descartá-las?'))return;
     }
     setChamadaEditada(false);
@@ -232,14 +233,22 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
   const [observacaoFormativa, setObservacaoFormativa] = useState('');
   const [registrandoParticipacao, setRegistrandoParticipacao] = useState(false);
   const [erroParticipacao, setErroParticipacao] = useState('');
-  useEffect(() => { setParticipacao('NAO_REGISTRADO'); setLeituraDirigida('NAO_REGISTRADO'); setCasoCompartilhado('NAO_REGISTRADO'); setObservacaoFormativa(''); setErroParticipacao(''); }, [selectedMatriculaId, hojeIso]);
+  const [formularioAlterado, setFormularioAlterado] = useState(false);
+  const registroFormativoAnterior = registrosSupervisao.find(r => r.matricula_id === selectedMatriculaId && String(r.data_hora || '').slice(0,10) === hojeIso && r.categoria === 'PARTICIPACAO_AULA');
+  useEffect(() => {
+    const base = interpretarRegistroFormativo(registroFormativoAnterior?.texto || '');
+    setParticipacao(base.participacao); setLeituraDirigida(base.leituraDirigida);
+    setCasoCompartilhado(base.casoCompartilhado); setObservacaoFormativa(base.observacao);
+    setFormularioAlterado(false); setErroParticipacao('');
+  }, [selectedMatriculaId,hojeIso,registroFormativoAnterior?.registro_id]);
   const registrarParticipacao = async () => {
     if (!selectedMatriculaId || registrandoParticipacao || (participacao === 'NAO_REGISTRADO' && leituraDirigida === 'NAO_REGISTRADO' && casoCompartilhado === 'NAO_REGISTRADO' && !observacaoFormativa.trim())) return;
     setRegistrandoParticipacao(true); setErroParticipacao('');
     try {
-      const texto = 'Participação na discussão: ' + participacao + '\nLeitura dirigida: ' + leituraDirigida + '\nCompartilhamento de caso: ' + casoCompartilhado + (observacaoFormativa.trim() ? '\nObservação da professora: ' + observacaoFormativa.trim() : '');
-      await addRegistroSupervisao(selectedMatriculaId, hojeIso + 'T12:00:00', 'PARTICIPACAO_AULA', texto);
-      setParticipacao('NAO_REGISTRADO'); setLeituraDirigida('NAO_REGISTRADO'); setCasoCompartilhado('NAO_REGISTRADO'); setObservacaoFormativa('');
+      const texto = serializarRegistroFormativo({participacao,leituraDirigida,casoCompartilhado,observacao:observacaoFormativa});
+      if (registroFormativoAnterior?.registro_id) await atualizarRegistroFormativo(registroFormativoAnterior.registro_id,texto);
+      else await addRegistroSupervisao(selectedMatriculaId, hojeIso + 'T12:00:00', 'PARTICIPACAO_AULA', texto);
+      setFormularioAlterado(false);
       setErroParticipacao('Registro armazenado. Confira no indicador de sincronização se já foi enviado à planilha.');
     } catch (e: any) { setErroParticipacao(e?.message || 'Não foi possível gravar.'); }
     finally { setRegistrandoParticipacao(false); }
@@ -1084,18 +1093,18 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
                 <div><h4 className="font-bold text-sm text-slate-900">Participação e contribuições nesta aula</h4><p className="text-xs text-slate-600">Registro formativo da data {hojeIso}. Não atribui nota nem presença automaticamente.</p></div>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                   {([['Participou da discussão',participacao,setParticipacao],['Apresentou leitura dirigida',leituraDirigida,setLeituraDirigida],['Compartilhou caso para supervisão',casoCompartilhado,setCasoCompartilhado]] as const).map(([rotulo,valor,mudar]) =>
-                    <label key={rotulo} className="text-xs font-semibold text-slate-700">{rotulo}<select value={valor} onChange={e => mudar(e.target.value)} className="block mt-1 w-full min-h-10 bg-slate-50 border border-slate-200 rounded-lg p-2 text-slate-900">
+                    <label key={rotulo} className="text-xs font-semibold text-slate-700">{rotulo}<select value={valor} onChange={e => {mudar(e.target.value);setFormularioAlterado(true);}} className="block mt-1 w-full min-h-10 bg-slate-50 border border-slate-200 rounded-lg p-2 text-slate-900">
                       <option value="NAO_REGISTRADO">A registrar</option><option value="SIM">Sim</option><option value="NAO">Não</option><option value="NAO_SE_APLICA">Não se aplica</option>
                     </select></label>
                   )}
                 </div>
                 <label className="block text-xs font-semibold text-slate-700">Observação formativa opcional (sem identificar pacientes)
-                  <textarea value={observacaoFormativa} onChange={e => setObservacaoFormativa(e.target.value)} rows={2} maxLength={1500} className="block mt-1 w-full border border-slate-200 p-2 bg-white rounded-lg text-sm text-slate-900" />
+                  <textarea value={observacaoFormativa} onChange={e => {setObservacaoFormativa(e.target.value);setFormularioAlterado(true);}} rows={2} maxLength={1500} className="block mt-1 w-full border border-slate-200 p-2 bg-white rounded-lg text-sm text-slate-900" />
                 </label>
                 <div className="flex flex-wrap justify-between items-center gap-2">
                   <span className="text-xs text-slate-600">{registrosSupervisao.filter(r => r.matricula_id === selectedMatriculaId && r.data_hora?.slice(0,10) === hojeIso && r.categoria === 'PARTICIPACAO_AULA').length} registro(s) formativo(s) nesta data</span>
-                  <button type="button" onClick={() => void registrarParticipacao()} disabled={registrandoParticipacao || (participacao === 'NAO_REGISTRADO' && leituraDirigida === 'NAO_REGISTRADO' && casoCompartilhado === 'NAO_REGISTRADO' && !observacaoFormativa.trim())}
-                    className="min-h-11 rounded-lg bg-teal-800 disabled:opacity-40 text-white px-4 text-xs font-semibold">{registrandoParticipacao ? 'Salvando…' : 'Salvar registro formativo'}</button>
+                  <button type="button" onClick={() => void registrarParticipacao()} disabled={registrandoParticipacao || (registroFormativoAnterior ? !formularioAlterado : (participacao === 'NAO_REGISTRADO' && leituraDirigida === 'NAO_REGISTRADO' && casoCompartilhado === 'NAO_REGISTRADO' && !observacaoFormativa.trim()))}
+                    className="min-h-11 rounded-lg bg-teal-800 disabled:opacity-40 text-white px-4 text-xs font-semibold">{registrandoParticipacao ? 'Salvando…' : registroFormativoAnterior ? 'Atualizar registro formativo' : 'Salvar registro formativo'}</button>
                 </div>
                 {erroParticipacao && <p role="status" className="text-xs text-slate-700">{erroParticipacao}</p>}
                 {registrosSupervisao.filter(r => r.matricula_id === selectedMatriculaId && r.data_hora?.slice(0,10) === hojeIso && r.categoria === 'PARTICIPACAO_AULA').length > 0 &&
