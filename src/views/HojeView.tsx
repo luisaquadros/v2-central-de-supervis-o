@@ -1,615 +1,242 @@
-import { resumirDocumentacaoOficial } from '../services/documentacaoAcademicaService';
 import React from 'react';
 import {
-  Play,
-  Calendar,
-  Clock,
-  BookOpen,
-  AlertTriangle,
-  FileText,
-  CheckCircle,
-  Users,
-  Award,
-  ArrowRight,
-  TrendingUp,
-  Sparkles,
-  Layers,
-  ChevronRight,
-  Bell,
-  UserCheck,
-  AlertCircle,
-  RefreshCw,
+  AlertCircle, ArrowRight, BookOpen, CalendarDays, CheckCircle2, ClipboardList,
+  Clock3, FileCheck2, GraduationCap, ListChecks, MessageSquareText, Play,
+  RefreshCw, UsersRound, UserCheck,
 } from 'lucide-react';
 import { useSupervisao } from '../context/SupervisaoContext';
-import { calcularMetricasCronogramaRss, getHojeDataIso, obterLeiturasAgendadas, listarProximasSupervisoes } from '../services/supervisaoOperacionalService';
+import { resumirDocumentacaoOficial } from '../services/documentacaoAcademicaService';
+import { getHojeDataIso, listarProximasSupervisoes } from '../services/supervisaoOperacionalService';
+import { selecionarTresProximasAulas, resumirPendenciasPorTema } from '../services/painelInicialService';
+import type { NavTab } from '../types';
 
 interface HojeViewProps {
   onOpenTurma: (turmaId: string) => void;
   onIniciarSupervisao: (turmaId: string) => void;
-  onNavigateToTab: (tab: any, param?: string) => void;
+  onNavigateToTab: (tab: NavTab, param?: string) => void;
   onOpenPrepararAula?: (turmaId: string) => void;
 }
 
+const formatoData = (iso: string): string => {
+  const [ano, mes, dia] = String(iso).slice(0, 10).split('-');
+  return ano && mes && dia ? [dia, mes, ano].join('/') : 'Data não informada';
+};
+
+const CARD = 'rounded-2xl border border-slate-200 bg-white p-4 shadow-xs';
+const BOTAO_LINK = 'inline-flex items-center gap-1 text-xs font-bold text-teal-800 hover:text-teal-950 hover:underline focus-visible:outline-2 focus-visible:outline-teal-600';
+
 export const HojeView: React.FC<HojeViewProps> = ({
-  onOpenTurma,
-  onIniciarSupervisao,
-  onNavigateToTab,
-  onOpenPrepararAula,
+  onOpenTurma, onIniciarSupervisao, onNavigateToTab, onOpenPrepararAula,
 }) => {
   const {
-    turmas,
-    alunos,
-    matriculas,
-    orientacoes,
-    documentos,
-    entregas,
-    registrosSemanais,
-    frequencias,
-    horariosTurma,
-    leiturasResponsaveis,
-    calendarioRss,
-    marcosAcademicos,
-    selectedPeriodoId,
-    filaProfessora,
-    situacaoAtualTurmas,
-    encontrosTurma,
-    avaliacoesCompletas,
-    getSupervisaoAtual,
-    getProximaSupervisao,
-    getPendenciasOperacionais,
-    sincronizarAgora,
+    periodos, selectedPeriodoId, turmas, matriculas, entregas, documentos,
+    orientacoes, avaliacoesCompletas, horariosTurma, encontrosTurma,
+    marcosAcademicos, getPendenciasCanonicas, getChamadasPendentes,
+    sincronizarAgora, saveStatus, connectionStatus,
   } = useSupervisao();
 
   const [agora, setAgora] = React.useState(() => new Date());
   const [atualizando, setAtualizando] = React.useState(false);
+  const [erroAtualizacao, setErroAtualizacao] = React.useState('');
   React.useEffect(() => {
-    const id = setInterval(() => setAgora(new Date()), 60_000);
-    return () => clearInterval(id);
+    const timer = setInterval(() => setAgora(new Date()), 60_000);
+    return () => clearInterval(timer);
   }, []);
-  const supervisaoAtual = getSupervisaoAtual();
-  const pendenciasAtencao = getPendenciasOperacionais();
 
-  // Filtragem de turmas do período ativo
-  const turmasAtivas = turmas.filter(
-    t => (t.periodo_id === selectedPeriodoId || !selectedPeriodoId) && t.status !== 'ARQUIVADO'
-  );
+  const hojeIso = getHojeDataIso(agora);
+  const periodo = periodos.find(p => p.periodo_id === selectedPeriodoId);
+  const turmasAtivas = turmas.filter(t => t.status === 'ATIVO' && (!selectedPeriodoId || t.periodo_id === selectedPeriodoId));
+  const idsTurmas = new Set(turmasAtivas.map(t => t.turma_id));
+  const matriculasAtivas = matriculas.filter(m =>
+    m.status === 'MATRICULADO' && idsTurmas.has(m.turma_id) && (!selectedPeriodoId || m.periodo_id === selectedPeriodoId));
+  const idsMatriculas = new Set(matriculasAtivas.map(m => m.matricula_id));
+  const estudantesDistintos = new Set(matriculasAtivas.map(m => m.aluno_id)).size;
+  const pendencias = getPendenciasCanonicas();
+  const chamadas = getChamadasPendentes();
+  const porTema = resumirPendenciasPorTema(pendencias).slice(0, 5);
+  const documentosResumo = resumirDocumentacaoOficial(entregas, documentos, idsMatriculas);
+  const orientacoesAbertas = orientacoes.filter(o => o.status === 'ABERTA' && idsMatriculas.has(o.matricula_id)).length;
+  const rssRecentesPendentes = pendencias.filter(p => p.tipo === 'RSS_ATRASADO').length;
+  const avaliados = new Set(avaliacoesCompletas.filter(a =>
+    idsMatriculas.has(a.matricula_id) && ['AVALIADA','APROVADO_ENVIO','ENVIADO'].includes(a.status))
+    .map(a => a.matricula_id)).size;
 
-  const agenda = listarProximasSupervisoes(turmasAtivas, horariosTurma, encontrosTurma, agora);
-  const proximasAulas = agenda.slice(0, 8);
-  const proximaSupervisao = agenda[0] ?? null;
-  const turmaEmDestaque = (supervisaoAtual.emAndamento ? supervisaoAtual.turma : undefined)
-    || proximaSupervisao?.turma;
-  const horarioDestaque = proximaSupervisao?.horario;
+  const agenda = listarProximasSupervisoes(turmasAtivas, horariosTurma, encontrosTurma, agora, 45);
+  const proximasAulas = selecionarTresProximasAulas(agenda);
+  const proximosPrazos = marcosAcademicos.filter(m =>
+    (!selectedPeriodoId || m.periodo_id === selectedPeriodoId) &&
+    (!m.turma_id || idsTurmas.has(m.turma_id)) &&
+    m.data_prazo && m.data_prazo.slice(0, 10) >= hojeIso && m.status !== 'CONCLUIDO'
+  ).sort((a, b) => a.data_prazo.localeCompare(b.data_prazo)).slice(0, 3);
 
-  // Cálculos consolidados da base
-  const totalAlunosAtivos = alunos.filter(a => a.status === 'ATIVO').length;
-  const hojeStr = getHojeDataIso(agora);
+  const indicadores = [
+    {titulo:'Turmas ativas', valor:turmasAtivas.length.toString(), detalhe:'Acompanhamento do semestre', Icon:GraduationCap, destino:'turmas' as NavTab},
+    {titulo:'Estudantes', valor:estudantesDistintos.toString(), detalhe:'Pessoas únicas nas turmas', Icon:UsersRound, destino:'alunos' as NavTab},
+    {titulo:'Pendências abertas', valor:pendencias.length.toString(), detalhe:'Acompanhar por turma e assunto', Icon:ClipboardList, destino:'pendencias' as NavTab},
+    {titulo:'Documentação', valor:documentosResumo.total ? String(documentosResumo.pendentes + documentosResumo.conferir) : '—',
+      detalhe:documentosResumo.total ? String(documentosResumo.pendentes) + ' pendente(s) · ' + String(documentosResumo.conferir) + ' a conferir' : 'Aguardando dados da base',
+      Icon:FileCheck2, destino:'pendencias' as NavTab},
+    {titulo:'Chamadas atrasadas', valor:chamadas.length.toString(), detalhe:'Encontros para regularizar', Icon:UserCheck, destino:'frequencia' as NavTab},
+    {titulo:'Orientações em aberto', valor:orientacoesAbertas.toString(), detalhe:'Retomar nos próximos encontros', Icon:MessageSquareText, destino:'pendencias' as NavTab},
+  ];
 
-  // RSS & Cronograma Semanal: Calculado canonicamente com filtragem estrita por turma_id
-  const metricasCronograma = React.useMemo(() => {
-    return calcularMetricasCronogramaRss(
-      turmaEmDestaque?.turma_id,
-      calendarioRss,
-      situacaoAtualTurmas,
-      hojeStr
-    );
-  }, [turmaEmDestaque, calendarioRss, situacaoAtualTurmas, hojeStr]);
+  const atualizar = async () => {
+    if (atualizando) return;
+    setAtualizando(true);
+    setErroAtualizacao('');
+    try { await sincronizarAgora(); setAgora(new Date()); }
+    catch (err) { setErroAtualizacao(err instanceof Error ? err.message : 'Falha ao atualizar. Verifique a sincronização.'); }
+    finally { setAtualizando(false); }
+  };
 
-  const semanaDePraticaTexto = metricasCronograma.semanaTexto;
-  const semanasEncerradasTexto = metricasCronograma.semanasEncerradasTexto;
+  return <main className="mx-auto max-w-7xl space-y-5 pb-10" aria-label="Início: visão geral da supervisão">
+    <header className="flex flex-wrap items-start justify-between gap-3">
+      <div>
+        <p className="text-xs font-bold uppercase tracking-wider text-teal-800">Painel da professora</p>
+        <h1 className="mt-1 text-2xl sm:text-3xl font-black text-slate-900">Visão geral</h1>
+        <p className="mt-1 text-sm text-slate-600">
+          {periodo?.nome || 'Semestre selecionado'} · {new Intl.DateTimeFormat('pt-BR',{weekday:'long',day:'2-digit',month:'long'}).format(agora)}
+        </p>
+      </div>
+      <button type="button" disabled={atualizando} onClick={() => void atualizar()}
+        className="min-h-11 rounded-xl border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-800 flex gap-2 items-center disabled:opacity-50 hover:bg-slate-50">
+        <RefreshCw className="w-4 h-4" aria-hidden="true" /> {atualizando ? 'Atualizando…' : 'Atualizar dados'}
+      </button>
+    </header>
 
-  // Frequência
-  const faltasInjustificadas = frequencias.filter(f => f.status === 'FALTA_SEM_JUSTIFICATIVA').length;
-  const justificativasPendentes = frequencias.filter(f => f.status === 'JUSTIFICATIVA_PENDENTE').length;
-  const frequenciasParaRevisar = faltasInjustificadas + justificativasPendentes;
+    {erroAtualizacao && <p className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800" role="alert">{erroAtualizacao}</p>}
+    {connectionStatus !== 'CONECTADO' && <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+      <AlertCircle className="mr-1 inline h-4 w-4" aria-hidden="true" />
+      Conexão com a base não confirmada; os números podem refletir o último cache salvo.
+    </p>}
 
-  // Documentos
-  const docsResumo = resumirDocumentacaoOficial(entregas, documentos);
-  const docsPendentes = docsResumo.pendentes;
-  const docsCompletos = docsResumo.entregues;
+    {/* Indicadores: sempre contagens do semestre selecionado, sem somar matrícula duplicada como pessoa. */}
+    <section aria-label="Indicadores principais">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <h2 className="text-sm font-bold text-slate-900">O essencial, em um olhar</h2>
+        <span className="text-xs text-slate-500">Selecione um bloco para abrir os detalhes</span>
+      </div>
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+        {indicadores.map(d => <button type="button" key={d.titulo}
+          onClick={() => onNavigateToTab(d.destino)}
+          className="rounded-xl border border-slate-200 bg-white p-3.5 text-left shadow-xs transition-colors hover:border-teal-400 hover:bg-teal-50/30 focus-visible:outline-2 focus-visible:outline-teal-700">
+          <div className="flex items-center justify-between gap-1 text-slate-500">
+            <span className="text-[11px] font-semibold leading-4">{d.titulo}</span>
+            <d.Icon className="h-4 w-4 shrink-0 text-teal-700" aria-hidden="true"/>
+          </div>
+          <div className="mt-3 text-2xl font-black tabular-nums text-slate-900">{d.valor}</div>
+          <p className="mt-1 min-h-8 text-[11px] leading-4 text-slate-600">{d.detalhe}</p>
+        </button>)}
+      </div>
+    </section>
 
-  // Avaliação Semestral: cálculo real a partir de avaliacoesCompletas e matrículas
-  const totalMatriculas = matriculas.filter(m => m.status === 'MATRICULADO').length;
-  const totalAvaliados = avaliacoesCompletas.filter(
-    a => a.status === 'AVALIADA' || a.status === 'ENVIADO' || a.status === 'APROVADO_ENVIO'
-  ).length;
-  const percentualAvaliacao = totalMatriculas > 0
-    ? Math.round((totalAvaliados / totalMatriculas) * 100)
-    : null;
-
-  // Orientações abertas
-  const orientacoesAbertas = orientacoes.filter(o => o.status === 'ABERTA');
-
-  // Próxima Leitura vinculada à data e turma (sem índice arbitrário)
-  const proximaLeitura = obterLeiturasAgendadas(
-    leiturasResponsaveis.filter(l => !turmaEmDestaque || l.turma_id === turmaEmDestaque.turma_id),
-    encontrosTurma
-  ).find(l => l.data_apresentacao >= hojeStr) || null;
-
-  // Tarefas da fila da professora
-  const tarefasPendentesFila = filaProfessora.filter((i: any) => i.status !== 'CONCLUIDO').length;
-
-  // Mudanças desde a última supervisão (calculadas a partir dos registros mais recentes)
-  const rssRecentes = registrosSemanais.filter(r => r.data_entrega && r.data_entrega >= hojeStr).length;
-  const docsRecentes = documentos.filter(d => d.data_entrega && d.data_entrega >= hojeStr).length;
-
-  return (
-    <div className="space-y-6 max-w-7xl mx-auto">
-      <section className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 shadow-xs space-y-3" aria-label="Agenda cronológica da supervisão">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div><h2 className="text-base font-bold text-slate-900">Hoje e próximas supervisões</h2>
-            <p className="text-xs text-slate-500">Atualizada pela data, hora e status oficial de cada turma.</p></div>
-          <button type="button" disabled={atualizando} onClick={async () => {
-            setAtualizando(true);
-            try { await sincronizarAgora(); setAgora(new Date()); }
-            finally { setAtualizando(false); }
-          }} className="min-h-[44px] px-3 py-2 rounded-lg border border-slate-300 text-slate-800 text-xs font-semibold flex gap-2 items-center disabled:opacity-50">
-            <RefreshCw className="w-4 h-4" /> {atualizando ? 'Sincronizando...' : 'Atualizar agenda'}
+    <div className="grid grid-cols-1 gap-4 xl:grid-cols-5">
+      <section className={CARD + ' space-y-3 xl:col-span-3'} aria-label="Três próximas aulas">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <CalendarDays className="h-4 w-4 text-teal-700" aria-hidden="true" />
+            <h2 className="text-base font-bold text-slate-900">Próximas 3 aulas</h2>
+          </div>
+          <button type="button" onClick={() => onNavigateToTab('calendario')} className={BOTAO_LINK}>
+            Calendário completo <ArrowRight className="h-3.5 w-3.5" aria-hidden="true"/>
           </button>
         </div>
-        {proximasAulas.length === 0 ? <p className="text-sm text-slate-600">Nenhuma próxima supervisão encontrada no calendário ativo. Confira os horários da turma.</p> :
-          <div className="divide-y divide-slate-100">
-            {proximasAulas.map(aula => (
-              <div key={aula.turma.turma_id + aula.dataProxima + aula.horaInicio} className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 py-3">
-                <div><p className="text-sm font-bold text-slate-900">{aula.turma.nome}</p>
-                  <p className="text-xs text-slate-600 mt-1">{aula.dataProxima.split('-').reverse().join('/')} · {aula.diaSemanaNome} · {aula.horaInicio}–{aula.horaFim}{aula.dataProxima === hojeStr ? ' · Hoje' : ''}</p></div>
-                <button onClick={() => onIniciarSupervisao(aula.turma.turma_id)} className="min-h-[44px] px-4 py-2 rounded-lg bg-slate-900 text-white font-semibold text-xs">Abrir Modo Aula</button>
+        {proximasAulas.length===0 ? <p className="rounded-lg bg-slate-50 p-4 text-sm text-slate-600">
+          Nenhuma aula futura encontrada nos próximos 45 dias. Confira o calendário oficial e os horários cadastrados.
+        </p> : <ol className="divide-y divide-slate-100">
+          {proximasAulas.map((aula,index)=>{
+            const hoje = aula.dataProxima===hojeIso;
+            const data = formatoData(aula.dataProxima);
+            return <li key={aula.turma.turma_id+'-'+aula.dataProxima+'-'+aula.horaInicio}
+              className="flex flex-col gap-3 py-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex min-w-0 items-start gap-3">
+                <div className="flex h-11 w-11 shrink-0 flex-col items-center justify-center rounded-xl bg-slate-100 text-slate-800">
+                  <strong className="text-sm">{data.slice(0,2)}</strong>
+                  <span className="text-[10px] uppercase">{new Intl.DateTimeFormat('pt-BR',{month:'short'}).format(new Date(aula.dataProxima+'T12:00:00'))}</span>
+                </div>
+                <div className="min-w-0">
+                  <p className="text-sm font-bold text-slate-900">{aula.turma.nome}</p>
+                  <p className="mt-1 flex flex-wrap items-center gap-1 text-xs text-slate-600">
+                    {aula.diaSemanaNome} · {aula.horaInicio}–{aula.horaFim}
+                    {hoje && <span className="ml-1 rounded bg-teal-50 px-1.5 py-0.5 font-bold text-teal-800">Hoje</span>}
+                  </p>
+                </div>
               </div>
-            ))}
-          </div>}
+              <div className="flex shrink-0 gap-2 pl-14 sm:pl-0">
+                <button type="button" onClick={() => onOpenTurma(aula.turma.turma_id)}
+                  className="min-h-10 rounded-lg border border-slate-200 px-3 text-xs font-semibold text-slate-700 hover:bg-slate-50">Turma</button>
+                {hoje ? <button type="button" onClick={() => onIniciarSupervisao(aula.turma.turma_id)}
+                  className="flex min-h-10 items-center gap-1 rounded-lg bg-slate-900 px-3 text-xs font-bold text-white hover:bg-slate-800">
+                  <Play className="h-3.5 w-3.5" aria-hidden="true"/> Modo Aula</button> :
+                  <button type="button" onClick={() => onOpenPrepararAula ? onOpenPrepararAula(aula.turma.turma_id) : onOpenTurma(aula.turma.turma_id)}
+                    className="min-h-10 rounded-lg bg-slate-900 px-3 text-xs font-bold text-white hover:bg-slate-800">Preparar</button>}
+              </div>
+            </li>;
+          })}
+        </ol>}
+        <p className="text-[11px] text-slate-500">Aulas em ordem cronológica, considerando cancelamentos e reagendamentos cadastrados.</p>
       </section>
-      {/* 1. AGORA: Supervisão em andamento, Chamada pendente ou Informativo */}
-      {supervisaoAtual.emAndamento && supervisaoAtual.turma && (
-        <div className="bg-slate-900 border-2 border-amber-400 rounded-2xl p-5 text-white shadow-md">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping inline-block" />
-                <span className="text-xs uppercase tracking-wider font-bold text-amber-400">
-                  Supervisão em Andamento
-                </span>
-              </div>
-              <h3 className="text-xl font-bold text-white mt-1">
-                {supervisaoAtual.turma.nome} — Turno {supervisaoAtual.turma.turno}
-              </h3>
-              <p className="text-sm text-slate-300 font-mono mt-0.5">
-                Horário: {supervisaoAtual.horaInicio}–{supervisaoAtual.horaFim}
-              </p>
-            </div>
-            <button
-              onClick={() => onIniciarSupervisao(supervisaoAtual.turma!.turma_id)}
-              className="px-6 py-3 bg-amber-400 hover:bg-amber-300 active:scale-98 text-slate-950 font-bold rounded-xl text-sm flex items-center justify-center gap-2 shadow-md cursor-pointer transition-all self-start sm:self-auto"
-            >
-              <Play className="w-4 h-4 fill-current" />
-              <span>Entrar na Supervisão</span>
-            </button>
-          </div>
-        </div>
-      )}
 
-      {supervisaoAtual.chamadaPendenteHoje && supervisaoAtual.turma && (
-        <div className="bg-red-50 border-2 border-red-300 rounded-2xl p-5 text-red-950 shadow-xs">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div>
-              <div className="flex items-center gap-2 text-red-700 font-bold text-xs uppercase tracking-wider">
-                <AlertTriangle className="w-4 h-4" />
-                <span>Chamada Pendente</span>
-              </div>
-              <h3 className="text-lg font-bold text-red-950 mt-1">
-                {supervisaoAtual.turma.nome}
-              </h3>
-              <p className="text-xs text-red-800 mt-0.5">
-                A supervisão encerrou às {supervisaoAtual.horaFim}, mas a chamada ainda não foi salva.
-              </p>
-            </div>
-            <button
-              onClick={() => onIniciarSupervisao(supervisaoAtual.turma!.turma_id)}
-              className="px-5 py-2.5 bg-red-700 hover:bg-red-800 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-2 cursor-pointer shadow-xs self-start sm:self-auto"
-            >
-              <UserCheck className="w-4 h-4" />
-              <span>Finalizar Chamada</span>
-            </button>
-          </div>
-        </div>
-      )}
-
-      {supervisaoAtual.naoRealizadaHoje && supervisaoAtual.turma && (
-        <div className="bg-amber-50 border border-amber-300 rounded-2xl p-4 text-amber-900">
-          <div className="flex items-center gap-2 font-bold text-xs uppercase tracking-wider text-amber-800">
-            <Calendar className="w-4 h-4 text-amber-700" />
-            <span>Hoje: Aula Não Realizada</span>
-          </div>
-          <h4 className="text-sm font-bold text-slate-900 mt-1">{supervisaoAtual.turma.nome}</h4>
-          <p className="text-xs text-amber-800 mt-0.5">
-            Não haverá supervisão — <strong>{supervisaoAtual.motivoNaoRealizada || 'Feriado/Recesso'}</strong>.{' '}
-            {supervisaoAtual.observacaoNaoRealizada && `(${supervisaoAtual.observacaoNaoRealizada})`}
-          </p>
-        </div>
-      )}
-
-      {/* Top Banner: Central Operacional & Próxima Supervisão */}
-      <div className="cs-home-hero bg-white border border-slate-200 rounded-2xl p-5 sm:p-6 shadow-xs relative overflow-hidden">
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-5">
-          <div className="space-y-2">
-            <div className="flex items-center gap-2">
-              <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
-                Próxima Supervisão Agendada
-              </span>
-            </div>
-
-            <div className="flex flex-wrap items-baseline gap-3">
-              <h1 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">
-                {turmaEmDestaque ? turmaEmDestaque.nome : 'Nenhuma turma ativa'}
-              </h1>
-              {turmaEmDestaque && (
-                <span className="px-2.5 py-1 rounded-full bg-slate-100 text-slate-700 text-xs font-bold font-mono">
-                  {horarioDestaque ? `${horarioDestaque.hora_inicio} às ${horarioDestaque.hora_fim}` : 'Horário regular'}
-                </span>
-              )}
-            </div>
-
-            <div className="flex flex-wrap items-center gap-4 text-xs text-slate-500 font-medium">
-              <span className="flex items-center gap-1.5">
-                <Clock className="w-3.5 h-3.5 text-slate-400" />
-                Semana de Prática: <strong className="text-slate-800">{semanaDePraticaTexto}</strong>
-              </span>
-              <span>•</span>
-              <span>
-                Semanas RSS Encerradas: <strong className="text-slate-800">{semanasEncerradasTexto}</strong>
-              </span>
-              {metricasCronograma.conflitoIdentificado && (
-                <span
-                  className="text-[10px] text-amber-800 bg-amber-100/80 border border-amber-300 px-2 py-0.5 rounded font-semibold cursor-help"
-                  title={metricasCronograma.avisoInconsistencia || 'Inconsistência entre datas do calendário e semana atual'}
-                >
-                  ⚠ Inconsistência na base
-                </span>
-              )}
-              {proximaLeitura && (
-                <>
-                  <span>•</span>
-                  <span className="flex items-center gap-1.5 text-indigo-700 font-semibold">
-                    <BookOpen className="w-3.5 h-3.5" />
-                    Leitura: "{proximaLeitura.tema || proximaLeitura.titulo || 'Texto'}" (
-                    {proximaLeitura.tipo === 'LEITURA_RECOMENDADA' ? 'Leitura coletiva' : (proximaLeitura.responsavel_nome || 'Responsável a confirmar')})
-                  </span>
-                </>
-              )}
-            </div>
-          </div>
-
-          {/* Quick Action Button for Supervision Mode */}
-          {turmaEmDestaque && (
-            <div className="flex flex-wrap items-center gap-3 shrink-0">
-              {onOpenPrepararAula && (
-                <button
-                  onClick={() => onOpenPrepararAula(turmaEmDestaque.turma_id)}
-                  className="px-4 py-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-bold text-xs flex items-center gap-2 cursor-pointer shadow-2xs"
-                >
-                  <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
-                  <span>Preparar Aula</span>
-                </button>
-              )}
-
-              <button
-                onClick={() => onIniciarSupervisao(turmaEmDestaque.turma_id)}
-                className="px-5 py-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs flex items-center gap-2.5 cursor-pointer shadow-xs"
-              >
-                <Play className="w-4 h-4 fill-current text-emerald-400" />
-                <span>Iniciar supervisão</span>
-              </button>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Grid of Objective Clickable Operational Indicators */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* SEMANA & PRÁTICA */}
-        <button
-          onClick={() => onNavigateToTab('calendario')}
-          className="p-4 rounded-xl bg-white border border-slate-200 hover:border-indigo-300 hover:shadow-xs text-left transition-all cursor-pointer group"
-        >
-          <div className="flex items-center justify-between text-slate-400 text-xs font-bold uppercase tracking-wider mb-2">
-            <span>Semana de Prática</span>
-            <Calendar className="w-4 h-4 text-indigo-500" />
-          </div>
-          <div className="text-2xl font-black text-slate-900 font-mono">
-            {semanaDePraticaTexto}
-          </div>
-          <div className="mt-2 text-xs text-slate-500">
-            {metricasCronograma.semanasEncerradas !== null
-              ? `${metricasCronograma.semanasEncerradas} semana(s) já encerrada(s)`
-              : 'Aguardando cronograma'}
-          </div>
-        </button>
-
-        {/* ALUNOS ATIVOS */}
-        <button
-          onClick={() => onNavigateToTab('alunos')}
-          className="p-4 rounded-xl bg-white border border-slate-200 hover:border-indigo-300 hover:shadow-xs text-left transition-all cursor-pointer group"
-        >
-          <div className="flex items-center justify-between text-slate-400 text-xs font-bold uppercase tracking-wider mb-2">
-            <span>Estudantes Ativos</span>
-            <Users className="w-4 h-4 text-blue-500" />
-          </div>
-          <div className="text-2xl font-black text-slate-900 font-mono">{totalAlunosAtivos > 0 ? totalAlunosAtivos : '—'}</div>
-          <div className="mt-2 text-xs text-slate-500">
-            {turmasAtivas.length > 0 ? `Distribuídos em ${turmasAtivas.length} turmas ativas` : 'Nenhuma turma ativa'}
-          </div>
-        </button>
-
-        {/* RSS é informação da turma, não notificação global. */}
-        <button
-          onClick={() => turmaEmDestaque && onOpenTurma(turmaEmDestaque.turma_id)}
-          disabled={!turmaEmDestaque}
-          className="p-4 rounded-xl bg-white border border-slate-200 hover:border-indigo-300 hover:shadow-xs text-left transition-all cursor-pointer group disabled:opacity-50"
-        >
-          <div className="flex items-center justify-between text-slate-500 text-xs font-bold uppercase tracking-wider mb-2">
-            <span>Registros Semanais</span><FileText className="w-4 h-4 text-indigo-500"/>
-          </div>
-          <div className="text-base font-bold text-slate-900">Consultar RSS da turma</div>
-          <div className="mt-2 text-xs text-slate-500">
-            Entregas, semanas faltantes e histórico ficam na turma e no Modo Supervisão.
-          </div>
-        </button>
-
-        {/* FREQUÊNCIA */}
-        <button
-          onClick={() => onNavigateToTab('pendencias', 'faltas')}
-          className="p-4 rounded-xl bg-white border border-slate-200 hover:border-red-300 hover:shadow-xs text-left transition-all cursor-pointer group"
-        >
-          <div className="flex items-center justify-between text-slate-400 text-xs font-bold uppercase tracking-wider mb-2">
-            <span>Frequência</span>
-            <AlertTriangle className="w-4 h-4 text-red-500" />
-          </div>
-          <div className="text-2xl font-black text-slate-900 font-mono">
-            {frequencias.length > 0 ? frequenciasParaRevisar : '—'}{' '}
-            <span className="text-xs font-bold text-slate-500 font-sans">situações</span>
-          </div>
-          <div className="mt-2 text-xs text-slate-500">
-            {faltasInjustificadas} sem justificativa • {justificativasPendentes} pendentes
-          </div>
-        </button>
-      </div>
-
-      {/* 2. PRECISA DA SUA ATENÇÃO (Somente Itens Acionáveis) */}
-      <section className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs space-y-3">
-        <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+      <section className={CARD + ' space-y-3 xl:col-span-2'} aria-label="Resumo das pendências">
+        <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
-            <AlertCircle className="w-4 h-4 text-red-600" />
-            <h3 className="text-sm font-bold text-slate-900 tracking-tight">
-              Precisa da sua Atenção
-            </h3>
+            <ListChecks className="h-4 w-4 text-amber-700" aria-hidden="true"/>
+            <h2 className="text-base font-bold text-slate-900">Precisa da sua atenção</h2>
           </div>
-          <span className="text-xs font-semibold text-slate-500">
-            {pendenciasAtencao.length} item(ns) acionável(is)
-          </span>
+          <button onClick={()=>onNavigateToTab('pendencias')} className={BOTAO_LINK}>Ver pendências <ArrowRight className="h-3.5 w-3.5" aria-hidden="true"/></button>
         </div>
+        {porTema.length===0 ? <div className="rounded-xl bg-emerald-50 p-4 text-sm text-emerald-900">
+          <CheckCircle2 className="mr-2 inline h-4 w-4" aria-hidden="true"/> Nenhuma pendência acionável encontrada na base selecionada.
+        </div> : <div className="space-y-2">
+          {porTema.map(tema=><button type="button" key={tema.chave} onClick={()=>onNavigateToTab('pendencias')}
+            className="flex min-h-12 w-full items-center justify-between rounded-xl border border-slate-100 bg-slate-50 p-3 text-left hover:border-teal-300">
+            <div>
+              <p className="text-xs font-bold text-slate-900">{tema.titulo}</p>
+              <p className="text-[11px] text-slate-500">{tema.descricao}</p>
+            </div>
+            <span className="ml-2 rounded-lg bg-white px-2.5 py-1 text-sm font-black tabular-nums text-amber-900">{tema.quantidade}</span>
+          </button>)}
+        </div>}
+        <p className="text-[11px] text-slate-500">Cobranças enviadas não são consideradas documentos entregues.</p>
+      </section>
+    </div>
 
-        {pendenciasAtencao.length === 0 ? (
-          <div className="p-6 text-center text-xs text-slate-400">
-            <CheckCircle className="w-7 h-7 text-emerald-500 mx-auto mb-1.5 opacity-80" />
-            <p className="font-bold text-slate-700 text-sm">Tudo em dia!</p>
-            <p className="text-slate-400 text-[11px] mt-0.5">
-              Não há chamadas pendentes, justificativas aguardando análise ou prazos vencidos.
-            </p>
-          </div>
-        ) : (
-          <div className="divide-y divide-slate-100">
-            {pendenciasAtencao.slice(0, 6).map(item => (
-              <div
-                key={item.id}
-                className="py-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs hover:bg-slate-50 px-2 rounded-lg transition-colors"
-              >
-                <div className="flex items-start gap-2.5">
-                  <span
-                    className={`mt-0.5 px-2 py-0.5 rounded font-mono font-bold text-[10px] uppercase shrink-0 ${
-                      item.urgencia === 'CRITICA'
-                        ? 'bg-red-100 text-red-800'
-                        : item.urgencia === 'ALTA'
-                        ? 'bg-amber-100 text-amber-800'
-                        : 'bg-blue-100 text-blue-800'
-                    }`}
-                  >
-                    {item.tipo}
-                  </span>
-                  <div>
-                    <span className="font-bold text-slate-900 block">{item.titulo}</span>
-                    <span className="text-slate-600 text-[11px] mt-0.5 block">{item.descricao}</span>
-                  </div>
-                </div>
-
-                <button
-                  onClick={() => {
-                    if (item.tipo === 'CHAMADA' && item.turma_id) {
-                      onIniciarSupervisao(item.turma_id);
-                    } else {
-                      onNavigateToTab(item.targetTab, item.targetParam);
-                    }
-                  }}
-                  className="px-3 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-100 font-semibold text-slate-700 text-xs shrink-0 self-start sm:self-auto cursor-pointer flex items-center gap-1"
-                >
-                  <span>Resolver</span>
-                  <ChevronRight className="w-3 h-3" />
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
+    <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+      <section className={CARD + ' space-y-3'} aria-label="Próximos prazos acadêmicos">
+        <div className="flex items-center justify-between gap-2">
+          <h2 className="flex items-center gap-2 text-sm font-bold text-slate-900">
+            <Clock3 className="h-4 w-4 text-teal-700" aria-hidden="true"/> Próximos prazos
+          </h2>
+          <button onClick={()=>onNavigateToTab('calendario')} className={BOTAO_LINK}>Ver calendário <ArrowRight className="h-3.5 w-3.5" aria-hidden="true"/></button>
+        </div>
+        {!proximosPrazos.length ? <p className="text-sm text-slate-600">Sem prazos futuros cadastrados neste período.</p> :
+          <ul className="divide-y divide-slate-100">{proximosPrazos.map(p=><li key={p.marco_id} className="flex gap-3 py-2">
+            <span className="shrink-0 rounded-lg bg-slate-100 px-2 py-1 text-xs font-bold tabular-nums text-slate-800">{formatoData(p.data_prazo)}</span>
+            <span className="text-xs font-semibold text-slate-800">{p.nome}</span>
+          </li>)}</ul>}
       </section>
 
-      {/* Second Row of Cards: Documentos, Orientações, Avaliação, Minha Fila */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* DOCUMENTOS */}
-        <button
-          onClick={() => onNavigateToTab('pendencias', 'documentos')}
-          className="p-4 rounded-xl bg-white border border-slate-200 hover:border-slate-300 text-left transition-all cursor-pointer"
-        >
-          <div className="flex items-center justify-between text-slate-400 text-xs font-bold uppercase tracking-wider mb-2">
-            <span>Documentos</span>
-            <CheckCircle className="w-4 h-4 text-emerald-500" />
-          </div>
-          <div className="text-2xl font-black text-slate-900 font-mono">
-            {docsResumo.total === 0 ? (
-              '—'
-            ) : docsPendentes > 0 ? (
-              <span className="text-amber-600">{docsPendentes} pendentes</span>
-            ) : docsResumo.conferir > 0 ? (
-              <span className="text-amber-700">{docsResumo.conferir} a conferir</span>
-            ) : (
-              <span className="text-emerald-700">{docsCompletos} entregues</span>
-            )}
-          </div>
-          <div className="mt-2 text-xs text-slate-500">
-            {docsResumo.total === 0 ? 'Aguardando sincronização' :
-              `${docsCompletos} entregues; ${docsResumo.enviados} enviados; ${docsResumo.conferir} a conferir`}
-          </div>
-        </button>
-
-        {/* ORIENTAÇÕES ABERTAS */}
-        <button
-          onClick={() => onNavigateToTab('pendencias', 'orientacoes')}
-          className="p-4 rounded-xl bg-white border border-slate-200 hover:border-slate-300 text-left transition-all cursor-pointer"
-        >
-          <div className="flex items-center justify-between text-slate-400 text-xs font-bold uppercase tracking-wider mb-2">
-            <span>Orientações Abertas</span>
-            <Clock className="w-4 h-4 text-indigo-500" />
-          </div>
-          <div className="text-2xl font-black text-slate-900 font-mono">{orientacoesAbertas.length}</div>
-          <div className="mt-2 text-xs text-slate-500">Para retomar na supervisão</div>
-        </button>
-
-        {/* CENTRAL DE AVALIAÇÃO */}
-        <button
-          onClick={() => onNavigateToTab('avaliacao')}
-          className="p-4 rounded-xl bg-white border border-slate-200 hover:border-indigo-300 text-left transition-all cursor-pointer group"
-        >
-          <div className="flex items-center justify-between text-slate-400 text-xs font-bold uppercase tracking-wider mb-2">
-            <span>Avaliação Semestral</span>
-            <Award className="w-4 h-4 text-purple-500" />
-          </div>
-          <div className="text-2xl font-black text-slate-900 font-mono">
-            {percentualAvaliacao !== null ? (
-              <>
-                {percentualAvaliacao}% <span className="text-xs font-bold text-slate-400 font-sans">preenchida</span>
-              </>
-            ) : (
-              '—'
-            )}
-          </div>
-          <div className="mt-2 text-xs text-indigo-600 font-semibold group-hover:underline flex items-center gap-1">
-            <span>Abrir Central de Avaliação</span>
-            <ChevronRight className="w-3.5 h-3.5" />
-          </div>
-        </button>
-
-        {/* MINHA FILA DA PROFESSORA */}
-        <button
-          onClick={() => onNavigateToTab('pendencias')}
-          className="p-4 rounded-xl bg-white border border-slate-200 hover:border-slate-300 text-left transition-all cursor-pointer"
-        >
-          <div className="flex items-center justify-between text-slate-400 text-xs font-bold uppercase tracking-wider mb-2">
-            <span>Fila da Professora</span>
-            <Bell className="w-4 h-4 text-amber-500" />
-          </div>
-          <div className="text-2xl font-black text-slate-900 font-mono">{tarefasPendentesFila} itens</div>
-          <div className="mt-2 text-xs text-slate-500">Tarefas prioritárias da supervisora</div>
-        </button>
-      </div>
-
-      {/* Quick Operational Sections: Próximas Aulas & Mudanças Recentes */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Próximas Supervisões por Turma */}
-        <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs space-y-4">
-          <div className="flex items-center justify-between">
-            <h2 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-              <Users className="w-4 h-4 text-slate-500" />
-              <span>Turmas em Acompanhamento</span>
-            </h2>
-            <button
-              onClick={() => onNavigateToTab('turmas')}
-              className="text-xs font-semibold text-indigo-600 hover:underline"
-            >
-              Ver todas as turmas →
-            </button>
-          </div>
-
-          <div className="divide-y divide-slate-100">
-            {turmasAtivas.map(t => {
-              const horario = horariosTurma.find(h => h.turma_id === t.turma_id);
-              const totalAlunos = matriculas.filter(m => m.turma_id === t.turma_id && m.status === 'MATRICULADO').length;
-
-              return (
-                <div key={t.turma_id} className="py-3 flex items-center justify-between gap-3">
-                  <div>
-                    <div className="text-xs font-bold text-slate-900 hover:text-indigo-600 cursor-pointer" onClick={() => onOpenTurma(t.turma_id)}>
-                      {t.nome}
-                    </div>
-                    <div className="text-[11px] text-slate-400 font-mono mt-0.5">
-                      {horario ? `${horario.hora_inicio} - ${horario.hora_fim}` : 'Horário acadêmico'} • {totalAlunos} estudantes
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => onOpenTurma(t.turma_id)}
-                      className="px-2.5 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 text-[11px] font-semibold text-slate-700 cursor-pointer"
-                    >
-                      Detalhes
-                    </button>
-                    <button
-                      onClick={() => onIniciarSupervisao(t.turma_id)}
-                      className="px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-[11px] font-bold flex items-center gap-1.5 cursor-pointer shadow-2xs"
-                    >
-                      <Play className="w-3 h-3 fill-current text-emerald-400" />
-                      <span>Modo Aula</span>
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+      <section className={CARD + ' space-y-3'} aria-label="Acompanhamento formativo">
+        <div className="flex items-center justify-between gap-2">
+          <h2 className="flex items-center gap-2 text-sm font-bold text-slate-900">
+            <BookOpen className="h-4 w-4 text-teal-700" aria-hidden="true"/> Acompanhamento acadêmico
+          </h2>
+          <button onClick={()=>onNavigateToTab('avaliacao')} className={BOTAO_LINK}>Avaliações <ArrowRight className="h-3.5 w-3.5" aria-hidden="true"/></button>
         </div>
-
-        {/* Mudanças Desde a Última Supervisão */}
-        <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs space-y-4">
-          <div className="flex items-center justify-between">
-            <h2 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-              <TrendingUp className="w-4 h-4 text-emerald-600" />
-              <span>Mudanças Desde a Última Supervisão</span>
-            </h2>
-            <span className="text-[11px] font-mono text-slate-400">Timestamps oficiais</span>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3 text-xs">
-            <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
-              <span className="text-slate-400 block text-[10px] uppercase font-bold">RSS Recebidos Recentemente</span>
-              <span className="text-lg font-bold text-slate-900">+{rssRecentes} entregas</span>
-            </div>
-            <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
-              <span className="text-slate-400 block text-[10px] uppercase font-bold">Documentos Enviados</span>
-              <span className="text-lg font-bold text-slate-900">+{docsRecentes} arquivos</span>
-            </div>
-          </div>
-
-          {/* Orientações Recentes */}
-          <div className="space-y-2 pt-1">
-            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
-              Orientações Mais Recentes
-            </span>
-            {orientacoes.slice(0, 3).map(o => (
-              <div key={o.orientacao_id} className="p-2.5 rounded-lg bg-slate-50 text-xs border border-slate-100 flex items-center justify-between gap-2">
-                <span className="truncate text-slate-700 font-medium">"{o.texto}"</span>
-                <span className="text-[10px] font-mono text-slate-400 shrink-0">
-                  {new Date(o.data_hora).toLocaleDateString('pt-BR')}
-                </span>
-              </div>
-            ))}
-          </div>
+        <div className="grid grid-cols-2 gap-3">
+          <button type="button" onClick={()=>onNavigateToTab('turmas')} className="rounded-xl bg-slate-50 p-3 text-left hover:bg-teal-50">
+            <p className="text-[11px] font-semibold text-slate-600">RSS recentes em atraso</p>
+            <strong className="mt-2 block text-xl tabular-nums text-slate-900">{rssRecentesPendentes}</strong>
+            <p className="text-[11px] text-slate-500">Ver detalhes nas turmas</p>
+          </button>
+          <button type="button" onClick={()=>onNavigateToTab('avaliacao')} className="rounded-xl bg-slate-50 p-3 text-left hover:bg-teal-50">
+            <p className="text-[11px] font-semibold text-slate-600">Matrículas com avaliação concluída</p>
+            <strong className="mt-2 block text-xl tabular-nums text-slate-900">{avaliados} <span className="text-xs text-slate-500">/ {matriculasAtivas.length}</span></strong>
+            <p className="text-[11px] text-slate-500">Ao menos uma avaliação concluída</p>
+          </button>
         </div>
-      </div>
+      </section>
     </div>
-  );
+    <p className="text-[11px] text-slate-500">Os indicadores representam registros da base oficial e não substituem a conferência dos documentos, RSS ou frequência individual.</p>
+  </main>;
 };
