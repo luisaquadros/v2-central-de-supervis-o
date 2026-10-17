@@ -16,6 +16,9 @@ export const TABELAS_CRITICAS = new Set([
   'grupo_integrantes',
   // Estrutura aditiva da avaliação: versão, idempotência e log como nas demais
   'config_avaliacao','rubricas_avaliacao','avaliacao_rascunhos','evidencias_avaliacao','rss_ajustes',
+  // Login único: as últimas tabelas editáveis também passam pelo Worker e pela conta de serviço,
+  // com comparação de versão e log (nunca mais escrever diretamente do navegador no Sheets).
+  'registros_semanais','criterios_avaliacao','configuracoes','marcos_academicos',
 ]);
 
 export type OperacaoCritica = 'INSERT' | 'UPDATE' | 'DELETE';
