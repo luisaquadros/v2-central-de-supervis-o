@@ -286,6 +286,7 @@ interface SupervisaoContextType {
   };
   getCriteriosDaTurma: (turmaId: string, instrumento?: string) => CriterioAvaliacao[];
   addRegistroSupervisao: (matriculaId: string, dataHora: string, categoria: string, texto: string, status?: string) => Promise<RegistroSupervisao>;
+  atualizarRegistroFormativo: (registroId: string, texto: string) => Promise<void>;
   addEntrega: (matriculaId: string, tipoDocumento: string, statusEntrega?: string, obs?: string) => Promise<Entrega>;
   /** Marca/desmarca o check de um documento (entregue / não entregue). Cria a linha em `entregas` se não existir. */
   marcarEntrega: (matriculaId: string, tipoDocumento: string, entregue: boolean) => Promise<void>;
@@ -1836,6 +1837,17 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     return novoRegistro;
   };
 
+  const atualizarRegistroFormativo = async (registroId: string, texto: string): Promise<void> => {
+    const anterior = registrosSupervisao.find(r => r.registro_id === registroId && r.categoria === 'PARTICIPACAO_AULA');
+    if (!anterior) throw new Error('Registro formativo não encontrado ou não editável.');
+    const validacao = validarEscritaTabela('registros_supervisao',{matricula_id:anterior.matricula_id,texto});
+    if(!validacao.valido) throw new Error(validacao.motivo);
+    const atualizado = {...anterior, texto, descricao:texto};
+    const lista = registrosSupervisao.map(r=>r.registro_id===registroId?atualizado:r);
+    await persistirMudancaWeb('registros_supervisao','UPDATE',atualizado,lista);
+    setRegistrosSupervisao(lista);
+  };
+
   const addEntrega = async (
     matriculaId: string,
     tipoDocumento: string,
@@ -2973,6 +2985,7 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         getSituacaoTurma,
         getCriteriosDaTurma,
         addRegistroSupervisao,
+        atualizarRegistroFormativo,
         addEntrega,
         marcarEntrega,
         getResumoAlunoSupervisao,
