@@ -132,3 +132,129 @@ html[data-theme="dark"] .cs-primary-action:hover { background: #3c5b75; }
 .cs-reading-link:hover { color: var(--cs-navy); }
 html[data-theme="dark"] .cs-reading-link { color: #91dfd1; }
 html[data-theme="dark"] .cs-reading-link:hover { color: #c2f4eb; }
+
+
+/* Refinamento editorial da interface — fundo sereno, cards leves e foco visível. */
+:root {
+  --cs-canvas: #f3f5f7;
+  --cs-border: #dfe6ec;
+  --cs-radius: 1rem;
+  --cs-shadow: 0 6px 22px rgba(21,35,59,.045);
+}
+.cs-muted-surface {
+  background:
+    radial-gradient(ellipse at 8% 0%, rgba(130,118,177,.07), transparent 37%),
+    radial-gradient(ellipse at 100% 18%, rgba(44,130,126,.045), transparent 33%),
+    var(--cs-canvas);
+}
+.cs-panel { box-shadow: var(--cs-shadow); }
+.cs-nav-active {
+  background: linear-gradient(110deg, #20364e 0%, #17273d 100%);
+  box-shadow: 0 4px 10px rgba(21,35,59,.13);
+}
+.cs-primary-action {
+  background: linear-gradient(110deg, #20364e, #15233b);
+  box-shadow: 0 5px 12px rgba(21,35,59,.12);
+}
+.cs-primary-action:active, .cs-login-button:active { transform: translateY(1px); }
+.cs-login-shell {
+  background:
+    radial-gradient(circle at 8% 15%, rgba(130,118,177,.19), transparent 33%),
+    radial-gradient(circle at 93% 82%, rgba(44,130,126,.14), transparent 31%),
+    #edf2f5;
+}
+.cs-login-frame {
+  border-radius: 1.6rem;
+  border: 1px solid rgba(210,220,231,.85);
+  box-shadow: 0 26px 75px rgba(21,35,59,.14), 0 2px 8px rgba(21,35,59,.04);
+}
+.cs-login-story {
+  color: #fff;
+  background: linear-gradient(142deg, #17263f 4%, #214552 58%, #29645e 110%);
+  isolation: isolate;
+}
+.cs-login-story::before,
+.cs-login-story::after {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  border: 1px solid rgba(225,244,246,.12);
+  border-radius: 50%;
+  pointer-events: none;
+}
+.cs-login-story::before { width: 29rem; height: 29rem; right: -17rem; top: -14rem; box-shadow: 0 0 0 4rem rgba(255,255,255,.017); }
+.cs-login-story::after { width: 24rem; height: 24rem; left: -15rem; bottom: -14rem; }
+.cs-login-eyebrow {
+  color: #e3f7f1;
+  font-size: .72rem;
+  letter-spacing: .035em;
+  font-weight: 700;
+  border: 1px solid rgba(208,241,235,.26);
+  background: rgba(255,255,255,.075);
+  padding: .5rem .75rem;
+  border-radius: 100px;
+}
+.cs-login-feature {
+  display: flex;
+  align-items: flex-start;
+  gap: .75rem;
+  padding: .9rem;
+  background: rgba(255,255,255,.065);
+  border: 1px solid rgba(255,255,255,.13);
+  border-radius: 1rem;
+}
+.cs-login-feature > svg { flex: none; color: #b8e4de; }
+.cs-login-feature strong { display: block; color: #fff; font-size: .83rem; }
+.cs-login-feature span { display: block; color: #d2e2e7; margin-top: .3rem; font-size: .73rem; line-height: 1.45; }
+.cs-login-form { background: #fff; }
+.cs-login-button {
+  color: #fff;
+  background: linear-gradient(120deg, #1b3849, #286d6a);
+  box-shadow: 0 8px 18px rgba(32,93,94,.19);
+  transition: transform .16s ease, box-shadow .16s ease, filter .16s ease;
+}
+.cs-login-button:hover:not(:disabled) { filter: brightness(1.075); box-shadow: 0 11px 23px rgba(32,93,94,.23); }
+html[data-theme="dark"] .cs-login-shell { background: #101b2a; }
+html[data-theme="dark"] .cs-login-form { background: #172437; }
+html[data-theme="dark"] .cs-panel { box-shadow: 0 6px 18px rgba(0,0,0,.14); }
+@media (max-width: 1023px) {
+  .cs-login-story { gap: 1.5rem; padding-block: 2rem; }
+  .cs-login-story h1 { margin-top: 1.5rem; }
+}
+@media (max-width: 639px) {
+  .cs-login-frame { border-radius: 1.2rem; }
+  .cs-login-story h1 { font-size: 1.85rem; }
+  .cs-login-story .cs-login-feature { display: none; }
+  .cs-login-form { padding: 1.9rem 1.5rem; }
+}
+
+
+/* Navegação e painel de trabalho: profundidade discreta sem perder escaneabilidade. */
+.cs-sidebar { box-shadow: 3px 0 18px rgba(21,35,59,.025); }
+.cs-sidebar-brand {
+  background: linear-gradient(155deg, rgba(44,130,126,.055), rgba(130,118,177,.06) 58%, transparent);
+}
+.cs-sidebar nav button:not(.cs-nav-active) { border: 1px solid transparent; }
+.cs-sidebar nav button:not(.cs-nav-active):hover {
+  border-color: rgba(44,130,126,.10);
+  background: rgba(44,130,126,.06);
+}
+.cs-home-hero {
+  box-shadow: var(--cs-shadow);
+  background:
+    radial-gradient(circle at 98% 0%, rgba(44,130,126,.09), transparent 35%),
+    radial-gradient(circle at 0% 100%, rgba(130,118,177,.06), transparent 31%),
+    var(--cs-surface);
+}
+.cs-home-hero > * { position: relative; z-index: 1; }
+.cs-home-hero button:hover { transform: translateY(-1px); }
+.cs-home-hero button { transition: transform .16s ease, box-shadow .16s ease; }
+html[data-theme="dark"] .cs-sidebar-brand { background: linear-gradient(155deg, rgba(44,130,126,.14), rgba(130,118,177,.12) 58%, transparent); }
+html[data-theme="dark"] .cs-home-hero {
+  background:
+    radial-gradient(circle at 98% 0%, rgba(44,130,126,.15), transparent 37%),
+    #172437;
+}
+@media (prefers-reduced-motion: reduce) {
+  .cs-home-hero button:hover { transform: none; }
+}

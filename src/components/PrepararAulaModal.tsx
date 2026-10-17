@@ -3,7 +3,10 @@ import { X, Play, BookOpen, AlertTriangle, Clock, Users, CheckCircle, FileText, 
 import { useSupervisao } from '../context/SupervisaoContext';
 import { Turma } from '../types';
 import { AulaPreparacaoPainel } from './AulaPreparacaoPainel';
-import { obterLeiturasAgendadas, getHojeDataIso } from '../services/supervisaoOperacionalService';
+import { obterLeiturasAgendadas, getHojeDataIso, proximoMarcoDaTurma } from '../services/supervisaoOperacionalService';
+import { gerarSugestoesRss } from '../services/sugestoesAulaService';
+import { ResumoRssSemEnvio } from './ResumoRssSemEnvio';
+import { ResumoDocumentosTurma } from './ResumoDocumentosTurma';
 
 interface PrepararAulaModalProps {
   isOpen: boolean;
@@ -28,6 +31,7 @@ export const PrepararAulaModal: React.FC<PrepararAulaModalProps> = ({
     pontosAcompanhamento,
     gruposPratica,
     encontrosTurma,
+    registrosSemanais,
   } = useSupervisao();
 
   if (!isOpen) return null;
@@ -53,15 +57,25 @@ export const PrepararAulaModal: React.FC<PrepararAulaModalProps> = ({
   );
   const leitura = proximasLeituras.find(l => l.data_apresentacao >= hojeStr) || proximasLeituras.at(-1);
 
+  // RSS dos últimos 14 dias: grupo (Clínica Ampliada) ou estudante é a unidade.
+  const gruposDaTurma = gruposPratica.filter(g => g.turma_id === turma.turma_id);
+  const unidadesRss = gruposDaTurma.length
+    ? gruposDaTurma.map(g => ({ unidadeId: g.grupo_id, tipo: 'GRUPO' as const, nome: g.nome_grupo || 'Grupo' }))
+    : alunosDaTurma.map(a => ({ unidadeId: a.matricula.matricula_id, tipo: 'INDIVIDUAL' as const, nome: a.aluno.nome }));
+  const nomeDaUnidade = (r: any) => unidadesRss.find(u => u.unidadeId === (r.grupo_id || r.matricula_id))?.nome || String(r.responsavel_nome || 'Estudante');
+  const sugestoesRss = gerarSugestoesRss({
+    turmaId: turma.turma_id, registros: registrosSemanais, unidades: unidadesRss, nomeDe: nomeDaUnidade,
+    hojeIso: hojeStr, temaLeitura: leitura?.titulo || leitura?.tema,
+  });
+  const fmtData = (iso: string) => iso.split('-').reverse().join('/');
+
   // Documentos pendentes
   const docsPendentes = documentos.filter(
     d => matriculaIdsTurma.has(d.matricula_id) && d.status === 'PENDENTE'
   );
 
   // Próximos prazos
-  const proximosMarcos = marcosAcademicos.filter(
-    m => m.turma_id === turma.turma_id || !m.turma_id
-  );
+  const proximoMarco = proximoMarcoDaTurma(marcosAcademicos, turma.turma_id, hojeStr);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-150">
@@ -104,6 +118,45 @@ export const PrepararAulaModal: React.FC<PrepararAulaModalProps> = ({
               </div>
             ) : (
               <div className="pl-6 text-slate-400">Nenhuma leitura programada especificamente.</div>
+            )}
+          </div>
+
+          <ResumoRssSemEnvio turmaId={turma.turma_id} />
+          <ResumoDocumentosTurma turmaId={turma.turma_id} />
+
+          {/* 1b. O que os estudantes relataram nos últimos 14 dias */}
+          <div className="p-3.5 rounded-xl border border-indigo-200 bg-indigo-50/40 space-y-2" data-testid="sugestoes-rss">
+            <div className="flex items-center gap-2 text-indigo-900 font-bold">
+              <FileText className="w-4 h-4 text-indigo-600" />
+              <span>Sugestões do RSS (últimos 14 dias)</span>
+            </div>
+            <p className="pl-6 text-[11px] text-slate-500">
+              {sugestoesRss.totalRelatos} relato(s) de {fmtData(sugestoesRss.de)} a {fmtData(sugestoesRss.ate)}. Os temas são palavras que se repetem nos relatos; confira o texto antes de usar.
+            </p>
+            {sugestoesRss.sugestoes.length === 0 ? (
+              <div className="pl-6 text-slate-500">Sem relatos nesse período para sugerir temas.</div>
+            ) : (
+              <ul className="pl-6 list-disc ml-3 space-y-1 text-slate-800">
+                {sugestoesRss.sugestoes.map((t, i) => <li key={i}>{t}</li>)}
+              </ul>
+            )}
+            {(sugestoesRss.prioritarios.length > 0 || sugestoesRss.duvidas.length > 0) && (
+              <details className="pl-6">
+                <summary className="cursor-pointer text-indigo-800 font-semibold text-xs min-h-[32px]">
+                  Ler o que foi relatado ({sugestoesRss.prioritarios.length} prioridade, {sugestoesRss.duvidas.length} dúvida)
+                </summary>
+                <div className="space-y-2 mt-1">
+                  {[...sugestoesRss.prioritarios.map(x => ({ ...x, rotulo: 'Prioridade' })), ...sugestoesRss.duvidas.map(x => ({ ...x, rotulo: 'Dúvida' }))].map(x => (
+                    <div key={x.rotulo + x.registroId} className="text-xs">
+                      <span className="font-semibold text-slate-700">{x.rotulo} · {x.unidade} · {fmtData(x.data)}{x.emRevisao ? ' · em revisão' : ''}</span>
+                      <p className="text-slate-800 whitespace-pre-wrap break-words">{x.texto}</p>
+                    </div>
+                  ))}
+                </div>
+              </details>
+            )}
+            {sugestoesRss.unidadesSemRelato.length > 0 && (
+              <p className="pl-6 text-[11px] text-amber-800">Sem RSS no período: {sugestoesRss.unidadesSemRelato.join(', ')}.</p>
             )}
           </div>
 
@@ -167,8 +220,13 @@ export const PrepararAulaModal: React.FC<PrepararAulaModalProps> = ({
             <div className="p-3 rounded-xl border border-slate-200 bg-white space-y-1">
               <span className="text-slate-400 text-[10px] uppercase font-bold block">Próximo Marco Acadêmico</span>
               <span className="text-sm font-bold text-slate-900">
-                {proximosMarcos[0] ? proximosMarcos[0].nome : 'Em dia'}
+                {proximoMarco ? proximoMarco.nome : 'Nenhum marco pendente'}
               </span>
+              {proximoMarco && (
+                <span className="text-[11px] text-slate-500 block">
+                  {fmtData(proximoMarco.data)} · {proximoMarco.diasRestantes === 0 ? 'hoje' : proximoMarco.diasRestantes === 1 ? 'amanhã' : `em ${proximoMarco.diasRestantes} dias`}
+                </span>
+              )}
             </div>
           </div>
           </details>

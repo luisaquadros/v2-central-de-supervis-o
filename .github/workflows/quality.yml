@@ -21,6 +21,13 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+      - name: Bloquear artefatos locais e credenciais versionados
+        shell: bash
+        run: |
+          if git ls-files | grep -E '^(\.wrangler/|\.dev\.vars($|\.))'; then
+            echo "::error::Arquivos locais do Wrangler ou credenciais não podem ser versionados."
+            exit 1
+          fi
       - name: Configurar Node
         uses: actions/setup-node@v4
         with:
@@ -36,3 +43,5 @@ jobs:
         run: npm run build
       - name: Validar empacotamento Cloudflare Worker e Durable Object
         run: npx --yes wrangler@4 deploy --dry-run --outdir=/tmp/central-supervisao-worker-check
+      - name: Testar Worker real com Google e Drive simulados
+        run: npm run test:worker-real

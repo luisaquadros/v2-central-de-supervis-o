@@ -3,7 +3,8 @@ import { RefreshCw, CheckCircle2, AlertCircle, Database, Clock, CloudOff, X } fr
 import { useSupervisao } from '../context/SupervisaoContext';
 
 export const SyncIndicator: React.FC = () => {
-  const { syncStatusState, sincronizarAgora, currentUser, loginGoogle, isTokenExpired, tokenExpiredAviso, reconectarESincronizar } = useSupervisao();
+  const { syncStatusState, sincronizarAgora, currentUser, loginGoogle, isTokenExpired, tokenExpiredAviso, reconectarESincronizar, perfilServidor } = useSupervisao();
+  const requerOAuth = isTokenExpired && !perfilServidor?.viaContaServico;
   const [modalAberto, setModalAberto] = useState(false);
   const [sincronizandoManual, setSincronizandoManual] = useState(false);
 
@@ -20,7 +21,7 @@ export const SyncIndicator: React.FC = () => {
   const handleSincronizar = async () => {
     setSincronizandoManual(true);
     try {
-      if (!currentUser || isTokenExpired) {
+      if (!currentUser || requerOAuth) {
         await reconectarESincronizar();
       } else {
         await sincronizarAgora();
@@ -43,7 +44,17 @@ export const SyncIndicator: React.FC = () => {
       );
     }
 
-    if (isTokenExpired) {
+    if (syncStatusState.conflitosCount > 0) {
+      return (
+        <div className="flex items-center gap-1.5 text-xs text-red-800 bg-red-50 border border-red-300 px-2 xl:px-3 py-1.5 rounded-full min-h-10 min-w-10 justify-center" title="Há conflitos de versão. É necessária revisão.">
+          <AlertCircle className="w-3.5 h-3.5 text-red-700" />
+          <span className="font-semibold hidden xl:inline">{syncStatusState.conflitosCount} conflito(s) — revisar</span>
+          <span className="font-bold xl:hidden">{syncStatusState.conflitosCount}</span>
+        </div>
+      );
+    }
+
+    if (requerOAuth) {
       return (
         <div className="flex items-center gap-1.5 text-xs text-amber-900 bg-amber-100 border border-amber-300 px-2 xl:px-3 py-1.5 rounded-full min-h-10 min-w-10 justify-center cursor-pointer hover:bg-amber-200 transition-colors animate-pulse" title="Sessão Google expirada. Clique para reconectar.">
           <Clock className="w-3.5 h-3.5 text-amber-700" />
@@ -109,7 +120,8 @@ export const SyncIndicator: React.FC = () => {
         className="shrink-0 rounded-full focus-visible:outline-2 focus-visible:outline-teal-500"
         onClick={() => setModalAberto(true)}
         title="Ver status de sincronização"
-        aria-label={`Status da sincronização: ${isTokenExpired ? 'reconexão necessária' :
+        aria-label={`Status da sincronização: ${requerOAuth ? 'reconexão necessária' :
+          syncStatusState.conflitosCount > 0 ? 'conflitos para revisão' :
           syncStatusState.pendentesCount > 0 ? 'alterações aguardando envio' :
           syncStatusState.status === 'SINCRONIZANDO' ? 'sincronizando' :
           syncStatusState.status === 'ERRO' ? 'erro na sincronização' :
@@ -123,7 +135,7 @@ export const SyncIndicator: React.FC = () => {
       {/* Painel Modal de Detalhes da Sincronização */}
       {modalAberto && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-md w-full overflow-hidden flex flex-col">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-md w-full overflow-hidden flex flex-col max-h-[90dvh]">
             <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-50">
               <div className="flex items-center gap-2">
                 <Database className="w-4 h-4 text-slate-700" />
@@ -137,7 +149,7 @@ export const SyncIndicator: React.FC = () => {
               </button>
             </div>
 
-            <div className="p-5 space-y-4 text-xs">
+            <div className="p-5 space-y-4 text-xs overflow-y-auto">
               {/* Hierarquia */}
               <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1 text-slate-600">
                 <div className="font-semibold text-slate-800">Hierarquia da Base:</div>
@@ -166,7 +178,19 @@ export const SyncIndicator: React.FC = () => {
                     {syncStatusState.pendentesCount} item(ns)
                   </strong>
                 </div>
+                <div className="flex justify-between py-1 border-t border-slate-50">
+                  <span className="text-slate-500">Conflitos que precisam de revisão:</span>
+                  <strong className={syncStatusState.conflitosCount > 0 ? 'text-red-700' : 'text-emerald-600'}>
+                    {syncStatusState.conflitosCount} item(ns)
+                  </strong>
+                </div>
               </div>
+
+              {syncStatusState.conflitosCount > 0 && (
+                <p role="alert" className="p-3 rounded-lg bg-red-50 border border-red-200 text-red-800">
+                  Alterações com conflito permanecem preservadas no dispositivo e exigem conferência manual. Não exclua esses registros nem considere a sincronização concluída.
+                </p>
+              )}
 
               {/* Erros se houver */}
               {syncStatusState.erros && syncStatusState.erros.length > 0 && (

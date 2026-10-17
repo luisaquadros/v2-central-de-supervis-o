@@ -26,7 +26,6 @@ Aplicação de apoio à supervisão dos estágios de Psicologia, com gestão de 
 - **Google Sheets:** base acadêmica oficial; configuração de tabelas em `src/services/googleSheetsService.ts`.
 - **IndexedDB:** cache de trabalho local; conferir sincronização remota antes de confiar em alterações recentes.
 - **Autenticação:** Firebase Authentication + Google OAuth com escopo Google Sheets. O login Firebase e o token OAuth do Sheets são distintos. A aplicação só libera dados acadêmicos após validação autorizada, respeitando a política de sessão.
-- **GAS:** scripts de apoio em `gas/`.
 - Não contornar o login, retirar a verificação de acesso, limpar cache automaticamente ou registrar informações clínicas identificáveis.
 
 ## Desenvolvimento local

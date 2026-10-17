@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { resumirDocumentacaoOficial, documentosPendentesOficiais } from '../services/documentacaoAcademicaService';
+import { resumirDocumentacaoOficial, documentosPendentesOficiais, entregasDoEstudante } from '../services/documentacaoAcademicaService';
 import type { Entrega, Documento } from '../types';
 
 const entregas = [
@@ -23,4 +23,19 @@ assert.equal(documentosPendentesOficiais(entregas,legacy).length,6);
 assert(documentosPendentesOficiais(entregas,legacy).every(d=>d.documento_id.startsWith('entrega-')));
 assert.equal(resumirDocumentacaoOficial([],legacy).pendentes,1);
 assert.equal(documentosPendentesOficiais([],legacy).length,1);
-console.log('Documentação: 258 entregas e fallback testados com status separados.');
+// Ficha do estudante: entregas oficiais da própria matrícula, com rótulo legível e status original.
+{
+  const lista = entregasDoEstudante([
+    { entrega_id: 'e1', matricula_id: 'm9', tipo_entrega: 'TERMO_COMPROMISSO', status: 'A conferir', prazo: '2026-09-04' },
+    { entrega_id: 'e2', matricula_id: 'm9', codigo_entrega: 'MANUAL_ESTAGIO', status: 'Enviado', data_envio: '2026-08-20' },
+    { entrega_id: 'e3', matricula_id: 'm9', tipo_documento: 'RELATORIO_PARCIAL', status: 'Pendente' },
+    { entrega_id: 'e4', matricula_id: 'outra', tipo_entrega: 'TERMO_COMPROMISSO', status: 'Pendente' },
+  ] as any, 'm9');
+  assert.equal(lista.length, 3, 'só entregas da matrícula pedida');
+  assert.deepEqual(lista.map(x => x.rotulo), ['Manual do Estágio', 'Relatório parcial', 'Termo de Compromisso']);
+  assert.equal(lista.find(x => x.id === 'e1')!.situacao, 'A_CONFERIR');
+  assert.equal(lista.find(x => x.id === 'e1')!.statusOriginal, 'A conferir', 'status original preservado');
+  assert.equal(lista.find(x => x.id === 'e2')!.dataEnvio, '2026-08-20');
+  assert.equal(entregasDoEstudante([], 'm9').length, 0);
+}
+console.log('Documentação: 258 entregas, fallback e ficha do estudante testados com status separados.');

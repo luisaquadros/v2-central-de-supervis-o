@@ -1,4 +1,8 @@
+import { ResumoRssSemEnvio } from '../components/ResumoRssSemEnvio';
+import { ResumoDocumentosTurma } from '../components/ResumoDocumentosTurma';
 import { diagnosticarChamada } from '../services/aulaParticipants';
+import { temSupervisaoHorarioAlternativo, ROTULO_HORARIO_ALTERNATIVO } from '../services/condicoesMatricula';
+import { prepararEncerramentoChamada, naoRegistrados } from '../services/chamadaService';
 import { resolverResponsaveis } from '../services/aulaParticipants';
 import React, { useState, useMemo, useEffect } from 'react';
 import {
@@ -260,44 +264,38 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
     });
   };
 
-  // Salvar chamada por exceção
-  const handleSalvarChamada = async () => {
+  // Encerrar chamada (D1): primeiro a prévia; a gravação só acontece após a confirmação explícita.
+  const [previaAberta, setPreviaAberta] = useState(false);
+  const [encerrando, setEncerrando] = useState(false);
+  const previa = prepararEncerramentoChamada(alunosLista, excecoes);
+  const abrirPrevia = () => {
     if (chamadaIncompleta) {
-      setChamadaSalvaMsg({ texto: 'Chamada não salva: lista de alunos incompleta. Confira a sincronização da turma.', tipo: 'local' });
+      setChamadaSalvaMsg({ texto: 'Chamada não encerrada: lista de alunos incompleta. Confira a sincronização da turma.', tipo: 'local' });
       return;
     }
-    const excecoesArray = alunosLista.map(item => {
-      const exc = excecoes[item.matricula.matricula_id];
-      const faltou = exc?.faltou ?? false;
-      let status: Frequencia['status'] = 'PRESENTE';
-      if (faltou) {
-        status = exc?.justificativa ? 'JUSTIFICATIVA_PENDENTE' : 'FALTA_SEM_JUSTIFICATIVA';
-      }
-      return {
-        matriculaId: item.matricula.matricula_id,
-        status,
-        justificativa: exc?.justificativa,
-        atraso: exc?.atraso,
-        celular: exc?.celular,
-        observacao: exc?.observacao,
-      };
-    });
-
-    const res = await salvarChamadaPorExcecao(turmaId, hojeIso, excecoesArray);
-    const faltasCount = alunosLista.filter(item => excecoes[item.matricula.matricula_id]?.faltou).length;
-    const presentesCount = alunosLista.length - faltasCount;
-    setChamadaSalvaMsg({
-      texto: `${res.statusTexto} — ${presentesCount} presentes, ${faltasCount} falta(s).`,
-      tipo: res.sincronizadoRemoto ? 'remoto' : 'local',
-      tokenExpirado: res.tokenExpirado,
-    });
-    setTimeout(() => setChamadaSalvaMsg(null), 6000);
+    setPreviaAberta(true);
+  };
+  const handleSalvarChamada = async () => {
+    if (encerrando) return; // evita cliques repetidos e registros duplicados
+    setEncerrando(true);
+    try {
+      const res = await salvarChamadaPorExcecao(turmaId, hojeIso, previa.registros);
+      setPreviaAberta(false);
+      setChamadaSalvaMsg({
+        texto: `${res.statusTexto} — ${previa.presentes.length} presentes, ${previa.faltas.length} falta(s).`,
+        tipo: res.sincronizadoRemoto ? 'remoto' : 'local',
+        tokenExpirado: res.tokenExpirado,
+      });
+      setTimeout(() => setChamadaSalvaMsg(null), 6000);
+    } finally { setEncerrando(false); }
   };
 
   // Contagem instantânea em memória
   const excecoesDaTurma = alunosLista.map(item => excecoes[item.matricula.matricula_id]).filter((e): e is ExcecaoAluno => !!e);
   const faltasCount = excecoesDaTurma.filter(e => e.faltou).length;
-  const presentesCount = alunosLista.length - faltasCount;
+  const coletivos = alunosLista.filter(item => !temSupervisaoHorarioAlternativo(item.matricula));
+  const alternativos = alunosLista.length - coletivos.length;
+  const semMarcacao = naoRegistrados(alunosLista, excecoes).filter(i => !temSupervisaoHorarioAlternativo(i.matricula)).length;
   const atrasosCount = excecoesDaTurma.filter(e => e.atraso).length;
   const celularCount = excecoesDaTurma.filter(e => e.celular).length;
 
@@ -319,7 +317,7 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
     const grupo = vinculo ? gruposPratica.find(g => g.grupo_id === vinculo.grupo_id) : undefined;
     const chave = grupo ? grupo.grupo_id : item.matricula.matricula_id;
     const lacunas = rssPorAluno.get(item.matricula.matricula_id);
-    if (lacunas && (lacunas.faltantes.length || lacunas.emRevisao.length) && !pendenciasRssTurma.has(chave)) {
+    if (lacunas && lacunas.faltantes.length && !pendenciasRssTurma.has(chave)) {
       pendenciasRssTurma.set(chave, {
         nome: grupo ? (grupo.nome_grupo || 'Grupo de prática') : item.aluno.nome,
         faltantes: lacunas.faltantes, revisao: lacunas.emRevisao,
@@ -399,6 +397,9 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
           </span>
         </div>
       )}
+
+      <div className="px-4 pt-2 shrink-0"><ResumoRssSemEnvio turmaId={turmaId} compacto /></div>
+      <div className="px-4 pt-2 shrink-0"><ResumoDocumentosTurma turmaId={turmaId} compacto /></div>
 
       {/* 2. TOPO DO MODO SUPERVISÃO: ESTUDO DIRIGIDO / LEITURA DE HOJE */}
       {estudoDirigidoHoje && (
@@ -613,6 +614,39 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
       )}
 
       {/* FEEDBACK DE CHAMADA SALVA */}
+      {previaAberta && (
+        <div className="fixed inset-0 z-[120] bg-slate-950/60 flex items-end sm:items-center justify-center p-0 sm:p-4" role="dialog" aria-modal="true" aria-labelledby="titulo-previa-chamada" data-testid="previa-chamada">
+          <div className="bg-white w-full sm:max-w-xl max-h-[92vh] flex flex-col rounded-t-2xl sm:rounded-2xl shadow-xl">
+            <div className="p-4 border-b border-slate-200">
+              <h2 id="titulo-previa-chamada" className="text-base font-bold text-slate-900">Encerrar a chamada?</h2>
+              <p className="text-xs text-slate-600 mt-1">Confira quem será registrado. Quem não foi marcado entra como <b>presente</b> somente se você confirmar aqui.</p>
+            </div>
+            <div className="p-4 space-y-3 overflow-y-auto text-xs">
+              <section>
+                <h3 className="font-bold text-emerald-800">Serão registrados como presentes ({previa.presentes.length})</h3>
+                <p className="text-slate-700 leading-relaxed">{previa.presentes.length ? previa.presentes.map(i => i.aluno.nome + (previa.atrasos.includes(i) ? ' (atraso)' : '')).join(', ') : 'Ninguém.'}</p>
+              </section>
+              <section>
+                <h3 className="font-bold text-red-800">Faltas e justificativas ({previa.faltas.length})</h3>
+                <p className="text-slate-700 leading-relaxed">{previa.faltas.length ? previa.faltas.map(f => `${f.item.aluno.nome} — ${f.status === 'JUSTIFICATIVA_PENDENTE' ? 'justificativa a avaliar' : 'sem justificativa'}`).join('; ') : 'Nenhuma.'}</p>
+              </section>
+              {previa.semRegistro.length > 0 && (
+                <section>
+                  <h3 className="font-bold text-indigo-800">{ROTULO_HORARIO_ALTERNATIVO}: nada será registrado ({previa.semRegistro.length})</h3>
+                  <p className="text-slate-700 leading-relaxed">{previa.semRegistro.map(i => i.aluno.nome).join(', ')}</p>
+                </section>
+              )}
+            </div>
+            <div className="p-4 border-t border-slate-200 flex flex-col-reverse sm:flex-row gap-2 sm:justify-end">
+              <button type="button" onClick={() => setPreviaAberta(false)} disabled={encerrando} className="min-h-[48px] px-4 rounded-xl border border-slate-300 text-slate-800 font-semibold">Voltar e ajustar</button>
+              <button type="button" autoFocus onClick={() => void handleSalvarChamada()} disabled={encerrando} className="min-h-[48px] px-4 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold disabled:opacity-60">
+                {encerrando ? 'Gravando…' : 'Confirmar e encerrar chamada'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {chamadaSalvaMsg && (
         <div
           className={`text-white text-xs px-4 py-2.5 flex items-center justify-between shadow-xs shrink-0 ${
@@ -681,23 +715,24 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
                 <span className="font-bold text-slate-900 text-xs">Chamada por Exceção</span>
               </div>
               <p className="text-[11px] text-slate-500 mt-0.5">
-                <span className="text-emerald-700 font-semibold">{presentesCount} presentes</span> ·{' '}
+                <span className="text-slate-700 font-semibold" title="Quem não foi marcado só é registrado como presente ao encerrar a chamada, depois da sua confirmação.">{semMarcacao} sem marcação (não registrados)</span> ·{' '}
                 <span className={faltasCount > 0 ? 'text-red-700 font-semibold' : 'text-slate-400'}>
                   {faltasCount} falta(s)
                 </span>
+                {alternativos > 0 && ` · ${alternativos} em horário alternativo (sem presença automática)`}
                 {atrasosCount > 0 && ` · ${atrasosCount} atraso`}
                 {celularCount > 0 && ` · ${celularCount} celular`}
               </p>
             </div>
 
             <button
-              onClick={handleSalvarChamada}
+              onClick={abrirPrevia}
               disabled={saveStatus === 'SALVANDO' || chamadaIncompleta}
               className="min-h-[44px] px-4 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 active:scale-98 text-white font-bold text-xs flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer"
-              title="Gravar chamada da aula com as exceções marcadas"
+              title="Revisar quem será considerado presente e encerrar a chamada"
             >
               <Save className="w-4 h-4" />
-              <span>Salvar Chamada</span>
+              <span>Encerrar chamada</span>
             </button>
           </div>
 
@@ -712,13 +747,12 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
           {pendenciasRssTurma.size > 0 && (
             <details className="px-3 py-2 border-b border-slate-200 bg-amber-50/90 text-xs">
               <summary className="cursor-pointer text-amber-800 font-semibold">
-                RSS a conferir nesta turma ({pendenciasRssTurma.size} {pendenciasRssTurma.size === 1 ? 'unidade' : 'unidades'})
+                RSS não entregues nesta turma ({pendenciasRssTurma.size} {pendenciasRssTurma.size === 1 ? 'unidade' : 'unidades'})
               </summary>
               <div className="mt-2 max-h-36 overflow-y-auto space-y-1.5">
                 {[...pendenciasRssTurma.entries()].map(([id,info]) => <div key={id} className="text-slate-800">
                   <span className="font-semibold">{info.nome}:</span>
-                  {info.faltantes.length > 0 && ` sem registro validado nas semanas ${info.faltantes.join(', ')}.`}
-                  {info.revisao.length > 0 && ` Em revisão: ${info.revisao.join(', ')}.`}
+                  {info.faltantes.length > 0 && ` RSS não entregue nas semanas ${info.faltantes.join(', ')}.`}
                 </div>)}
               </div>
             </details>
@@ -783,6 +817,11 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
                         >
                           {item.aluno.nome}
                         </span>
+                        {temSupervisaoHorarioAlternativo(item.matricula) && (
+                          <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-800 border border-indigo-200 shrink-0" title="Os encontros coletivos desta turma não geram presença nem falta automática para esta matrícula.">
+                            {ROTULO_HORARIO_ALTERNATIVO}
+                          </span>
+                        )}
                         {hasAlert && (
                           <span
                             className="text-amber-500 font-bold text-xs shrink-0 cursor-help"
@@ -792,10 +831,9 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
                           </span>
                         )}
                       </div>
-                      {rss && (rss.faltantes.length > 0 || rss.emRevisao.length > 0) && (
+                      {rss && rss.faltantes.length > 0 && (
                         <div className="text-[10px] text-amber-700 font-semibold mt-0.5">
-                          {rss.faltantes.length > 0 && `RSS sem validação: ${rss.faltantes.join(', ')}`}
-                          {rss.emRevisao.length > 0 && ` · Em revisão: ${rss.emRevisao.join(', ')}`}
+                          {rss.faltantes.length > 0 && `RSS não entregue (semanas): ${rss.faltantes.join(', ')}`}
                         </div>
                       )}
                       <div className="text-[10px] text-slate-400 font-mono truncate">

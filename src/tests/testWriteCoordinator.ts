@@ -7,6 +7,9 @@ const ok=(data:unknown)=>new Response(JSON.stringify(data),{status:200,headers:{
 globalThis.fetch=async (input:any,init?:RequestInit):Promise<Response>=>{
   const url=String(input);
   if(!url.includes('sheets.googleapis.com'))throw Error('Unexpected request '+url);
+  // Trilha de auditoria (log_alteracoes): coberta em testAuditoriaLog.ts; aqui só aceita as chamadas.
+  if(url.includes('fields=sheets'))return ok({sheets:[{properties:{title:'log_alteracoes',sheetId:99}}]});
+  if(url.includes('log_alteracoes'))return ok({});
   if(url.includes('/values:batchUpdate') && init?.method==='POST'){
     const body=JSON.parse(String(init.body));
     for(const p of body.data){
@@ -30,7 +33,7 @@ const server=new WriteCoordinator({storage:{
 }} as any,{} as any);
 const submit=(operacaoId:string,esperado:any,nota:number,tipo='UPDATE')=>
   server.fetch(new Request('https://internal/write',{
-    method:'POST',headers:{Authorization:'Bearer mock','Content-Type':'application/json'},
+    method:'POST',headers:{Authorization:'Bearer mock','Content-Type':'application/json','X-Usuario-Verificado':'prof@exemplo.com','X-Perfil':JSON.stringify({papel:'PROFESSORA_ADMIN',email:'prof@exemplo.com',turmas:['*'],operacoes:['CHAMADA','ENTREGAS','DOCUMENTOS_VER']})},
     body:JSON.stringify({tabela:'avaliacoes',tipo,operacaoId,registro:{avaliacao_id:'a1',nota},esperado})
   }));
 try{
@@ -49,3 +52,18 @@ try{
   assert.equal(rows[1][1],8);
   console.log('Coordenador: serialização, CAS, retry idempotente e conflito concorrente validados.');
 }finally{globalThis.fetch=oldFetch}
+
+// Limite de corpo do Worker: vale para o corpo real, mesmo sem Content-Length (envio em partes).
+{
+  const { lerCorpoLimitado, LIMITE_CORPO } = await import('../server/utilitariosWorker');
+  const pequeno = new Request('https://x/api/critical-write', { method: 'POST', body: '{"ok":true}' });
+  assert.equal(await lerCorpoLimitado(pequeno, LIMITE_CORPO), '{"ok":true}', 'corpo pequeno passa');
+  const partes = new ReadableStream({
+    start(c) { const bloco = new TextEncoder().encode('x'.repeat(40000)); for (let i = 0; i < 4; i++) c.enqueue(bloco); c.close(); },
+  });
+  const grande = new Request('https://x/api/critical-write', { method: 'POST', body: partes, duplex: 'half' } as RequestInit);
+  assert.equal(grande.headers.get('Content-Length'), null, 'sem Content-Length declarado');
+  assert.equal(await lerCorpoLimitado(grande, LIMITE_CORPO), null, '160 KB em partes é recusado (limite 128 KB)');
+  assert.equal(await lerCorpoLimitado(new Request('https://x/', { method: 'POST' }), LIMITE_CORPO), '', 'sem corpo = vazio');
+  console.log('Worker: limite de corpo real validado (inclusive sem Content-Length).');
+}

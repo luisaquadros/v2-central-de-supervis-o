@@ -12,7 +12,7 @@ import {
   signOut,
 } from 'firebase/auth';
 import firebaseConfig from '../../firebase-applet-config.json';
-import { DadosIniciaisGas } from './gasService';
+import { DadosIniciais } from './dadosIniciais';
 
 function fetchWithTimeout(input: string, init?: RequestInit) {
   return fetch(input, { ...init, signal: AbortSignal.timeout(20000) });
@@ -57,7 +57,13 @@ export const TABELAS_NORMALIZADAS = [
   'registros_supervisao',
   'encontros_turma',
   'preparacoes_aula',
+  'monitoramento_documentos',
   'avaliacoes_completas',
+  'config_avaliacao',
+  'rubricas_avaliacao',
+  'avaliacao_rascunhos',
+  'evidencias_avaliacao',
+  'rss_ajustes',
   'sincronizacao',
   // Documentação e Contrato da Base Oficial
   'dicionario_dados',
@@ -70,15 +76,19 @@ export const TABELAS_NORMALIZADAS = [
 const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 
+// Autenticação apenas no aplicativo. O acesso ao Sheets é feito no Worker,
+ // com a conta de serviço e as permissões validadas pelo Firebase.
 const provider = new GoogleAuthProvider();
-provider.addScope('https://www.googleapis.com/auth/spreadsheets');
 
 // Persistência segura da sessão e token de acesso OAuth no sessionStorage (com expiração de 55 minutos)
 const SESSION_TOKEN_KEY = 'cs_google_access_token_session';
 const SESSION_EXPIRY_KEY = 'cs_google_access_token_exp';
+const SESSION_OWNER_KEY = 'cs_google_access_token_owner';
 let accessTokenExpiresAt = 0;
+let oauthOwnerUid: string | null = null;
 
-function saveTokenToSession(token: string) {
+function saveTokenToSession(token: string, ownerUid?: string) {
+  oauthOwnerUid = ownerUid || auth.currentUser?.uid || null;
   accessTokenExpiresAt = Date.now() + 55 * 60 * 1000;
   try {
     if (typeof window !== 'undefined') {
@@ -86,6 +96,8 @@ function saveTokenToSession(token: string) {
       try {
         sessionStorage.setItem(SESSION_TOKEN_KEY, token);
         sessionStorage.setItem(SESSION_EXPIRY_KEY, String(expiresAt));
+        if (oauthOwnerUid) sessionStorage.setItem(SESSION_OWNER_KEY, oauthOwnerUid);
+        else sessionStorage.removeItem(SESSION_OWNER_KEY);
       } catch {}
     }
   } catch (e) {
@@ -101,8 +113,9 @@ function getStoredTokenFromSession(): string | null {
       try {
         token = sessionStorage.getItem(SESSION_TOKEN_KEY);
         expStr = sessionStorage.getItem(SESSION_EXPIRY_KEY);
+        oauthOwnerUid = sessionStorage.getItem(SESSION_OWNER_KEY);
       } catch {}
-      if (token && expStr) {
+      if (token && expStr && oauthOwnerUid) {
         const exp = Number(expStr);
         if (Date.now() < exp) {
           accessTokenExpiresAt = exp;
@@ -119,15 +132,19 @@ function getStoredTokenFromSession(): string | null {
 }
 
 function clearSessionToken() {
+  oauthOwnerUid = null;
+  accessTokenExpiresAt = 0;
   try {
     if (typeof window !== 'undefined') {
       try {
         sessionStorage.removeItem(SESSION_TOKEN_KEY);
         sessionStorage.removeItem(SESSION_EXPIRY_KEY);
+        sessionStorage.removeItem(SESSION_OWNER_KEY);
       } catch {}
       try {
         localStorage.removeItem(SESSION_TOKEN_KEY);
         localStorage.removeItem(SESSION_EXPIRY_KEY);
+        localStorage.removeItem(SESSION_OWNER_KEY);
       } catch {}
     }
   } catch (e) {
@@ -145,10 +162,13 @@ export const initAuth = (
   return onAuthStateChanged(auth, async (user: User | null) => {
     if (user) {
       const token = inMemoryAccessToken || getStoredTokenFromSession();
-      if (token) {
+      if (token && oauthOwnerUid && oauthOwnerUid !== user.uid) {
+        inMemoryAccessToken = null;
+        clearSessionToken();
+      } else if (token) {
         inMemoryAccessToken = token;
       }
-      if (onAuthSuccess) onAuthSuccess(user, token);
+      if (onAuthSuccess) onAuthSuccess(user, oauthOwnerUid === user.uid ? token : null);
     } else {
       if (!isSigningIn) {
         if (onAuthFailure) onAuthFailure();
@@ -167,7 +187,7 @@ export const googleSignIn = async (): Promise<{ user: User; accessToken: string 
       throw new Error('Falha ao obter token de acesso do Google.');
     }
     inMemoryAccessToken = credential.accessToken;
-    saveTokenToSession(credential.accessToken);
+    saveTokenToSession(credential.accessToken, result.user.uid);
     return { user: result.user, accessToken: inMemoryAccessToken };
   } catch (error: any) {
     console.error('Erro de autenticação Google:', error);
@@ -178,6 +198,12 @@ export const googleSignIn = async (): Promise<{ user: User; accessToken: string 
 };
 
 export const getAccessToken = async (): Promise<string | null> => {
+  // Não reutilizar autorização da planilha de uma conta Google anterior.
+  if (oauthOwnerUid && auth.currentUser && oauthOwnerUid !== auth.currentUser.uid) {
+    inMemoryAccessToken = null;
+    clearSessionToken();
+    return null;
+  }
   if (inMemoryAccessToken && Date.now() < accessTokenExpiresAt) return inMemoryAccessToken;
   inMemoryAccessToken = null;
   const stored = getStoredTokenFromSession();
@@ -208,7 +234,7 @@ export const googleLogout = async () => {
 /**
  * Converte matriz de linhas de uma aba em lista de objetos, usando cabeçalhos reais da planilha
  */
-function parseSheetRowsToObjects<T>(rows: any[][]): T[] {
+export function parseSheetRowsToObjects<T>(rows: any[][]): T[] {
   if (!rows || rows.length < 2) return [];
   const headers = rows[0].map(h => String(h || '').trim());
   const dataRows = rows.slice(1);
@@ -402,9 +428,11 @@ export function formatarRangeSheet(nomeRealAba: string, range?: string): string 
   return range ? `${quoted}!${range}` : quoted;
 }
 
-export interface ResultadoLeituraPlanilha extends DadosIniciaisGas {
+export interface ResultadoLeituraPlanilha extends DadosIniciais {
   _rawMap: Record<string, any[]>;
   _missingSheets: string[];
+  /** Tabelas que o servidor deliberadamente não entregou a este perfil (não são falha de leitura). */
+  _restritas?: string[];
 }
 
 /**
@@ -490,6 +518,11 @@ export async function carregarDadosDaPlanilhaOficial(): Promise<ResultadoLeitura
     }
   }
 
+  return montarResultadoLeitura(tableDataMap, missingSheets);
+}
+
+/** Monta o resultado a partir das tabelas já normalizadas (leitura direta e leitura via servidor). */
+export function montarResultadoLeitura(tableDataMap: Record<string, any[]>, missingSheets: string[], restritas: string[] = []): ResultadoLeituraPlanilha {
   return {
     periodos: tableDataMap['periodos'] || [],
     disciplinas: tableDataMap['disciplinas'] || [],
@@ -522,7 +555,13 @@ export async function carregarDadosDaPlanilhaOficial(): Promise<ResultadoLeitura
     registrosSupervisao: tableDataMap['registros_supervisao'] || [],
     encontrosTurma: tableDataMap['encontros_turma'] || [],
     preparacoesAula: tableDataMap['preparacoes_aula'] || [],
+    monitoramentoDocumentos: tableDataMap['monitoramento_documentos'] || [],
     avaliacoesCompletas: tableDataMap['avaliacoes_completas'] || [],
+    configAvaliacao: tableDataMap['config_avaliacao'] || [],
+    rubricasAvaliacao: tableDataMap['rubricas_avaliacao'] || [],
+    rascunhosAvaliacao: tableDataMap['avaliacao_rascunhos'] || [],
+    evidenciasAvaliacao: tableDataMap['evidencias_avaliacao'] || [],
+    rssAjustes: tableDataMap['rss_ajustes'] || [],
     sincronizacao: tableDataMap['sincronizacao'] || [],
     dicionarioDados: tableDataMap['dicionario_dados'] || [],
     contratoApp: tableDataMap['contrato_app'] || [],
@@ -530,6 +569,7 @@ export async function carregarDadosDaPlanilhaOficial(): Promise<ResultadoLeitura
     auditoriaBase: tableDataMap['auditoria_base'] || [],
     _rawMap: tableDataMap,
     _missingSheets: missingSheets,
+    _restritas: restritas,
   };
 }
 

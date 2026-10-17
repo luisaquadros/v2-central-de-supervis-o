@@ -1018,11 +1018,11 @@ export const CalendarioView: React.FC = () => {
                 Nenhum marco acadêmico registrado no período atual.
               </div>
             ) : (
-              marcosAcademicos.map(m => (
-                <div key={m.marco_id} className="p-4 flex items-center justify-between gap-3 bg-white">
+              [...marcosAcademicos].sort((a, b) => String(a.data_prazo).localeCompare(String(b.data_prazo))).map(m => (
+                <div key={m.marco_id} className={`p-4 flex items-center justify-between gap-3 bg-white ${String(m.status).toUpperCase() === 'CONCLUIDO' ? 'opacity-50' : ''}`}>
                   <div>
                     <span className="font-bold text-xs text-slate-900 block">{m.nome}</span>
-                    <span className="text-[11px] text-slate-400">Tipo: {m.tipo}</span>
+                    <span className="text-[11px] text-slate-400">Tipo: {m.tipo}{String(m.status).toUpperCase() === 'CONCLUIDO' ? ' · concluído' : ''}</span>
                   </div>
                   <span className="font-mono text-xs font-bold text-indigo-700 bg-indigo-50 px-2.5 py-1 rounded border border-indigo-100">
                     Prazo: {formatarData(m.data_prazo)}

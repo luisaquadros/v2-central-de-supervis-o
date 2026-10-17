@@ -11,7 +11,6 @@ import { PrepararAulaModal } from './components/PrepararAulaModal';
 import { ErrorNotifier } from './components/ErrorNotifier';
 import { ViewErrorBoundary } from './components/ViewErrorBoundary';
 import { PrimeiraConexaoView } from './views/PrimeiraConexaoView';
-import { isRunningInAppsScript } from './services/gasService';
 import { NavTab } from './types';
 import { DashboardView } from './views/DashboardView';
 import { HojeView } from './views/HojeView';
@@ -45,11 +44,28 @@ const MainContent: React.FC = () => {
     connectionStatus,
     syncStatusState,
     sincronizarAgora,
+    perfilServidor,
   } = useSupervisao();
+  const podeAvaliar = perfilServidor?.papel === 'PROFESSORA_ADMIN';
 
   const [currentView, setCurrentView] = useState<AppView>({ type: 'tab', tab: 'hoje' });
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [prepararTurmaId, setPrepararTurmaId] = useState<string | null>(null);
+  const ultimaConta = React.useRef<string | null>(null);
+  React.useEffect(() => {
+    const uid = currentUser?.uid ?? null;
+    if (ultimaConta.current === uid) return;
+    ultimaConta.current = uid;
+    setCurrentView({ type: 'tab', tab: 'hoje' });
+    setIsMobileMenuOpen(false);
+    setPrepararTurmaId(null);
+  }, [currentUser?.uid]);
+  // Evita tela vazia quando a mesma sessão assume um perfil mais restrito.
+  React.useEffect(() => {
+    if (podeAvaliar) return;
+    setCurrentView(v => v.type === 'tab' && ['avaliacao', 'semestres', 'configuracoes'].includes(v.tab)
+      ? { type: 'tab', tab: 'hoje' } : v);
+  }, [podeAvaliar]);
 
   // Navigation handlers
   const handleSelectNavTab = (tab: NavTab) => {
@@ -58,6 +74,7 @@ const MainContent: React.FC = () => {
 
   const handleMobileSelect = (action: 'hoje'|'turmas'|'aula'|'avaliacao'|'menu') => {
     if (action === 'menu') { setIsMobileMenuOpen(true); return; }
+    if (action === 'avaliacao' && !podeAvaliar) return;
     setIsMobileMenuOpen(false);
     if (action === 'aula') {
       const turma = getSupervisaoAtual().turma || getProximaSupervisao()?.turma ||
@@ -142,7 +159,7 @@ const MainContent: React.FC = () => {
 
   // 2. Proteção de dados acadêmicos: cache de dispositivo nunca libera telas sem login.
   // Firebase preserva o login legítimo ao atualizar a página; Sheets mantém permissão por conta.
-  if (((!currentUser || !acessoGoogleValidado) && !isRunningInAppsScript()) || (!hasLocalCache && periodos.length === 0)) {
+  if ((!currentUser || !acessoGoogleValidado) || (!hasLocalCache && periodos.length === 0)) {
     return <PrimeiraConexaoView />;
   }
 
@@ -177,6 +194,8 @@ const MainContent: React.FC = () => {
               <div className="md:hidden flex items-center gap-2">
                 <button
                   onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+                  aria-label={isMobileMenuOpen ? 'Fechar menu' : 'Abrir menu'}
+                  aria-expanded={isMobileMenuOpen}
                   className="p-1.5 rounded-lg border border-slate-200 text-slate-700"
                 >
                   {isMobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
@@ -186,7 +205,7 @@ const MainContent: React.FC = () => {
               <div className="hidden md:flex items-center gap-2 text-xs text-slate-500">
                 <span className="font-semibold text-slate-700">Central de Supervisão</span>
                 <span>•</span>
-                <span>Base Oficial Google Sheets</span>
+                <span>Base acadêmica conectada</span>
               </div>
             </div>
 
@@ -265,7 +284,7 @@ const MainContent: React.FC = () => {
               />
             )}
 
-            {currentView.type === 'tab' && currentView.tab === 'avaliacao' && (
+            {currentView.type === 'tab' && currentView.tab === 'avaliacao' && podeAvaliar && (
               <AvaliacaoView />
             )}
 
@@ -302,9 +321,9 @@ const MainContent: React.FC = () => {
               />
             )}
 
-            {currentView.type === 'tab' && currentView.tab === 'semestres' && <SemestresView />}
+            {currentView.type === 'tab' && currentView.tab === 'semestres' && podeAvaliar && <SemestresView />}
 
-            {currentView.type === 'tab' && currentView.tab === 'configuracoes' && (
+            {currentView.type === 'tab' && currentView.tab === 'configuracoes' && podeAvaliar && (
               <ConfiguracoesView />
             )}
 
@@ -346,6 +365,7 @@ const MainContent: React.FC = () => {
           selected={currentView.type === 'tab' && ['hoje','turmas','avaliacao'].includes(currentView.tab) ?
             currentView.tab as 'hoje'|'turmas'|'avaliacao' : 'menu'}
           onSelect={handleMobileSelect}
+          podeAvaliar={podeAvaliar}
         />
       )}
       {prepararTurmaId && turmas.some(t => t.turma_id === prepararTurmaId) && (

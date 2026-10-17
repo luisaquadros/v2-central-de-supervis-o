@@ -1,4 +1,5 @@
 import { matriculaParticipaDaChamada } from './aulaParticipants';
+import { resumirEntregasRss, contaComoEntrega, semanaExplicita, semanasEncerradas } from './rssEntregas';
 import {
   Turma,
   HorarioTurma,
@@ -411,6 +412,24 @@ export function obterDatasCalendarioAcademico(
     encerrado,
     diasAteFim,
   };
+}
+
+export interface ProximoMarco { nome: string; data: string; diasRestantes: number; geral: boolean }
+
+/**
+ * Próximo marco acadêmico de UMA turma: o de data mais próxima a partir de hoje que ainda não foi concluído.
+ * Marcos gerais do período (sem turma) também valem. Marcos passados ou concluídos nunca são "o próximo".
+ */
+export function proximoMarcoDaTurma(marcos: MarcoAcademico[], turmaId: string, hojeIso: string): ProximoMarco | null {
+  const dia = (iso: string) => Date.UTC(+iso.slice(0, 4), +iso.slice(5, 7) - 1, +iso.slice(8, 10));
+  const candidatos = marcos
+    .filter(m => (!m.turma_id || m.turma_id === turmaId) && /^\d{4}-\d{2}-\d{2}/.test(String(m.data_prazo || '')))
+    .filter(m => String(m.status || '').toUpperCase() !== 'CONCLUIDO' && String(m.data_prazo).slice(0, 10) >= hojeIso)
+    .sort((a, b) => String(a.data_prazo).localeCompare(String(b.data_prazo)) || (a.turma_id ? 0 : 1) - (b.turma_id ? 0 : 1));
+  const m = candidatos[0];
+  if (!m) return null;
+  const data = String(m.data_prazo).slice(0, 10);
+  return { nome: m.nome, data, diasRestantes: Math.round((dia(data) - dia(hojeIso)) / 86400000), geral: !m.turma_id };
 }
 
 export type LeituraAgendada = LeituraResponsavel & { data_original: string; data_apresentacao: string; reprogramada: boolean };
@@ -901,15 +920,12 @@ export function calcularMetricasCronogramaRss(
  * específica comprovam o cumprimento daquela semana. O número de sessão
  * clínica NÃO corresponde necessariamente ao número da semana do semestre.
  */
+/**
+ * Semana acadêmica de uma entrega de RSS. Não há etapa de validação: conta o registro RECEBIDO/ENTREGUE com semana
+ * explícita (1 a 12). Semana vazia é resolvida pela data de entrega em `resumirEntregasRss`, nunca pelo número do encontro.
+ */
 export function obterSemanaRssValidada(reg: RegistroSemanal): number | null {
-  const raw = (reg as any).semana_rss ?? reg.semana;
-  const semana = Number(raw);
-  if (!Number.isInteger(semana) || semana < 1 || semana > 12) return null;
-  const status = String(reg.status || '').trim().toUpperCase();
-  const revisao = String((reg as any).status_revisao || '').trim().toUpperCase();
-  if (status !== 'ENTREGUE' && status !== 'RECEBIDO') return null;
-  if (revisao && revisao !== 'VALIDADO' && revisao !== 'VALIDADO_ALIAS') return null;
-  return semana;
+  return contaComoEntrega(reg as never) ? semanaExplicita(reg as never) : null;
 }
 
 export function obterSituacaoRssEstudante(
@@ -920,7 +936,8 @@ export function obterSituacaoRssEstudante(
   regraTurma?: RegraRss,
   situacaoTurma?: SituacaoAtualTurma,
   calendarioRssTurma?: CalendarioRss[],
-  grupoId?: string
+  grupoId?: string,
+  opcoes: { fonteDisponivel?: boolean; hojeIso?: string; observacoes?: Map<number, string[]> } = {}
 ): SituacaoRssEstudante {
   // Clínica Ampliada: a unidade de entrega é o grupo inteiro, não o autor
   // responsável pelo preenchimento. Nunca atribuir o RSS somente à matrícula.
@@ -929,24 +946,7 @@ export function obterSituacaoRssEstudante(
       ? (r as any).grupo_id === grupoId && (!(r as any).turma_id || (r as any).turma_id === turmaId)
       : r.matricula_id === matriculaId && !(r as any).grupo_id
   );
-  const semanasValidadas = new Set(
-    regsEstudante.map(obterSemanaRssValidada).filter((n): n is number => n !== null)
-  );
-  const entreguesNaTabela = semanasValidadas.size;
-
-  // Contagem materializada pode incluir semanas antigas cujo detalhamento
-  // foi importado sem chave de semana; usar a maior contagem comprovada, sem
-  // transformar registros em revisão nem duplicidades em semanas adicionais.
-  let realizados = entreguesNaTabela;
-  if (
-    statusRssUnidade?.rss_recebidos_validos !== undefined &&
-    statusRssUnidade.rss_recebidos_validos !== null &&
-    Number(statusRssUnidade.rss_recebidos_validos) > 0
-  ) {
-    const daUnidade = Number(statusRssUnidade.rss_recebidos_validos);
-    realizados = Math.max(entreguesNaTabela, daUnidade);
-  }
-
+  // (a contagem de entregas é feita adiante por resumirEntregasRss, com o total consolidado como piso)
   // 3. Registros esperados até hoje
   let esperadosHoje = 0;
   if (
@@ -977,6 +977,20 @@ export function obterSituacaoRssEstudante(
     totalPrevisto = Number(situacaoTurma.rss_total_previsto);
   }
 
+  // Entregas: dois status por semana, semana identificada automaticamente, sem etapa de validação
+  const entregas = resumirEntregasRss({
+    registros: regsEstudante as never[],
+    cronograma: (calendarioRssTurma ?? []) as never[],
+    totalPrevisto,
+    esperadosAteHoje: esperadosHoje,
+    realizadosConsolidado: statusRssUnidade?.rss_recebidos_validos !== undefined && statusRssUnidade.rss_recebidos_validos !== null
+      ? Number(statusRssUnidade.rss_recebidos_validos) : null,
+    hojeIso: opcoes.hojeIso ?? getHojeDataIso(),
+    fonteDisponivel: opcoes.fonteDisponivel,
+    observacoes: opcoes.observacoes,
+  });
+  const realizados = entregas.totalRealizado;
+
   // 5. Saldo e Status
   const saldo = realizados - esperadosHoje;
   const statusSemanal = saldo < 0 ? 'ATRASADO' : saldo === 0 ? 'EM_DIA' : 'ADIANTADO';
@@ -995,6 +1009,7 @@ export function obterSituacaoRssEstudante(
     estaAtrasado,
     registrosEstudante: regsEstudante,
     textoExibicao,
+    entregas,
   };
 }
 
@@ -1007,24 +1022,17 @@ export function obterLacunasRssDaAula(
   calendario: CalendarioRss[],
   hojeIso: string = getHojeDataIso()
 ): { faltantes: number[]; emRevisao: number[] } {
+  // `emRevisao` permanece no formato por compatibilidade, mas não existe etapa de validação: é sempre vazio.
   if (!situacao) return { faltantes: [], emRevisao: [] };
-  const semanasEncerradas = [...new Set(calendario
-    .filter(c => c.turma_id === situacao.turmaId && c.semana_fim && c.semana_fim < hojeIso)
-    .map(c => Number(c.sequencia || c.semana || 0))
-    .filter(n => Number.isInteger(n) && n > 0))].sort((a,b) => a-b);
-  const validas = new Set(situacao.registrosEstudante.map(obterSemanaRssValidada)
-    .filter((n): n is number => n !== null));
-  const emRevisao = new Set(situacao.registrosEstudante.filter(r =>
-      String((r as any).status_revisao || '').toUpperCase() === 'PENDENTE_REVISAO')
-    .map(r => Number((r as any).semana_rss ?? r.semana))
-    .filter(n => Number.isInteger(n) && n > 0 && !validas.has(n)));
-  return {
-    faltantes: semanasEncerradas.filter(n => !validas.has(n) && !emRevisao.has(n)),
-    emRevisao: semanasEncerradas.filter(n => emRevisao.has(n)),
-  };
+  const encerradas = semanasEncerradas(calendario.filter(c => c.turma_id === situacao.turmaId) as never[], hojeIso);
+  // Entrega sem semana identificada pode cobrir qualquer semana aberta: sem certeza, nenhuma semana é acusada.
+  const e = situacao.entregas;
+  if (e && (e.semSemanaIdentificada.length > 0 || e.consolidadoSemDetalhe > 0 || e.disponibilidade !== 'OK')) return { faltantes: [], emRevisao: [] };
+  const entregues = new Set(e ? e.semanasEntregues : situacao.registrosEstudante.map(obterSemanaRssValidada).filter((n): n is number => n !== null));
+  return { faltantes: encerradas.filter(n => !entregues.has(n)), emRevisao: [] };
 }
 
-export type SituacaoRssOperacional = 'EM_DIA' | 'RECENTE_PENDENTE' | 'HISTORICO_INCOMPLETO' | 'EM_REVISAO' | 'AGUARDANDO_CALENDARIO';
+export type SituacaoRssOperacional = 'EM_DIA' | 'RECENTE_PENDENTE' | 'HISTORICO_INCOMPLETO' | 'AGUARDANDO_CALENDARIO';
 /**
  * Situação recente (para atenção) separada do histórico acumulado.
  * Nunca reabre notificação por um RSS antigo; mantém a lacuna visível
@@ -1038,20 +1046,19 @@ export function classificarRssOperacional(
   hojeIso: string = getHojeDataIso()
 ): { categoria: SituacaoRssOperacional; faltamHistoricas: number; ultimaSemanaFechada: number | null } {
   if (!situacao) return { categoria: 'AGUARDANDO_CALENDARIO', faltamHistoricas: 0, ultimaSemanaFechada: null };
-  const encerradas = calendario
-    .filter(c => c.turma_id === situacao.turmaId && c.semana_fim && c.semana_fim < hojeIso)
-    .map(c => Number(c.sequencia || c.semana || 0)).filter(n => n > 0);
+  const encerradas = semanasEncerradas(calendario.filter(c => c.turma_id === situacao.turmaId) as never[], hojeIso);
   if (encerradas.length === 0) return { categoria: 'EM_DIA', faltamHistoricas: 0, ultimaSemanaFechada: null };
-  const recebidas = new Set(situacao.registrosEstudante.map(obterSemanaRssValidada).filter((n): n is number => n !== null));
-  const faltamHistoricas = encerradas.filter(n => !recebidas.has(n)).length;
   const ultima = Math.max(...encerradas);
-  const ultimaEmRevisao = situacao.registrosEstudante.some(r =>
-    Number((r as any).semana_rss ?? r.semana) === ultima &&
-    String((r as any).status_revisao || '') === 'PENDENTE_REVISAO'
-  );
+  const e = situacao.entregas;
+  // Dados indisponíveis ou entrega sem semana identificada: não se acusa semana; só a contagem (sem alarme) é mostrada.
+  if (e && (e.disponibilidade !== 'OK' || e.semSemanaIdentificada.length > 0 || e.consolidadoSemDetalhe > 0)) {
+    const n = e.disponibilidade === 'OK' ? e.pendentesEmNumero : 0;
+    return { categoria: n === 0 ? 'EM_DIA' : 'HISTORICO_INCOMPLETO', faltamHistoricas: n, ultimaSemanaFechada: ultima };
+  }
+  const recebidas = new Set(e ? e.semanasEntregues : situacao.registrosEstudante.map(obterSemanaRssValidada).filter((n): n is number => n !== null));
+  const faltamHistoricas = encerradas.filter(n => !recebidas.has(n)).length;
   if (faltamHistoricas === 0) return { categoria: 'EM_DIA', faltamHistoricas: 0, ultimaSemanaFechada: ultima };
   if (recebidas.has(ultima)) return { categoria: 'HISTORICO_INCOMPLETO', faltamHistoricas, ultimaSemanaFechada: ultima };
-  if (ultimaEmRevisao) return { categoria: 'EM_REVISAO', faltamHistoricas, ultimaSemanaFechada: ultima };
   return { categoria: 'RECENTE_PENDENTE', faltamHistoricas, ultimaSemanaFechada: ultima };
 }
 
@@ -1151,7 +1158,7 @@ export function gerarPendenciasCanonicas(
       id: grupoId ? `pend-rss-grupo-${grupoId}` : `pend-rss-${m.matricula_id}`,
       tipo: 'RSS_ATRASADO',
       titulo: `RSS em Atraso: ${nomeUnidade}`,
-      descricao: `${grupoId ? 'Pendência coletiva do grupo. ' : ''}Semana ${situacaoOperacional.ultimaSemanaFechada} não confirmada. Registros validados: ${sitRss.registrosRealizados} de ${sitRss.registrosEsperadosAteHoje} esperados até hoje (${sitRss.totalPrevistoNoPeriodo} previstos)`,
+      descricao: `${grupoId ? 'Pendência coletiva do grupo. ' : ''}Semana ${situacaoOperacional.ultimaSemanaFechada} não entregue. Entregas: ${sitRss.registrosRealizados} de ${sitRss.registrosEsperadosAteHoje} esperados até hoje (${sitRss.totalPrevistoNoPeriodo} previstos)`,
       turma_id: m.turma_id,
       turma_nome: turma?.nome,
       matricula_id: m.matricula_id,

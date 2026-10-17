@@ -6,3 +6,6 @@ coverage/
 *.log
 .env*
 !.env.example
+# Local Cloudflare runtime state and credentials must never be committed.
+.wrangler/
+.dev.vars*

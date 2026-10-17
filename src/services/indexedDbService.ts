@@ -147,6 +147,45 @@ export async function invalidarTabelaNoIndexedDb(tabela: string, motivo: string)
   }
 }
 
+const CHAVE_UID_CACHE = 'cs_cache_uid';
+/** Apaga a cópia local das tabelas e os metadados; NUNCA a fila de alterações pendentes. */
+export async function limparTabelasDoCache(): Promise<void> {
+  const db = await openDatabase();
+  await new Promise<void>((resolve, reject) => {
+    const tx = db.transaction([STORE_TABELAS, STORE_META], 'readwrite');
+    tx.objectStore(STORE_TABELAS).clear(); tx.objectStore(STORE_META).clear();
+    tx.oncomplete = () => { db.close(); resolve(); };
+    tx.onerror = () => { db.close(); reject(tx.error); };
+  });
+}
+/**
+ * O cache pertence ao NAVEGADOR, não à conta. Na troca de usuário a cópia local das tabelas (que pode conter
+ * dados que a nova conta não pode ver) é apagada. Se houver alterações pendentes da conta anterior, nada é apagado
+ * e a troca é sinalizada: elas não devem ser enviadas com a identidade de outra pessoa.
+ */
+export async function garantirCacheDoUsuario(uid: string): Promise<'MESMO' | 'LIMPO' | 'PENDENTES_DE_OUTRA_CONTA'> {
+  if (!uid?.trim()) throw new Error('Conta inválida: o cache não pode ser atribuído.');
+  // Falha fechada: sem armazenamento confiável da identidade, não reusar dados de outra conta.
+  if (typeof localStorage === 'undefined') throw new Error('Não foi possível verificar a conta proprietária do cache.');
+  let anterior: string | null;
+  try { anterior = localStorage.getItem(CHAVE_UID_CACHE); }
+  catch { throw new Error('Não foi possível verificar a conta proprietária do cache.'); }
+  if (anterior === uid) return 'MESMO';
+
+  // Não assumir o cache legado sem proprietário conhecido: pode ter registros de outra usuária.
+  // A fila nunca é excluída automaticamente, mesmo se o proprietário estiver ausente.
+  if ((await carregarFilaSincronizacao()).length > 0) return 'PENDENTES_DE_OUTRA_CONTA';
+
+  await limparTabelasDoCache();
+  try {
+    localStorage.setItem(CHAVE_UID_CACHE, uid);
+    if (localStorage.getItem(CHAVE_UID_CACHE) !== uid) throw new Error('Identidade do cache não persistida.');
+  } catch {
+    throw new Error('Não foi possível registrar com segurança a conta proprietária do cache.');
+  }
+  return 'LIMPO';
+}
+
 /**
  * Salva múltiplas tabelas normalizadas no cache persistente do IndexedDB
  */

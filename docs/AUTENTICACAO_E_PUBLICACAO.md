@@ -39,3 +39,37 @@ O código auditado utiliza `signInWithPopup` do Firebase, `browserLocalPersisten
 - `wrangler.jsonc`: configuração de build/assets Cloudflare.
 
 **Não documentado/confirmado até esta revisão:** domínio HTTPS da publicação utilizada, ambiente Firebase efetivamente autorizado e configuração operacional final de deploy.
+
+
+## Evolução de outubro/2026 — login único e homologação para produção
+
+### Modelo de acesso adotado (transição segura)
+
+- **Login do aplicativo:** Firebase Authentication com a conta Google autorizada; sessão persistente no próprio dispositivo, sujeita a encerramento explícito e validação no Worker.
+- **Leitura da planilha:** `/api/leitura` usa a conta de serviço no Cloudflare; no modo `viaContaServico`, a professora passa a ler por essa rota como as monitoras.
+- **Escritas críticas:** `/api/critical-write` continua exigindo token de identidade Firebase verificado, perfil autorizado, tabela/turma válida, comparação de versão, idempotência e log. Com `GOOGLE_SERVICE_ACCOUNT_JSON`, o Worker também autentica a **professora** na API do Sheets, sem exigir OAuth de planilha no dispositivo.
+- **Estrutura de avaliação:** com conta de serviço, a rota de estrutura pode executar sem bearer OAuth do Sheets, preservando confirmação e checksum de backup.
+- **Modo legado:** sem conta de serviço, a administradora ainda depende de token OAuth do Sheets; a monitora falha fechada.
+- **Não desligar ainda o escopo Google Sheets no frontend**: há gravações administrativas que ainda usam o caminho direto para `registros_semanais`, `criterios_avaliacao`, `configuracoes` e `marcos_academicos`. Com o token expirado elas permanecem pendentes no dispositivo, e não podem ser anunciadas como gravadas remotamente. Migrar uma a uma com testes antes de remover o escopo.
+
+### Estado real da produção verificado em 16/10/2026
+
+- Cloudflare `v2-central-de-supervis-o`: deployment publicado mais recente em **13/10/2026**, anterior à versão do PR.
+- Bindings encontrados: `ASSETS`, `WRITE_COORDINATOR`; **não foram confirmados** `ADMIN_EMAILS`, `ACESSOS_JSON` nem `GOOGLE_SERVICE_ACCOUNT_JSON`.
+- Cron Triggers: **nenhum ativo**. Não ativar a sincronização automática antes de testar conta de serviço, planilha, logs e backups.
+- A base usada pelo código ainda se chama **Central de Supervisão - DESENVOLVIMENTO**. A base de produção e o compartilhamento correto com a conta de serviço precisam ser definidos e verificados antes do lançamento.
+- Builds e testes do PR validam o código, mas não substituem testes de autenticação, permissões, gravação, conflito e persistência no ambiente Google real.
+
+### Portão de liberação (todos os requisitos obrigatórios)
+
+- [ ] Confirmar planilha-alvo de produção e backup íntegro, sem alterar a base do semestre durante o ensaio.
+- [ ] Configurar `ADMIN_EMAILS` e `ACESSOS_JSON` no Worker, sem credenciais no repositório.
+- [ ] Criar conta de serviço no Google Cloud, conceder-lhe apenas as permissões necessárias na planilha-alvo e configurar `GOOGLE_SERVICE_ACCOUNT_JSON` como segredo do Worker. Nunca enviar JSON da chave em chats ou Git.
+- [ ] Validar domínio HTTPS autorizado no Firebase, Safari iPhone, Android e desktop, sessão persistida e troca de conta.
+- [ ] Executar login com professora e monitora; negar acesso fora da turma, notas e registros confidenciais à monitora.
+- [ ] Em uma **cópia** da planilha, gravar/reler chamada, documentos, RSS e notas autorizadas; conferir versões, log, conflitos entre dispositivos, fila offline e restauração de backup.
+- [ ] Migrar as quatro tabelas ainda em acesso direto ao Sheets, com testes e sem destruir fórmulas ou cabeçalhos; só então retirar o OAuth da planilha do fluxo habitual.
+- [ ] Conferir dependências do Apps Script atualmente implantado antes de mesclar o PR, pois o diretório `gas/` foi removido.
+- [ ] Validar no Worker publicado após deployment, conferir rollback e somente então liberar escrita na base definitiva.
+
+**Status: PR em homologação, NÃO pronto para publicação irrestrita.** Essas dependências não podem ser supridas por um build verde; não assumir que o app está operacional com dados reais.

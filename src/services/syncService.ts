@@ -1,5 +1,7 @@
 import { TABELAS_CRITICAS } from '../server/coordenacaoCritica';
-import { gravarCriticoCoordenado } from './escritaCoordenadaService';
+import { gravarCriticoCoordenado, obterPerfilServidor } from './escritaCoordenadaService';
+import { carregarViaServidor } from './leituraServidor';
+import { exigirPerfilLeitura } from './leituraPermissoes';
 /**
  * CENTRAL DE SUPERVISÃO - CAMADA DE SINCRONIZAÇÃO E CONTROLE DE FILA (syncService)
  *
@@ -34,13 +36,11 @@ import {
 } from './indexedDbService';
 import {
   carregarDadosDaPlanilhaOficial,
-  gravarRegistroNaPlanilhaOficial,
-  removerRegistroDaPlanilhaOficial,
   getAccessToken,
   TABELAS_NORMALIZADAS,
 } from './googleSheetsService';
 import { validarEscritaTabela } from './safeWriteService';
-import { DadosIniciaisGas } from './gasService';
+import { DadosIniciais } from './dadosIniciais';
 
 export interface SyncStatusState {
   status: 'SINCRONIZADO' | 'LOCAL' | 'SINCRONIZANDO' | 'ERRO' | 'PARCIAL';
@@ -92,7 +92,7 @@ function notifySyncStatusChange(updates: Partial<SyncStatusState>) {
  * 1. Inicializa o estado com o cache persistente do IndexedDB
  */
 export async function inicializarCacheLocal(): Promise<{
-  dados: DadosIniciaisGas | null;
+  dados: DadosIniciais | null;
   meta: SyncMeta | null;
   fila: SyncQueueItem[];
 }> {
@@ -132,7 +132,7 @@ export async function inicializarCacheLocal(): Promise<{
       return { dados: null, meta, fila };
     }
 
-    const dadosTipados: DadosIniciaisGas = {
+    const dadosTipados: DadosIniciais = {
       periodos: tabelasMap['periodos'] || [],
       disciplinas: tabelasMap['disciplinas'] || [],
       turmas: tabelasMap['turmas'] || [],
@@ -164,7 +164,13 @@ export async function inicializarCacheLocal(): Promise<{
       registrosSupervisao: tabelasMap['registros_supervisao'] || [],
       encontrosTurma: tabelasMap['encontros_turma'] || [],
       preparacoesAula: tabelasMap['preparacoes_aula'] || [],
+      monitoramentoDocumentos: tabelasMap['monitoramento_documentos'] || [],
       avaliacoesCompletas: tabelasMap['avaliacoes_completas'] || [],
+      configAvaliacao: tabelasMap['config_avaliacao'] || [],
+      rubricasAvaliacao: tabelasMap['rubricas_avaliacao'] || [],
+      rascunhosAvaliacao: tabelasMap['avaliacao_rascunhos'] || [],
+      evidenciasAvaliacao: tabelasMap['evidencias_avaliacao'] || [],
+      rssAjustes: tabelasMap['rss_ajustes'] || [],
       sincronizacao: tabelasMap['sincronizacao'] || [],
       dicionarioDados: tabelasMap['dicionario_dados'] || [],
       contratoApp: tabelasMap['contrato_app'] || [],
@@ -189,21 +195,23 @@ function tableDataOrEmpty(map: Record<string, any[]>, key: string): any[] {
  */
 async function sincronizarDaBaseOficialInterna(): Promise<{
   sucesso: boolean;
-  dados?: DadosIniciaisGas;
+  dados?: DadosIniciais;
   erro?: string;
 }> {
   notifySyncStatusChange({ status: 'SINCRONIZANDO' });
 
   try {
+    // O servidor valida o Firebase e consulta a planilha com credencial própria.
+    // O OAuth individual do Sheets só é necessário no modo legado da administradora.
+    const perfilServidor = exigirPerfilLeitura(await obterPerfilServidor());
     const token = await getAccessToken();
-    if (!token) {
+    if (!token && !perfilServidor.viaContaServico && perfilServidor.papel !== 'MONITORA') {
       notifySyncStatusChange({
         status: currentSyncState.ultimaSincronizacao ? 'LOCAL' : 'ERRO',
-        erros: ['Autenticação necessária para sincronizar com Google Sheets.'],
+        erros: ['Reconecte a conta Google para sincronizar este ambiente legado.'],
       });
-      return { sucesso: false, erro: 'Não autenticado no Google.' };
+      return { sucesso: false, erro: 'Autorização do Google Sheets não está disponível.' };
     }
-
     // Alterações locais precisam ser confirmadas antes de aceitar o snapshot remoto.
     // Caso permaneçam pendentes, a leitura não pode sobrescrever essas tabelas.
     await processarFilaInterna();
@@ -215,7 +223,11 @@ async function sincronizarDaBaseOficialInterna(): Promise<{
     const cacheAnterior = (await carregarTodasTabelasDoIndexedDb()) || {};
 
     // Executa a busca resiliente na planilha oficial
-    const resultado = await carregarDadosDaPlanilhaOficial();
+    // Monitoras não leem a planilha diretamente: o servidor entrega só o que foi delegado a elas.
+    const resultado = perfilServidor.papel === 'MONITORA' || perfilServidor.viaContaServico
+      ? await carregarViaServidor(perfilServidor)
+      : await carregarDadosDaPlanilhaOficial();
+    const restritas: string[] = (resultado as any)._restritas || [];
     const rawMap = (resultado as any)._rawMap || {};
     const missingSheets = (resultado as any)._missingSheets || [];
 
@@ -236,6 +248,12 @@ async function sincronizarDaBaseOficialInterna(): Promise<{
     const mapParaSalvar: Record<string, any[]> = { ...cacheAnterior };
 
     TABELAS_NORMALIZADAS.forEach(tab => {
+      if (restritas.includes(tab)) {
+        // Não delegada a este perfil: nunca fica no aparelho (apaga cópia deixada por outra conta neste navegador).
+        mapParaSalvar[tab] = [];
+        tabelasStatus[tab] = { ok: true, count: 0 };
+        return;
+      }
       if (tabelasComEscritaPendente.has(tab)) {
         tabelasStatus[tab] = {
           ok: false,
@@ -301,7 +319,7 @@ async function sincronizarDaBaseOficialInterna(): Promise<{
 
 
     // Monta o retorno garantindo que dados anteriores preservados constem na resposta
-    const dadosConsolidados: DadosIniciaisGas = {
+    const dadosConsolidados: DadosIniciais = {
       periodos: mapParaSalvar['periodos'] || [],
       disciplinas: mapParaSalvar['disciplinas'] || [],
       turmas: mapParaSalvar['turmas'] || [],
@@ -333,7 +351,13 @@ async function sincronizarDaBaseOficialInterna(): Promise<{
       registrosSupervisao: mapParaSalvar['registros_supervisao'] || [],
       encontrosTurma: mapParaSalvar['encontros_turma'] || [],
       preparacoesAula: mapParaSalvar['preparacoes_aula'] || [],
+      monitoramentoDocumentos: mapParaSalvar['monitoramento_documentos'] || [],
       avaliacoesCompletas: mapParaSalvar['avaliacoes_completas'] || [],
+      configAvaliacao: mapParaSalvar['config_avaliacao'] || [],
+      rubricasAvaliacao: mapParaSalvar['rubricas_avaliacao'] || [],
+      rascunhosAvaliacao: mapParaSalvar['avaliacao_rascunhos'] || [],
+      evidenciasAvaliacao: mapParaSalvar['evidencias_avaliacao'] || [],
+      rssAjustes: mapParaSalvar['rss_ajustes'] || [],
       sincronizacao: mapParaSalvar['sincronizacao'] || [],
       dicionarioDados: mapParaSalvar['dicionario_dados'] || [],
       contratoApp: mapParaSalvar['contrato_app'] || [],
@@ -412,7 +436,11 @@ async function processarFilaInterna(): Promise<{
   }
 
   const token = await getAccessToken();
-  if (!token) {
+  // Sem OAuth do Sheets, o Worker pode processar gravações coordenadas usando
+  // a identidade Firebase. Nunca usar a conta de serviço para acesso direto no navegador.
+  const perfilAtivo = token ? null : await obterPerfilServidor().catch(() => null);
+  const escritaSoPeloServidor = !token && perfilAtivo?.viaContaServico === true;
+  if (!token && !escritaSoPeloServidor) {
     const conflitosNaFila = fila.filter(i => i.status === 'CONFLITO').length;
     notifySyncStatusChange({
       status: conflitosNaFila > 0 ? 'PARCIAL' : 'LOCAL',
@@ -429,13 +457,12 @@ async function processarFilaInterna(): Promise<{
     try {
       await atualizarItemFila(item.id, { status: 'SINCRONIZANDO', tentativas: item.tentativas + 1 });
 
-      if (TABELAS_CRITICAS.has(item.tabela)) {
-        await gravarCriticoCoordenado(item);
-      } else if (item.tipo === 'DELETE') {
-        await removerRegistroDaPlanilhaOficial(item.tabela, item.payload);
-      } else {
-        await gravarRegistroNaPlanilhaOficial(item.tabela, item.payload);
+      // Todas as tabelas editáveis agora são protegidas pelo coordenador.
+      // Nunca mais gravar diretamente do navegador no Sheets, mesmo com OAuth presente.
+      if (!TABELAS_CRITICAS.has(item.tabela)) {
+        throw new Error('ESCRITA_NAO_COORDENADA: tabela não autorizada para envio remoto; revisão necessária.');
       }
+      await gravarCriticoCoordenado(item);
 
       // Confirmação real recebida: remove do syncQueue
       await removerItemFilaConfirmado(item.id);
