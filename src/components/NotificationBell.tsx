@@ -9,6 +9,12 @@ interface NotificationBellProps {
 }
 type Grupo = { key: string; titulo: string; tipo: string; turma: string; itens: NotificacaoDerivada[]; assinatura: string };
 const storageKey = (uid: string) => 'cs_notificacoes_lidas_v1:' + uid;
+/** Não armazenar nomes, descrições, matrículas ou identificadores brutos no navegador só para marcar leitura. */
+function assinaturaCurta(mensagens: string[]): string {
+  let hash = 2166136261;
+  for (const caractere of mensagens.sort().join('|')) hash = Math.imul(hash ^ caractere.charCodeAt(0), 16777619);
+  return (hash >>> 0).toString(36);
+}
 function carregarLidas(uid: string): Record<string, string> {
   try { return JSON.parse(localStorage.getItem(storageKey(uid)) || '{}'); } catch { return {}; }
 }
@@ -54,7 +60,7 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({ onNavigate }
       mapa.get(key)!.itens.push(n);
     }
     return [...mapa.values()].map(g => ({
-      ...g, assinatura: g.itens.map(n => n.id + ':' + n.mensagem).sort().join('|'),
+      ...g, assinatura: assinaturaCurta(g.itens.map(n => n.id + ':' + n.mensagem)),
     })).sort((a, b) => {
       const prioridade = (g: Grupo) => g.itens.some(n => n.categoria === 'REQUER_ACAO') ? 0 : 1;
       return prioridade(a) - prioridade(b) || a.turma.localeCompare(b.turma) || a.tipo.localeCompare(b.tipo);
