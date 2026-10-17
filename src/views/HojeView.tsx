@@ -32,7 +32,7 @@ export const HojeView: React.FC<HojeViewProps> = ({
     periodos, selectedPeriodoId, turmas, matriculas, entregas, documentos,
     orientacoes, avaliacoesCompletas, horariosTurma, encontrosTurma,
     marcosAcademicos, getPendenciasCanonicas, getChamadasPendentes,
-    sincronizarAgora, saveStatus, connectionStatus,
+    sincronizarAgora, connectionStatus,
   } = useSupervisao();
 
   const [agora, setAgora] = React.useState(() => new Date());
@@ -144,7 +144,7 @@ export const HojeView: React.FC<HojeViewProps> = ({
         {proximasAulas.length===0 ? <p className="rounded-lg bg-slate-50 p-4 text-sm text-slate-600">
           Nenhuma aula futura encontrada nos próximos 45 dias. Confira o calendário oficial e os horários cadastrados.
         </p> : <ol className="divide-y divide-slate-100">
-          {proximasAulas.map((aula,index)=>{
+          {proximasAulas.map((aula)=>{
             const hoje = aula.dataProxima===hojeIso;
             const data = formatoData(aula.dataProxima);
             return <li key={aula.turma.turma_id+'-'+aula.dataProxima+'-'+aula.horaInicio}
