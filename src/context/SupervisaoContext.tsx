@@ -4,6 +4,7 @@ import { chaveItemOperacional, prepararRegistroOperacional, combinarOperacionais
 import { resumirDocumentacaoOficial, documentosPendentesOficiais } from '../services/documentacaoAcademicaService';
 import { interpretarStatusEntrega } from '../services/normalizacaoAcademica';
 import { filtrarPendenciasResolvidas } from '../services/pendenciaResolutionService';
+import { chaveCobranca, lerCobranca, novoEventoCobranca, type EventoCobranca } from '../services/cobrancasDocumentais';
 import { selecionarRssDoEstudante } from '../services/rssVinculos';
 import { listarAlunosChamada } from '../services/aulaParticipants';
 import { useDurableLocalState } from '../hooks/useDurableLocalState';
@@ -294,6 +295,7 @@ interface SupervisaoContextType {
   getSituacaoRssEstudante: (matriculaId: string) => SituacaoRssEstudante | null;
   getPendenciasCanonicas: (periodoId?: string) => ItemPendenciaOperacional[];
   marcarPendenciaResolvida: (item: ItemPendenciaOperacional) => Promise<void>;
+  registrarCobrancaDocumento: (matriculaId: string, tipo: string, dados: Omit<EventoCobranca,'id'|'registrado_em'>) => Promise<void>;
   getTurmasDoPeriodo: (periodoId?: string, incluirArquivadas?: boolean) => Turma[];
   getAlunosDaTurma: (turmaId: string) => { matricula: Matricula; aluno: Aluno }[];
 
@@ -2723,6 +2725,25 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     periodos,
   ]);
 
+  // Histórico de cobranças/documentação: não altera a entrega, a frequência nem a avaliação.
+  // Reaproveita a aba normalizada configuracoes (sem migrations destrutivas).
+  const registrarCobrancaDocumento = async (matriculaId: string, tipo: string, dados: Omit<EventoCobranca,'id'|'registrado_em'>): Promise<void> => {
+    const matricula = matriculas.find(m => m.matricula_id === matriculaId && m.periodo_id === selectedPeriodoId && m.status === 'MATRICULADO');
+    if (!matricula) throw new Error('Matrícula não encontrada no semestre atual.');
+    const chave = chaveCobranca(matriculaId, tipo);
+    const anterior = configuracoes.find(c => c.chave === chave && c.periodo_id === selectedPeriodoId);
+    const eventos = lerCobranca(configuracoes, selectedPeriodoId, matriculaId, tipo).eventos;
+    const agora = new Date().toISOString();
+    const registro: Configuracao = {
+      configuracao_id: anterior?.configuracao_id || generateUuid(),
+      chave, periodo_id: selectedPeriodoId, turma_id: matricula.turma_id,
+      valor: JSON.stringify({versao:1, eventos:[...eventos, novoEventoCobranca(dados,generateUuid(),agora)]}),
+    };
+    const lista = [...configuracoes.filter(c => !(c.chave === chave && c.periodo_id === selectedPeriodoId)),registro];
+    await persistirMudancaWeb('configuracoes', anterior ? 'UPDATE' : 'INSERT', registro, lista);
+    setConfiguracoes(lista);
+  };
+
   // Resoluções manuais auditáveis e compartilhadas na tabela configuracoes.
   // A marcação é uma confirmação explícita da docente, não uma alteração da presença/RSS.
   const marcarPendenciaResolvida = async (item: ItemPendenciaOperacional): Promise<void> => {
@@ -3004,6 +3025,7 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         getPendenciasOperacionais,
         getPendenciasCanonicas,
     marcarPendenciaResolvida,
+    registrarCobrancaDocumento,
         exportDatabaseAsJson,
         conferirBackup,
         restaurarRegistroDoBackup,
