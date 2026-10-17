@@ -27,7 +27,7 @@ import { Frequencia, TurmaOrigem } from '../types';
 
 interface FrequenciaViewProps {
   onOpenAluno: (matriculaId: string, initialTab?: string) => void;
-  onOpenSupervisao?: (turmaId: string) => void;
+  onOpenSupervisao?: (turmaId: string, dataAula?: string) => void;
   initialSubTab?: 'grade' | 'pendencias' | 'porAluno';
 }
 
@@ -462,7 +462,9 @@ export const FrequenciaView: React.FC<FrequenciaViewProps> = ({
                               className="py-2 px-1 text-center border-l border-slate-100"
                             >
                               {!freq ? (
-                                <span className="text-slate-300 font-mono text-[10px]">—</span>
+                                <button type="button" title={'Registrar frequência de ' + data} aria-label={'Registrar frequência de ' + (al?.nome || 'estudante') + ' em ' + data}
+                                  onClick={() => setModalEditFreq({ matriculaId: item.matricula_id, alunoNome: al?.nome || 'Estudante', dataAula: data, statusAtual: '' as Frequencia['status'], justificativaAtual: '', origemId: item.origem_id })}
+                                  className="text-slate-600 underline text-[10px] px-2 py-2 hover:text-teal-800">Registrar</button>
                               ) : freq.status === 'PRESENTE' ? (
                                 <button
                                   onClick={() =>
@@ -603,7 +605,7 @@ export const FrequenciaView: React.FC<FrequenciaViewProps> = ({
 
                     {onOpenSupervisao && (
                       <button
-                        onClick={() => onOpenSupervisao(item.turma.turma_id)}
+                        onClick={() => onOpenSupervisao(item.turma.turma_id, item.dataAula)}
                         className="px-3.5 py-1.5 bg-red-700 hover:bg-red-800 text-white rounded-lg font-bold text-xs cursor-pointer self-start sm:self-auto"
                       >
                         Finalizar Chamada Agora
@@ -1046,6 +1048,7 @@ export const FrequenciaView: React.FC<FrequenciaViewProps> = ({
                   }
                   className="w-full border border-slate-200 rounded-lg p-2.5 bg-slate-50 text-xs font-semibold text-slate-800"
                 >
+                  <option value="" disabled>Selecione a situação</option>
                   <option value="PRESENTE">Presente</option>
                   <option value="FALTA_SEM_JUSTIFICATIVA">Falta sem justificativa</option>
                   <option value="FALTA_JUSTIFICADA">Falta justificada</option>
@@ -1079,7 +1082,9 @@ export const FrequenciaView: React.FC<FrequenciaViewProps> = ({
                 Cancelar
               </button>
               <button
+                disabled={!modalEditFreq.statusAtual}
                 onClick={async () => {
+                  if (!modalEditFreq.statusAtual) return;
                   if (modalEditFreq.frequenciaId) {
                     await updateFrequenciaStatus(
                       modalEditFreq.frequenciaId,

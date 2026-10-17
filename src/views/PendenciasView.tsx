@@ -47,13 +47,25 @@ export const PendenciasView: React.FC<PendenciasViewProps> = ({
     if (initialFilterType === 'INCONSISTENCIA') return 'INCONSISTENCIA';
     return 'OBJETIVA';
   });
-  const [turmaFiltro, setTurmaFiltro] = useState<string>('TODAS');
+  const filtroEhTurma = (v?: string) => !!v && !['ATENCAO','orientacoes','faltas','CAIXA_ENTRADA','caixa','INCONSISTENCIA','OBJETIVA'].includes(v);
+  const [turmaFiltro, setTurmaFiltro] = useState<string>(() => filtroEhTurma(initialFilterType) ? initialFilterType! : 'TODAS');
+  React.useEffect(() => { if (filtroEhTurma(initialFilterType)) setTurmaFiltro(initialFilterType!); }, [initialFilterType]);
   const [resolvendoId, setResolvendoId] = useState<string | null>(null);
+  const [mostrarTodas, setMostrarTodas] = useState(true);
 
   const todasPendenciasCanonicas = getPendenciasCanonicas().filter(p => {
     if (turmaFiltro === 'TODAS') return true;
     return p.turma_id === turmaFiltro;
   });
+
+  // Resumo por turma/tópico. Somente itens canônicos; ausência de RSS não é ausência comprovada.
+  const resumoPorTurma = new Map<string, {nome:string; contagem:Map<string,number>; total:number}>();
+  for (const p of todasPendenciasCanonicas) {
+    const k = p.turma_id || 'GERAL';
+    if (!resumoPorTurma.has(k)) resumoPorTurma.set(k, {nome:p.turma_nome || 'Geral',contagem:new Map(),total:0});
+    const g = resumoPorTurma.get(k)!; g.total++;
+    g.contagem.set(p.tipo,(g.contagem.get(p.tipo)||0)+1);
+  }
 
   // A. PENDÊNCIAS OBJETIVAS (Algo faltando/atrasado de fato)
   const pendenciasObjetivas = todasPendenciasCanonicas
@@ -158,15 +170,30 @@ export const PendenciasView: React.FC<PendenciasViewProps> = ({
         </div>
       </div>
 
+      <section className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 space-y-3" aria-label="Resumo das pendências por turma">
+        <h2 className="text-base font-bold text-slate-900">Pendências por turma e tópico</h2>
+        <p className="text-xs text-slate-600">Toque na turma para conferir itens e responsáveis. Não pressupõe ausência de RSS quando o documento não foi identificado.</p>
+        {resumoPorTurma.size === 0 ? <p className="text-sm text-slate-600">Nenhuma pendência canônica nesta seleção.</p> : <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {[...resumoPorTurma.entries()].map(([id,g]) => <button type="button" key={id} onClick={() => { setTurmaFiltro(id === 'GERAL' ? 'TODAS' : id); setMostrarTodas(true); }}
+            className="text-left bg-slate-50 border border-slate-200 hover:border-teal-500 rounded-xl p-3">
+            <div className="flex justify-between gap-2 items-center"><strong className="text-sm text-slate-900">{g.nome}</strong><strong className="text-sm text-amber-800">{g.total}</strong></div>
+            <div className="mt-2 flex flex-wrap gap-1">{[...g.contagem.entries()].map(([tipo,q]) => <span key={tipo} className="rounded bg-white border border-slate-200 px-2 py-1 text-xs text-slate-700">{tipo.replaceAll('_',' ').toLowerCase()}: {q}</span>)}</div>
+            <span className="mt-2 block text-xs font-semibold text-teal-800">Ver detalhes da turma →</span>
+          </button>)}
+        </div>}
+      </section>
       <section className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 space-y-3" aria-label="Todas as pendências abertas">
-        <h2 className="text-base font-bold text-slate-900">Todas as pendências abertas ({todasPendenciasCanonicas.length})</h2>
+        <div className="flex justify-between flex-wrap items-center gap-2"><h2 className="text-base font-bold text-slate-900">Todas as pendências abertas ({todasPendenciasCanonicas.length})</h2><button type="button" onClick={() => setMostrarTodas(v => !v)} className="text-xs underline text-teal-800">{mostrarTodas?'Recolher detalhes':'Expandir detalhes'}</button></div>
         <p className="text-xs text-slate-600">A lista reúne chamadas, RSS, documentação, prazos e orientações. Marcar como resolvida registra sua confirmação, mas não substitui a atualização do registro acadêmico correspondente.</p>
-        {todasPendenciasCanonicas.length === 0 ? <p className="text-sm text-slate-500">Nenhuma pendência aberta nesta seleção.</p> :
+        {todasPendenciasCanonicas.length === 0 ? <p className="text-sm text-slate-500">Nenhuma pendência aberta nesta seleção.</p> : !mostrarTodas ? <p className="text-sm text-slate-600">Expanda para ver itens individualmente.</p> :
           <div className="space-y-2">
             {todasPendenciasCanonicas.map(item => <div key={item.id} className="border border-slate-200 rounded-xl p-3 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
               <div className="min-w-0">
                 <p className="text-sm font-semibold text-slate-900">{item.titulo}</p>
                 <p className="text-xs text-slate-600 mt-1">{item.turma_nome || 'Geral'} · {item.descricao}</p>
+                <div className="flex flex-wrap gap-2 mt-2 text-[11px] text-slate-700"><span className="rounded bg-slate-100 px-2 py-1">Tipo: {item.tipo.replaceAll('_',' ')}</span>
+                  {item.aluno_nome && <span className="rounded bg-slate-100 px-2 py-1">Estudante: {item.aluno_nome}</span>}
+                  {item.matricula_id && <span className="rounded bg-slate-100 px-2 py-1">Ficha individual disponível</span>}</div>
               </div>
               <div className="flex gap-2 shrink-0">
                 {item.matricula_id && <button type="button" onClick={() => onOpenAluno(item.matricula_id!)} className="px-3 py-2 text-xs border border-slate-300 rounded-lg">Abrir ficha</button>}

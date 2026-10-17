@@ -28,7 +28,7 @@ import { ConfiguracoesView } from './views/ConfiguracoesView';
 type AppView =
   | { type: 'tab'; tab: NavTab; filterParam?: string }
   | { type: 'turma-detalhe'; turmaId: string }
-  | { type: 'modo-supervisao'; turmaId: string }
+  | { type: 'modo-supervisao'; turmaId: string; dataAula?: string }
   | { type: 'aluno-ficha'; matriculaId: string; initialTab?: string; returnTo?: 'supervisao' | 'turma' | 'alunos' | 'dashboard' | 'pendencias'; returnTurmaId?: string };
 
 const MainContent: React.FC = () => {
@@ -309,7 +309,7 @@ const MainContent: React.FC = () => {
             {currentView.type === 'tab' && currentView.tab === 'frequencia' && (
               <FrequenciaView
                 onOpenAluno={(matId, tab) => handleOpenAlunoFicha(matId, tab || 'frequencia', 'alunos')}
-                onOpenSupervisao={turmaId => setCurrentView({ type: 'modo-supervisao', turmaId })}
+                onOpenSupervisao={(turmaId, dataAula) => setCurrentView({ type: 'modo-supervisao', turmaId, dataAula })}
                 initialSubTab={(currentView.filterParam as any) || 'grade'}
               />
             )}
@@ -342,6 +342,7 @@ const MainContent: React.FC = () => {
             {currentView.type === 'modo-supervisao' && (
               <ModoSupervisaoView
                 turmaId={currentView.turmaId}
+                dataAulaInicial={currentView.dataAula}
                 onPrepararAula={setPrepararTurmaId}
                 onEncerrar={() => setCurrentView({ type: 'turma-detalhe', turmaId: currentView.turmaId })}
                 onOpenFichaAluno={(matId, tab) =>

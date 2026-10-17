@@ -247,7 +247,7 @@ interface SupervisaoContextType {
   toggleArchiveTurma: (turmaId: string) => Promise<void>;
 
   // Ações de Alunos e Orientações
-  addOrientacao: (matriculaId: string, categoria: string, texto: string, status?: 'ABERTA' | 'CONCLUÍDA') => Promise<Orientacao>;
+  addOrientacao: (matriculaId: string, categoria: string, texto: string, status?: 'ABERTA' | 'CONCLUÍDA', dataAula?: string) => Promise<Orientacao>;
   toggleOrientacaoStatus: (orientacaoId: string) => Promise<void>;
   deleteOrientacao: (orientacaoId: string) => Promise<void>;
   
@@ -1229,7 +1229,8 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     matriculaId: string,
     categoria: string,
     texto: string,
-    status: 'ABERTA' | 'CONCLUÍDA' = 'ABERTA'
+    status: 'ABERTA' | 'CONCLUÍDA' = 'ABERTA',
+    dataAula?: string
   ): Promise<Orientacao> => {
     setSaveStatus('SALVANDO');
     setSaveErrorMessage(null);
@@ -1239,7 +1240,7 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       const newOri: Orientacao = {
         orientacao_id: generateUuid(),
         matricula_id: matriculaId,
-        data_hora: now,
+        data_hora: dataAula && /^\d{4}-\d{2}-\d{2}$/.test(dataAula) ? dataAula + 'T12:00:00' : now,
         categoria,
         texto,
         status,
@@ -2686,7 +2687,9 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       horariosTurma,
       frequencias,
       encontrosTurma,
-      matriculas
+      matriculas,
+      new Date(),
+      130 // semestre letivo completo, não apenas sete dias
     );
   }, [getTurmasDoPeriodo, selectedPeriodoId, horariosTurma, frequencias, encontrosTurma, matriculas]);
 

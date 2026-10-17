@@ -2,7 +2,7 @@ import { ResumoRssSemEnvio } from '../components/ResumoRssSemEnvio';
 import { ResumoDocumentosTurma } from '../components/ResumoDocumentosTurma';
 import { diagnosticarChamada } from '../services/aulaParticipants';
 import { temSupervisaoHorarioAlternativo, ROTULO_HORARIO_ALTERNATIVO } from '../services/condicoesMatricula';
-import { prepararEncerramentoChamada, naoRegistrados } from '../services/chamadaService';
+import { prepararEncerramentoChamada, naoRegistrados, naoConfirmadosRetrospectivos } from '../services/chamadaService';
 import { resolverResponsaveis } from '../services/aulaParticipants';
 import React, { useState, useMemo, useEffect } from 'react';
 import {
@@ -38,9 +38,11 @@ import {
 import { getHojeDataIso } from '../services/supervisaoOperacionalService';
 import { obterLeiturasAgendadas, obterLacunasRssDaAula } from '../services/supervisaoOperacionalService';
 import { Frequencia, MotivoNaoRealizado } from '../types';
+import { LeituraRss, CAMPOS_TEXTO_RSS } from '../components/LeituraRss';
 
 interface ModoSupervisaoViewProps {
   turmaId: string;
+  dataAulaInicial?: string;
   onEncerrar: () => void;
   onOpenFichaAluno: (matriculaId: string, initialTab?: string) => void;
   onPrepararAula?: (turmaId: string) => void;
@@ -56,6 +58,7 @@ interface ExcecaoAluno {
 
 export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
   turmaId,
+  dataAulaInicial,
   onEncerrar,
   onOpenFichaAluno,
   onPrepararAula,
@@ -80,6 +83,10 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
     reagendarEncontro,
     encontrosTurma,
     frequencias,
+    registrosSemanais,
+    orientacoes,
+    registrosSupervisao,
+    addRegistroSupervisao,
     saveStatus,
     isTokenExpired,
     tokenExpiredAviso,
@@ -92,7 +99,11 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
   const diagnosticoChamada = diagnosticarChamada(turmaId, matriculas, alunos);
   const chamadaIncompleta = alunosLista.length === 0 || diagnosticoChamada.alunosLocalizados < diagnosticoChamada.matriculasElegiveis;
 
-  const hojeIso = useMemo(() => getHojeDataIso(), []);
+  // Data do encontro é uma decisão explícita da professora, não o relógio do navegador.
+  const [hojeIso, setDataEncontro] = useState(dataAulaInicial || getHojeDataIso());
+  useEffect(() => { setDataEncontro(dataAulaInicial || getHojeDataIso()); }, [turmaId, dataAulaInicial]);
+  const retrospectivo = hojeIso < getHojeDataIso();
+  const dataInvalida = !/^\d{4}-\d{2}-\d{2}$/.test(hojeIso) || hojeIso > getHojeDataIso();
 
   // 1. Verificação de Encontro de Hoje (Cancelado / Reagendado / Realizado)
   const encontroHoje = encontrosTurma.find(
@@ -173,10 +184,13 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
     return initialMap;
   };
   const [excecoes, setExcecoes] = useState<Record<string, ExcecaoAluno>>(construirExcecoesDaTurma);
+  const [confirmadosRetro, setConfirmadosRetro] = useState<Record<string, boolean>>({});
   // Refaz o formulário quando a turma muda; não reseta alterações do usuário
   // durante a sincronização normal da mesma turma.
   useEffect(() => {
     setExcecoes(construirExcecoesDaTurma());
+    const previamenteGravadas = new Set(frequencias.filter(f => f.data_aula === hojeIso).map(f => f.matricula_id));
+    setConfirmadosRetro(Object.fromEntries(alunosLista.filter(x => previamenteGravadas.has(x.matricula.matricula_id)).map(x => [x.matricula.matricula_id, true])));
     setSearchQuery('');
     setChamadaSalvaMsg(null);
   }, [turmaId, hojeIso]);
@@ -191,6 +205,24 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
   const [selectedMatriculaId, setSelectedMatriculaId] = useState<string>(() => {
     return alunosLista.length > 0 ? alunosLista[0].matricula.matricula_id : '';
   });
+  const [participacao, setParticipacao] = useState('NAO_REGISTRADO');
+  const [leituraDirigida, setLeituraDirigida] = useState('NAO_REGISTRADO');
+  const [casoCompartilhado, setCasoCompartilhado] = useState('NAO_REGISTRADO');
+  const [observacaoFormativa, setObservacaoFormativa] = useState('');
+  const [registrandoParticipacao, setRegistrandoParticipacao] = useState(false);
+  const [erroParticipacao, setErroParticipacao] = useState('');
+  useEffect(() => { setParticipacao('NAO_REGISTRADO'); setLeituraDirigida('NAO_REGISTRADO'); setCasoCompartilhado('NAO_REGISTRADO'); setObservacaoFormativa(''); setErroParticipacao(''); }, [selectedMatriculaId, hojeIso]);
+  const registrarParticipacao = async () => {
+    if (!selectedMatriculaId || registrandoParticipacao || (participacao === 'NAO_REGISTRADO' && leituraDirigida === 'NAO_REGISTRADO' && casoCompartilhado === 'NAO_REGISTRADO' && !observacaoFormativa.trim())) return;
+    setRegistrandoParticipacao(true); setErroParticipacao('');
+    try {
+      const texto = 'Participação na discussão: ' + participacao + '\nLeitura dirigida: ' + leituraDirigida + '\nCompartilhamento de caso: ' + casoCompartilhado + (observacaoFormativa.trim() ? '\nObservação da professora: ' + observacaoFormativa.trim() : '');
+      await addRegistroSupervisao(selectedMatriculaId, hojeIso + 'T12:00:00', 'PARTICIPACAO_AULA', texto);
+      setParticipacao('NAO_REGISTRADO'); setLeituraDirigida('NAO_REGISTRADO'); setCasoCompartilhado('NAO_REGISTRADO'); setObservacaoFormativa('');
+      setErroParticipacao('Registro armazenado. Confira no indicador de sincronização se já foi enviado à planilha.');
+    } catch (e: any) { setErroParticipacao(e?.message || 'Não foi possível gravar.'); }
+    finally { setRegistrandoParticipacao(false); }
+  };
 
   // Ao concluir a leitura assíncrona da planilha, a lista pode chegar depois
   // de abrir a aula. Evita ficha vazia e seleção de matrícula de outra turma.
@@ -226,6 +258,7 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
 
   // Helper de exceções
   const toggleFaltou = (matriculaId: string) => {
+    if (retrospectivo) setConfirmadosRetro(prev => ({ ...prev, [matriculaId]: true }));
     setExcecoes(prev => {
       const atual = prev[matriculaId] || { faltou: false, atraso: false, celular: false };
       return {
@@ -239,6 +272,7 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
   };
 
   const toggleAtraso = (matriculaId: string) => {
+    if (retrospectivo) setConfirmadosRetro(prev => ({ ...prev, [matriculaId]: true }));
     setExcecoes(prev => {
       const atual = prev[matriculaId] || { faltou: false, atraso: false, celular: false };
       return {
@@ -269,6 +303,11 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
   const [encerrando, setEncerrando] = useState(false);
   const previa = prepararEncerramentoChamada(alunosLista, excecoes);
   const abrirPrevia = () => {
+    if (dataInvalida) { setChamadaSalvaMsg({texto: 'Escolha uma data de aula válida (não futura).', tipo: 'local'}); return; }
+    if (retrospectivo && naoConfirmadosRetrospectivos(alunosLista, confirmadosRetro, retrospectivo).length > 0) {
+      setChamadaSalvaMsg({texto: 'Chamada retrospectiva: confirme Presente ou Falta/Atraso individualmente. Nunca presumimos presença em uma aula anterior.', tipo: 'local'});
+      return;
+    }
     if (chamadaIncompleta) {
       setChamadaSalvaMsg({ texto: 'Chamada não encerrada: lista de alunos incompleta. Confira a sincronização da turma.', tipo: 'local' });
       return;
@@ -325,6 +364,26 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
     }
   });
   const resumoAluno = selectedMatriculaId ? getResumoAlunoSupervisao(selectedMatriculaId) : null;
+  // RSS de grupo e individual pertencem à mesma unidade pedagógica, sem somar cópias.
+  const gruposDoAluno = new Set(grupoIntegrantes.filter(g => g.matricula_id === selectedMatriculaId && String(g.status).toUpperCase() === 'ATIVO').map(g => g.grupo_id));
+  const rssDoAluno = registrosSemanais.filter(r => {
+    const x = r as unknown as Record<string, unknown>;
+    if (x.turma_id && x.turma_id !== turmaId) return false;
+    return r.matricula_id === selectedMatriculaId || gruposDoAluno.has(String(x.grupo_id || ''));
+  });
+  const ultimoRss = [...rssDoAluno].filter(r => {
+    const x = r as unknown as Record<string, unknown>;
+    const temConteudo = CAMPOS_TEXTO_RSS.some(([ch]) => String(x[ch] ?? '').trim()) ||
+      ['link','url','link_documento','url_documento','link_rss','arquivo_url','documento_url'].some(ch => /^https:\/\//.test(String(x[ch] || '')));
+    const entregueAteEncontro = !r.data_entrega || r.data_entrega.slice(0,10) <= hojeIso;
+    return temConteudo && entregueAteEncontro && String(r.status || '').toUpperCase() !== 'FALTANTE';
+  }).sort((a,b) => String(b.data_entrega || '').localeCompare(String(a.data_entrega || '')) || Number((b as any).semana_rss ?? b.semana ?? 0) - Number((a as any).semana_rss ?? a.semana ?? 0))[0];
+  const diasUltimoRss = ultimoRss?.data_entrega && /^\d{4}-\d{2}-\d{2}/.test(ultimoRss.data_entrega)
+    ? Math.floor((Date.parse(hojeIso + 'T12:00:00Z') - Date.parse(ultimoRss.data_entrega.slice(0,10) + 'T12:00:00Z')) / 86400000) : null;
+  const orientacoesAnteriores = orientacoes.filter(o => o.matricula_id === selectedMatriculaId && o.data_hora?.slice(0,10) < hojeIso)
+    .sort((a,b) => String(b.data_hora).localeCompare(String(a.data_hora)));
+  const registrosAulaAnterior = registrosSupervisao.filter(r => r.matricula_id === selectedMatriculaId && String(r.data_hora || '').slice(0,10) < hojeIso)
+    .sort((a,b) => String(b.data_hora).localeCompare(String(a.data_hora)));
 
   return (
     <div className="flex flex-col min-h-0 md:h-[calc(100dvh-2.5rem)] -m-4 sm:-m-6 bg-slate-100 font-sans max-md:overflow-y-auto md:overflow-hidden">
@@ -351,6 +410,12 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
           </div>
         </div>
 
+        <label className="flex flex-col gap-1 text-xs font-semibold text-white min-w-[160px]">
+          <span>Data da supervisão · confirme</span>
+          <input type="date" aria-label="Data do encontro de supervisão" value={hojeIso} onChange={e => setDataEncontro(e.target.value)}
+            className="min-h-10 rounded-lg px-3 text-slate-900 bg-white border border-slate-300" />
+          {retrospectivo && <span className="text-amber-200 text-[11px]">Registro retrospectivo · validar presenças</span>}
+        </label>
         {/* Ações operacionais da aula: Não realizada, Reagendar, Encerrar */}
         <div className="flex items-center gap-2 flex-wrap">
           {onPrepararAula && <button
@@ -849,6 +914,10 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
 
                     {/* CONTROLES RÁPIDOS DE EXCEÇÃO: [Faltou] [Atraso] [Celular] [+] (Áreas mínimas de 44px) */}
                     <div className="flex items-center gap-1.5 shrink-0">
+                      {retrospectivo && !temSupervisaoHorarioAlternativo(item.matricula) && <button type="button"
+                        onClick={() => { setConfirmadosRetro(p => ({ ...p, [matId]: true })); setExcecoes(p => ({ ...p, [matId]: { ...(p[matId] || {faltou:false,atraso:false,celular:false}), faltou:false, atraso:false } })); }}
+                        className={'min-h-[44px] px-2 rounded-lg text-xs font-bold ' + (confirmadosRetro[matId] && !exc.faltou ? 'bg-emerald-700 text-white' : 'bg-slate-100 text-slate-700')}
+                        aria-label={'Confirmar presença retrospectiva de ' + item.aluno.nome}>Presente</button>}
                       {/* [Faltou] */}
                       <button
                         onClick={() => toggleFaltou(matId)}
@@ -949,6 +1018,54 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
                 </button>
               </div>
 
+              {/* ÚLTIMO RSS REGISTRADO: abre o conteúdo diretamente, sem navegar para a ficha. */}
+              <section className="rounded-xl border border-slate-200 bg-white p-4 space-y-2" aria-label="Último RSS preenchido">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h4 className="font-bold text-sm text-slate-900">Último RSS preenchido</h4>
+                  <span className="text-xs text-slate-700 font-semibold">{resumoAluno.totalRegistrosEntregues} de {resumoAluno.totalRegistrosEsperados} esperados até hoje</span>
+                </div>
+                {ultimoRss ? <>
+                  <div className="flex flex-wrap gap-2 items-center text-xs">
+                    <span className="font-semibold text-slate-700">Entrega: {ultimoRss.data_entrega || 'data não informada'}</span>
+                    {diasUltimoRss !== null && diasUltimoRss > 7 && <span className="rounded-md bg-amber-100 text-amber-900 px-2 py-1 font-semibold">Há {diasUltimoRss} dias sem novo RSS até esta aula</span>}
+                    {diasUltimoRss !== null && diasUltimoRss < 0 && <span className="text-slate-600">Este RSS foi entregue depois da data da aula selecionada.</span>}
+                    {resumoAluno.totalRegistrosEntregues < resumoAluno.totalRegistrosEsperados && <span className="rounded-md bg-amber-50 border border-amber-200 text-amber-900 px-2 py-1">{resumoAluno.totalRegistrosEsperados - resumoAluno.totalRegistrosEntregues} semana(s) a conferir</span>}
+                  </div>
+                  <LeituraRss registros={[ultimoRss]} />
+                </> : <p className="text-xs text-slate-600">Nenhum texto ou entrega de RSS localizados para esta matrícula ou grupo na base consultada. Isso não comprova ausência de entrega.</p>}
+              </section>
+              <section className="rounded-xl border border-slate-200 bg-white p-4 space-y-2" aria-label="Orientação da aula anterior">
+                <h4 className="font-bold text-sm text-slate-900">Retomar orientação anterior</h4>
+                {orientacoesAnteriores.length ? <div className="space-y-1 text-xs text-slate-700">
+                  <p className="font-semibold">{orientacoesAnteriores[0].data_hora.slice(0,10)} · {orientacoesAnteriores[0].categoria} · {orientacoesAnteriores[0].status}</p>
+                  <p className="whitespace-pre-wrap break-words">{orientacoesAnteriores[0].texto}</p>
+                </div> : <p className="text-xs text-slate-600">Nenhuma orientação anterior à data selecionada localizada.</p>}
+                {registrosAulaAnterior.length > 0 && <details className="text-xs text-slate-700"><summary className="cursor-pointer font-semibold">Último registro da supervisão anterior</summary><p className="mt-2 whitespace-pre-wrap break-words">{registrosAulaAnterior[0].texto}</p></details>}
+                <button type="button" onClick={() => setModalType('orientacao')} className="min-h-10 rounded-lg bg-slate-900 px-3 text-white text-xs font-semibold">+ Registrar orientação</button>
+              </section>
+              <section className="rounded-xl border border-slate-200 bg-white p-4 space-y-3" aria-label="Participação e contribuição na aula">
+                <div><h4 className="font-bold text-sm text-slate-900">Participação e contribuições nesta aula</h4><p className="text-xs text-slate-600">Registro formativo da data {hojeIso}. Não atribui nota nem presença automaticamente.</p></div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  {([['Participou da discussão',participacao,setParticipacao],['Apresentou leitura dirigida',leituraDirigida,setLeituraDirigida],['Compartilhou caso para supervisão',casoCompartilhado,setCasoCompartilhado]] as const).map(([rotulo,valor,mudar]) =>
+                    <label key={rotulo} className="text-xs font-semibold text-slate-700">{rotulo}<select value={valor} onChange={e => mudar(e.target.value)} className="block mt-1 w-full min-h-10 bg-slate-50 border border-slate-200 rounded-lg p-2 text-slate-900">
+                      <option value="NAO_REGISTRADO">A registrar</option><option value="SIM">Sim</option><option value="NAO">Não</option><option value="NAO_SE_APLICA">Não se aplica</option>
+                    </select></label>
+                  )}
+                </div>
+                <label className="block text-xs font-semibold text-slate-700">Observação formativa opcional (sem identificar pacientes)
+                  <textarea value={observacaoFormativa} onChange={e => setObservacaoFormativa(e.target.value)} rows={2} maxLength={1500} className="block mt-1 w-full border border-slate-200 p-2 bg-white rounded-lg text-sm text-slate-900" />
+                </label>
+                <div className="flex flex-wrap justify-between items-center gap-2">
+                  <span className="text-xs text-slate-600">{registrosSupervisao.filter(r => r.matricula_id === selectedMatriculaId && r.data_hora?.slice(0,10) === hojeIso && r.categoria === 'PARTICIPACAO_AULA').length} registro(s) formativo(s) nesta data</span>
+                  <button type="button" onClick={() => void registrarParticipacao()} disabled={registrandoParticipacao || (participacao === 'NAO_REGISTRADO' && leituraDirigida === 'NAO_REGISTRADO' && casoCompartilhado === 'NAO_REGISTRADO' && !observacaoFormativa.trim())}
+                    className="min-h-11 rounded-lg bg-teal-800 disabled:opacity-40 text-white px-4 text-xs font-semibold">{registrandoParticipacao ? 'Salvando…' : 'Salvar registro formativo'}</button>
+                </div>
+                {erroParticipacao && <p role="status" className="text-xs text-slate-700">{erroParticipacao}</p>}
+                {registrosSupervisao.filter(r => r.matricula_id === selectedMatriculaId && r.data_hora?.slice(0,10) === hojeIso && r.categoria === 'PARTICIPACAO_AULA').length > 0 &&
+                  <details className="text-xs text-slate-600"><summary className="font-semibold cursor-pointer">Ver registros anteriores desta aula</summary>
+                    {registrosSupervisao.filter(r => r.matricula_id === selectedMatriculaId && r.data_hora?.slice(0,10) === hojeIso && r.categoria === 'PARTICIPACAO_AULA').map(r => <p key={r.registro_id} className="whitespace-pre-wrap mt-2 p-2 border rounded-lg text-slate-700">{r.texto}</p>)}
+                  </details>}
+              </section>
               {/* RESUMO COMPACTO DE INDICADORES */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
                 <div className="p-3 bg-white border border-slate-200 rounded-xl shadow-xs">
@@ -1434,6 +1551,7 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
         <ModalNovaOrientacao
           matriculaId={selectedMatriculaId}
           alunoNome={resumoAluno?.aluno.nome || ''}
+          dataAula={hojeIso}
           onClose={() => setModalType(null)}
         />
       )}

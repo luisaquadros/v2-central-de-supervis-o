@@ -40,3 +40,9 @@ export function prepararEncerramentoChamada(lista: ItemChamada[], excecoes: Reco
   }
   return previa;
 }
+
+/** Segurança da retroatividade: nenhuma presença coletiva sem confirmação individual. */
+export function naoConfirmadosRetrospectivos(lista:ItemChamada[], confirmados:Record<string,boolean>, retrospectivo:boolean):ItemChamada[] {
+  if(!retrospectivo) return [];
+  return lista.filter(i=>geraRegistroAutomatico(i.matricula,false) && !confirmados[i.matricula.matricula_id]);
+}
