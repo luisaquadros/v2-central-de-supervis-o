@@ -42,18 +42,23 @@ export const ModalNovaOrientacao: React.FC<{
   alunoNome: string;
   onClose: () => void;
   onSaved?: () => void;
-}> = ({ matriculaId, alunoNome, onClose, onSaved }) => {
+  dataAula?: string;
+}> = ({ matriculaId, alunoNome, onClose, onSaved, dataAula }) => {
   const { addOrientacao } = useSupervisao();
   const [categoria, setCategoria] = useState('Clínica');
   const [texto, setTexto] = useState('');
   const [status, setStatus] = useState<'ABERTA' | 'CONCLUÍDA'>('ABERTA');
+  const [salvando, setSalvando] = useState(false);
+  const [erro, setErro] = useState('');
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!texto.trim()) return;
-    addOrientacao(matriculaId, categoria, texto.trim(), status);
-    if (onSaved) onSaved();
-    onClose();
+    if (!texto.trim() || salvando) return;
+    setSalvando(true); setErro('');
+    try { await addOrientacao(matriculaId, categoria, texto.trim(), status, dataAula);
+      if (onSaved) onSaved(); onClose();
+    } catch (e: any) { setErro(e?.message || 'Falha ao registrar orientação.'); }
+    finally { setSalvando(false); }
   };
 
   return (
@@ -63,6 +68,8 @@ export const ModalNovaOrientacao: React.FC<{
       onClose={onClose}
     >
       <form onSubmit={handleSubmit} className="space-y-4">
+        {dataAula && <p className="text-xs font-semibold text-teal-900 bg-teal-50 border border-teal-200 rounded-lg p-2">Orientação referente à aula de {dataAula}. O horário real do lançamento é preservado na auditoria.</p>}
+        {erro && <p role="alert" className="text-xs text-red-700">{erro}</p>}
         <div>
           <label className="font-semibold text-slate-700 block mb-1.5">Categoria</label>
           <select
@@ -131,6 +138,7 @@ export const ModalNovaOrientacao: React.FC<{
           </button>
           <button
             type="submit"
+            disabled={salvando}
             className="px-4 py-2 rounded-lg bg-slate-900 text-white font-medium hover:bg-slate-800"
           >
             Salvar Orientação
