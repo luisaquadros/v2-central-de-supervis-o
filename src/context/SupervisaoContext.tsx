@@ -2686,7 +2686,9 @@ export const SupervisaoProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       horariosTurma,
       frequencias,
       encontrosTurma,
-      matriculas
+      matriculas,
+      new Date(),
+      130 // semestre letivo completo, não apenas sete dias
     );
   }, [getTurmasDoPeriodo, selectedPeriodoId, horariosTurma, frequencias, encontrosTurma, matriculas]);
 
