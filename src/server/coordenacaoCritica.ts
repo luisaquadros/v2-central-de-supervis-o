@@ -113,7 +113,7 @@ export function compararVersaoDeCampos(
 }
 
 /** Colunas de texto livre: o log registra que mudaram, nunca o conteúdo (pode haver narrativa identificável). */
-const CAMPO_TEXTO_LIVRE=/(observa|justific|descri|texto|narrativ|relato|comentari|conteudo|resumo|mensagem|duvida|limita|prioridade|proximo_passo|anotac|nota_texto|feedback|devolutiva|pauta|diario|historico|selecoes|subcriterios|_json)/i;
+const CAMPO_TEXTO_LIVRE=/(observa|justific|descri|texto|narrativ|relato|comentari|conteudo|resumo|mensagem|duvida|limita|prioridade|proximo_passo|anotac|nota_texto|feedback|devolutiva|pauta|diario|historico|selecoes|subcriterios|_json|objetiv|tecnica|manejo|compreens|nome|email|telefone|endereco|cpf|valor)/i;
 const LIMITE_VALOR_LOG=80;
 const CAMPOS_TECNICOS=new Set(['atualizado_em','criado_em','sincronizado_em']);
 
