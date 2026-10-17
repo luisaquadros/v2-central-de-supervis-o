@@ -38,6 +38,7 @@ import {
 import { getHojeDataIso } from '../services/supervisaoOperacionalService';
 import { obterLeiturasAgendadas, obterLacunasRssDaAula } from '../services/supervisaoOperacionalService';
 import { Frequencia, MotivoNaoRealizado } from '../types';
+import { LeituraRss, CAMPOS_TEXTO_RSS } from '../components/LeituraRss';
 
 interface ModoSupervisaoViewProps {
   turmaId: string;
@@ -84,6 +85,7 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
     frequencias,
     registrosSemanais,
     orientacoes,
+    registrosSupervisao,
     addRegistroSupervisao,
     saveStatus,
     isTokenExpired,
@@ -344,6 +346,23 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
     }
   });
   const resumoAluno = selectedMatriculaId ? getResumoAlunoSupervisao(selectedMatriculaId) : null;
+  // RSS de grupo e individual pertencem à mesma unidade pedagógica, sem somar cópias.
+  const gruposDoAluno = new Set(grupoIntegrantes.filter(g => g.matricula_id === selectedMatriculaId && String(g.status).toUpperCase() === 'ATIVO').map(g => g.grupo_id));
+  const rssDoAluno = registrosSemanais.filter(r => {
+    const x = r as unknown as Record<string, unknown>;
+    if (x.turma_id && x.turma_id !== turmaId) return false;
+    return r.matricula_id === selectedMatriculaId || gruposDoAluno.has(String(x.grupo_id || ''));
+  });
+  const ultimoRss = [...rssDoAluno].filter(r => {
+    const x = r as unknown as Record<string, unknown>;
+    return CAMPOS_TEXTO_RSS.some(([ch]) => String(x[ch] ?? '').trim()) || Boolean(r.data_entrega && !['FALTANTE'].includes(String(r.status)));
+  }).sort((a,b) => String(b.data_entrega || '').localeCompare(String(a.data_entrega || '')) || Number((b as any).semana_rss ?? b.semana ?? 0) - Number((a as any).semana_rss ?? a.semana ?? 0))[0];
+  const diasUltimoRss = ultimoRss?.data_entrega && /^\d{4}-\d{2}-\d{2}/.test(ultimoRss.data_entrega)
+    ? Math.floor((Date.parse(hojeIso + 'T12:00:00Z') - Date.parse(ultimoRss.data_entrega.slice(0,10) + 'T12:00:00Z')) / 86400000) : null;
+  const orientacoesAnteriores = orientacoes.filter(o => o.matricula_id === selectedMatriculaId && o.data_hora?.slice(0,10) < hojeIso)
+    .sort((a,b) => String(b.data_hora).localeCompare(String(a.data_hora)));
+  const registrosAulaAnterior = registrosSupervisao.filter(r => r.matricula_id === selectedMatriculaId && r.data_hora?.slice(0,10) < hojeIso)
+    .sort((a,b) => String(b.data_hora).localeCompare(String(a.data_hora)));
 
   return (
     <div className="flex flex-col min-h-0 md:h-[calc(100dvh-2.5rem)] -m-4 sm:-m-6 bg-slate-100 font-sans max-md:overflow-y-auto md:overflow-hidden">
@@ -978,6 +997,31 @@ export const ModoSupervisaoView: React.FC<ModoSupervisaoViewProps> = ({
                 </button>
               </div>
 
+              {/* ÚLTIMO RSS REGISTRADO: abre o conteúdo diretamente, sem navegar para a ficha. */}
+              <section className="rounded-xl border border-slate-200 bg-white p-4 space-y-2" aria-label="Último RSS preenchido">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h4 className="font-bold text-sm text-slate-900">Último RSS preenchido</h4>
+                  <span className="text-xs text-slate-700 font-semibold">{resumoAluno.totalRegistrosEntregues} de {resumoAluno.totalRegistrosEsperados} esperados até hoje</span>
+                </div>
+                {ultimoRss ? <>
+                  <div className="flex flex-wrap gap-2 items-center text-xs">
+                    <span className="font-semibold text-slate-700">Entrega: {ultimoRss.data_entrega || 'data não informada'}</span>
+                    {diasUltimoRss !== null && diasUltimoRss > 7 && <span className="rounded-md bg-amber-100 text-amber-900 px-2 py-1 font-semibold">Há {diasUltimoRss} dias sem novo RSS até esta aula</span>}
+                    {diasUltimoRss !== null && diasUltimoRss < 0 && <span className="text-slate-600">Este RSS foi entregue depois da data da aula selecionada.</span>}
+                    {resumoAluno.totalRegistrosEntregues < resumoAluno.totalRegistrosEsperados && <span className="rounded-md bg-amber-50 border border-amber-200 text-amber-900 px-2 py-1">{resumoAluno.totalRegistrosEsperados - resumoAluno.totalRegistrosEntregues} semana(s) a conferir</span>}
+                  </div>
+                  <LeituraRss registros={[ultimoRss]} />
+                </> : <p className="text-xs text-slate-600">Nenhum texto ou entrega de RSS localizados para esta matrícula ou grupo na base consultada. Isso não comprova ausência de entrega.</p>}
+              </section>
+              <section className="rounded-xl border border-slate-200 bg-white p-4 space-y-2" aria-label="Orientação da aula anterior">
+                <h4 className="font-bold text-sm text-slate-900">Retomar orientação anterior</h4>
+                {orientacoesAnteriores.length ? <div className="space-y-1 text-xs text-slate-700">
+                  <p className="font-semibold">{orientacoesAnteriores[0].data_hora.slice(0,10)} · {orientacoesAnteriores[0].categoria} · {orientacoesAnteriores[0].status}</p>
+                  <p className="whitespace-pre-wrap break-words">{orientacoesAnteriores[0].texto}</p>
+                </div> : <p className="text-xs text-slate-600">Nenhuma orientação anterior à data selecionada localizada.</p>}
+                {registrosAulaAnterior.length > 0 && <details className="text-xs text-slate-700"><summary className="cursor-pointer font-semibold">Último registro da supervisão anterior</summary><p className="mt-2 whitespace-pre-wrap break-words">{registrosAulaAnterior[0].texto}</p></details>}
+                <button type="button" onClick={() => setModalType('orientacao')} className="min-h-10 rounded-lg bg-slate-900 px-3 text-white text-xs font-semibold">+ Registrar orientação</button>
+              </section>
               {/* RESUMO COMPACTO DE INDICADORES */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
                 <div className="p-3 bg-white border border-slate-200 rounded-xl shadow-xs">
