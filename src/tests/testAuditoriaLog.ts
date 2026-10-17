@@ -23,6 +23,16 @@ assert.equal(valorComparavelCampo('turmas', 'dia_semana', 'Terça'), 'Terça', '
   assert.equal(r.antes.status, 'ABERTA'); assert.equal(r.depois.status, 'RESOLVIDA');
   assert.equal(r.antes.observacao, '(texto)'); assert.equal(r.depois.observacao, '(texto)');
   assert(!JSON.stringify(r).includes('sensível'), 'conteúdo de texto livre não pode aparecer no log');
+  const sensivel = resumirAlteracaoParaLog('registros_semanais', 'UPDATE',
+    { registro_id:'r1', objetivos:'informação confidencial', tecnicas_atividades:'técnica A', responsavel_nome:'Pessoa Identificada' },
+    { registro_id:'r1', objetivos:'antes', tecnicas_atividades:'antes', responsavel_nome:'antes' },
+    ['registro_id','objetivos','tecnicas_atividades','responsavel_nome']);
+  assert(!JSON.stringify(sensivel).includes('confidencial'));
+  assert(!JSON.stringify(sensivel).includes('Identificada'));
+  assert.equal(sensivel.depois.objetivos,'(texto)');
+  const conf = resumirAlteracaoParaLog('configuracoes','UPDATE',
+    { chave:'tema',valor:'configuracao privada' },{ chave:'tema',valor:'antes' },['chave','valor']);
+  assert.equal(conf.depois.valor,'(texto)');
   const ins = resumirAlteracaoParaLog('ocorrencias', 'INSERT', { ocorrencia_id: 'o2', matricula_id: 'm1', status: 'ABERTA' }, null, cab);
   assert.deepEqual(ins.antes, {}); assert.equal(ins.depois.status, 'ABERTA');
   const del = resumirAlteracaoParaLog('ocorrencias', 'DELETE', { ocorrencia_id: 'o1' }, antes, cab);
@@ -31,7 +41,7 @@ assert.equal(valorComparavelCampo('turmas', 'dia_semana', 'Terça'), 'Terça', '
 for (const t of ['ocorrencias', 'orientacoes', 'feedbacks', 'feedback_alunos', 'pontos_acompanhamento', 'registros_supervisao', 'preparacoes_aula'])
   assert(TABELAS_CRITICAS.has(t), `${t} deve passar pelo coordenador`);
 for (const t of ['configuracoes', 'criterios_avaliacao', 'marcos_academicos', 'registros_semanais'])
-  assert(!TABELAS_CRITICAS.has(t), `${t} fica no caminho direto nesta etapa`);
+  assert(TABELAS_CRITICAS.has(t), `${t} exige versão, log e conta de serviço no Worker`);
 
 // ---- Worker: log gravado, idempotente e tolerante a falha ----
 const abas: Record<string, any[][]> = { ocorrencias: [['ocorrencia_id', 'matricula_id', 'status', 'observacao'], ['o1', 'm1', 'ABERTA', 'segredo']] };
