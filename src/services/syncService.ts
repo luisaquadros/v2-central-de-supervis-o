@@ -36,8 +36,6 @@ import {
 } from './indexedDbService';
 import {
   carregarDadosDaPlanilhaOficial,
-  gravarRegistroNaPlanilhaOficial,
-  removerRegistroDaPlanilhaOficial,
   getAccessToken,
   TABELAS_NORMALIZADAS,
 } from './googleSheetsService';
@@ -459,16 +457,12 @@ async function processarFilaInterna(): Promise<{
     try {
       await atualizarItemFila(item.id, { status: 'SINCRONIZANDO', tentativas: item.tentativas + 1 });
 
-      if (TABELAS_CRITICAS.has(item.tabela)) {
-        await gravarCriticoCoordenado(item);
-      } else if (escritaSoPeloServidor) {
-        // Nunca contornar o coordenador com uma conta de serviço não autorizada.
-        throw new Error('ESCRITA_PENDENTE: esta tabela ainda requer migração para o Worker; registro preservado.');
-      } else if (item.tipo === 'DELETE') {
-        await removerRegistroDaPlanilhaOficial(item.tabela, item.payload);
-      } else {
-        await gravarRegistroNaPlanilhaOficial(item.tabela, item.payload);
+      // Todas as tabelas editáveis agora são protegidas pelo coordenador.
+      // Nunca mais gravar diretamente do navegador no Sheets, mesmo com OAuth presente.
+      if (!TABELAS_CRITICAS.has(item.tabela)) {
+        throw new Error('ESCRITA_NAO_COORDENADA: tabela não autorizada para envio remoto; revisão necessária.');
       }
+      await gravarCriticoCoordenado(item);
 
       // Confirmação real recebida: remove do syncQueue
       await removerItemFilaConfirmado(item.id);
